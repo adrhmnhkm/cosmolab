@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment variables & secrets
+.env
+
+# Data & local storage (keep sample structure if desired)
+data/*.db
+data/logs/
+data/pdf/
+data/text/
+data/analysis/*.error.txt
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp

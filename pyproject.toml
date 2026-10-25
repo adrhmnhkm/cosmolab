@@ -1,0 +1,24 @@
+[project]
+name = "cosmolab"
+version = "0.1.0"
+description = "Personal research pipeline for cosmological argument papers"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pymupdf>=1.24",
+    "pydantic>=2.6",
+    "typer>=0.12",
+    "rich>=13.7",
+    "openai>=1.30",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+cosmolab = "cosmolab.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["cosmolab*"]
