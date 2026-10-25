@@ -72,24 +72,117 @@ def _search_openalex(query: str, max_results: int):
     return out[:max_results]
 
 
+def _search_doaj(query: str, max_results: int):
+    """Search DOAJ (Directory of Open Access Journals) for peer-reviewed OA papers."""
+    import urllib.parse
+    encoded_query = urllib.parse.quote(query)
+    url = f"https://doaj.org/api/v2/search/articles/{encoded_query}"
+    params = {"pageSize": min(max_results, 30)}
+    try:
+        r = requests.get(url, params=params, headers=config.HEADERS, timeout=20)
+        if r.status_code != 200:
+            return []
+        results = r.json().get("results", [])
+        works = []
+        for it in results:
+            bib = it.get("bibjson", {})
+            title = bib.get("title", "")
+            if not title:
+                continue
+            year = bib.get("year", "")
+            doi = ""
+            for id_entry in bib.get("identifier", []):
+                if id_entry.get("type") == "doi":
+                    doi = id_entry.get("id", "")
+                    break
+            
+            pdf_link = None
+            for link in bib.get("link", []):
+                if link.get("type") == "fulltext":
+                    pdf_link = link.get("url")
+                    break
+
+            abstract = bib.get("abstract", "")
+            works.append({
+                "id": f"doaj:{it.get('id', '')}",
+                "title": title.replace("\n", " ").strip(),
+                "pdf_url": pdf_link,
+                "abstract": abstract,
+                "doi": doi,
+                "arxiv_id": "",
+                "published": str(year),
+                "publication_year": str(year),
+                "type": "journal_article",
+                "source": "doaj",
+            })
+        return works
+    except Exception:
+        return []
+
+
+def _search_semanticscholar(query: str, max_results: int):
+    """Search Semantic Scholar API (AI graph database of 200M+ papers)."""
+    url = "https://api.semanticscholar.org/graph/v1/paper/search"
+    params = {
+        "query": query,
+        "limit": min(max_results, 25),
+        "fields": "paperId,title,year,abstract,openAccessPdf,externalIds"
+    }
+    headers = dict(config.HEADERS)
+    s2_key = config.env_config.get("SEMANTIC_SCHOLAR_API_KEY")
+    if s2_key:
+        headers["x-api-key"] = s2_key
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=15)
+        if r.status_code != 200:
+            return []
+        data = r.json().get("data", [])
+        works = []
+        for p in data:
+            title = p.get("title")
+            if not title:
+                continue
+            oa_pdf = p.get("openAccessPdf") or {}
+            pdf_url = oa_pdf.get("url")
+            ext = p.get("externalIds") or {}
+            works.append({
+                "id": f"s2:{p.get('paperId')}",
+                "title": title.replace("\n", " ").strip(),
+                "pdf_url": pdf_url,
+                "abstract": p.get("abstract") or "",
+                "doi": ext.get("DOI", ""),
+                "arxiv_id": ext.get("ArXiv", ""),
+                "publication_year": str(p.get("year") or ""),
+                "source": "semanticscholar"
+            })
+        return works
+    except Exception:
+        return []
+
+
 def _search(query: str, max_results: int):
-    """Search arXiv first, then OpenAlex as fallback."""
-    arxiv_works = _search_arxiv(query, max_results // 2)
-    remaining = max_results - len(arxiv_works)
+    """Federated academic search across arXiv, DOAJ, Semantic Scholar, and OpenAlex."""
+    portion = max(2, max_results // 3)
+    
+    arxiv_works = _search_arxiv(query, portion)
+    doaj_works = _search_doaj(query, portion)
+    s2_works = _search_semanticscholar(query, portion)
+    
+    collected = arxiv_works + doaj_works + s2_works
+    remaining = max_results - len(collected)
     
     if remaining > 0:
         openalex_works = _search_openalex(query, remaining)
-    else:
-        openalex_works = []
+        collected += openalex_works
     
-    return arxiv_works + openalex_works
+    return collected[:max_results]
 
 
 def _pdf_url(work: dict):
-    """Extract PDF URL from work (handles both arXiv and OpenAlex)."""
+    """Extract PDF URL from work (handles arXiv, DOAJ, Semantic Scholar, and OpenAlex)."""
     source = work.get("source", "openalex")
     
-    if source == "arxiv":
+    if source in ("arxiv", "doaj", "semanticscholar"):
         return work.get("pdf_url")
     
     # OpenAlex
@@ -187,7 +280,7 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
     seen_arxiv_ids = {_extract_arxiv_id(m) for m in metadata if _extract_arxiv_id(m)}
     existing_titles = [m.get("title", "") for m in metadata]
     
-    stats = {"found": 0, "downloaded": 0, "skipped": 0, "no_pdf": 0, "duplicate": 0, "source": {"arxiv": 0, "openalex": 0}}
+    stats = {"found": 0, "downloaded": 0, "skipped": 0, "no_pdf": 0, "duplicate": 0, "source": {"arxiv": 0, "openalex": 0, "doaj": 0, "semanticscholar": 0}}
     to_download = []
 
     for work in _search(query, max_results):

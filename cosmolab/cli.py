@@ -183,6 +183,18 @@ def graph(paper: str):
 
 
 @app.command()
+def ui(port: int = typer.Option(8501, "--port", "-p", help="Port to run web dashboard")):
+    """Launch interactive local Web Dashboard (Streamlit)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    web_script = Path(__file__).parent / "web.py"
+    console.print(f"[bold cyan]Launching Cosmolab Web Dashboard on port {port}...[/bold cyan]")
+    console.print(f"[dim]URL: http://localhost:{port}[/dim]")
+    subprocess.run([sys.executable, "-m", "streamlit", "run", str(web_script), "--server.port", str(port)])
+
+
+@app.command()
 def status():
     """Show comprehensive pipeline and database counts."""
     from . import config

@@ -48,4 +48,15 @@ cosmolab graph "2012_New_remarks"
 
 # Re-sync SQLite database and search index from disk
 cosmolab sync
+
+# Launch interactive local Web Dashboard (Streamlit UI)
+cosmolab ui
+```
+
+### 3. Federated Multi-Source Search
+Cosmolab harvests academic papers concurrently across 4 major sources:
+- **arXiv**: Physics, Quantum Cosmology, Math & Logic preprints.
+- **DOAJ**: 100% Peer-reviewed open-access philosophy & humanities journals.
+- **Semantic Scholar**: 200M+ academic paper AI graph.
+- **OpenAlex**: Global open academic catalogue.
 ```
