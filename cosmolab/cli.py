@@ -335,7 +335,7 @@ def ui(
     console.print(f"[dim]Proyek: {label}  |  URL: http://{address}:{port}[/dim]")
     if team:
         console.print("[dim]Mode tim aktif: anggota tim membuka alamat di atas dan memasukkan password tim.[/dim]")
-    subprocess.run(args, env=env)
+    subprocess.run(args, env=env, cwd=str(config.PROJECT_ROOT))
 
 
 def _tailscale_ip() -> str:
@@ -550,6 +550,30 @@ def deliver(
         console.print(f"[green]Dibuat:[/green] {f}")
     console.print(f"[dim]Laporan sitasi internal (jangan dikirim ke klien): {result['qa_report']}[/dim]")
 
+
+
+@app.command()
+def authors(
+    no_ai: bool = typer.Option(False, "--no-ai", help="Jangan pakai AI untuk membaca halaman pertama PDF."),
+    refresh: bool = typer.Option(False, "--refresh", help="Cari ulang juga paper yang sudah punya penulis (kecuali isian manual)."),
+):
+    """Lengkapi nama penulis paper lewat DOI, arXiv, OpenAlex, Crossref, lalu PDF."""
+    from . import authors as _authors
+    from . import db
+
+    def _show(file_name, names, src):
+        if names:
+            console.print(f"[green]OK[/green]  {file_name[:60]}  [dim]({src})[/dim]  {_authors.display(names)}")
+        else:
+            console.print(f"[yellow]--[/yellow]  {file_name[:60]}  [dim]tidak ditemukan[/dim]")
+
+    stats = _authors.fill_missing(use_ai=not no_ai, refresh=refresh, progress=_show)
+    db.sync_all()
+    console.print()
+    console.print(
+        f"Dicek {stats['checked']} paper: {stats['found']} ketemu, {stats['not_found']} tidak ketemu. "
+        f"Sumber: {stats['sources'] or '-'}"
+    )
 
 
 @app.command()

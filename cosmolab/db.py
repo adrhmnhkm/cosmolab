@@ -4,6 +4,7 @@ from pathlib import Path
 from rich.console import Console
 from . import config
 from . import faculties as _faculties
+from . import authors as _authors
 from .storage import read_meta
 
 console = Console(force_terminal=True, legacy_windows=False)
@@ -48,6 +49,10 @@ def init_db(con: sqlite3.Connection | None = None) -> None:
             columns = [row[1] for row in cursor.fetchall()]
             if "faculty" not in columns:
                 con.execute("ALTER TABLE papers ADD COLUMN faculty TEXT DEFAULT 'ilahiyyat'")
+            if "authors" not in columns:
+                con.execute("ALTER TABLE papers ADD COLUMN authors TEXT DEFAULT '[]'")
+            if "authors_source" not in columns:
+                con.execute("ALTER TABLE papers ADD COLUMN authors_source TEXT DEFAULT ''")
         except Exception:
             pass
 
@@ -87,6 +92,28 @@ def init_db(con: sqlite3.Connection | None = None) -> None:
         con.close()
 
 
+def _meta_authors(meta: list[dict]) -> dict:
+    """Last non-empty author list per file across all metadata records."""
+    out = {}
+    for rec in meta:
+        names = _authors.as_list(rec.get("authors"))
+        if rec.get("file") and names:
+            out[rec["file"]] = names
+    return out
+
+
+def _set_authors(con, file_name: str, meta_names, store: dict) -> None:
+    names, source = _authors.pick(file_name, meta_names, store)
+    con.execute("UPDATE papers SET authors = ?, authors_source = ? WHERE file = ?",
+                (json.dumps(names, ensure_ascii=False), source, file_name))
+
+
+def set_authors(file_name: str, names: list[str]) -> None:
+    """Save authors typed by a researcher. These are never overwritten by lookups."""
+    _authors.save_entry(file_name, names, _authors.MANUAL, force=True)
+    sync_one(file_name)
+
+
 def sync_all() -> dict:
     """Sync all metadata.jsonl, text files, and analysis JSONs into SQLite database."""
     config.ensure_dirs()
@@ -95,6 +122,8 @@ def sync_all() -> dict:
 
     meta = read_meta()
     stats = {"papers_synced": 0, "analyses_synced": 0}
+    author_store = _authors.load()
+    meta_authors = _meta_authors(meta)
 
     with con:
         for rec in meta:
@@ -150,6 +179,7 @@ def sync_all() -> dict:
                 full_text,
                 faculty
             ))
+            _set_authors(con, file_name, meta_authors.get(file_name), author_store)
             stats["papers_synced"] += 1
 
             # Analysis sync if exists
@@ -284,6 +314,7 @@ def sync_one(file_name: str) -> dict:
             rec.get("doi"), rec.get("url"), rec.get("source"), rec.get("arxiv_id"),
             abstract, full_text, faculty
         ))
+        _set_authors(con, file_key, _meta_authors(meta).get(file_key), _authors.load())
         stats["papers_synced"] = 1
 
         # Analysis sync if exists

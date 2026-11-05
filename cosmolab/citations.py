@@ -6,15 +6,14 @@ Supports automated academic citation styling for papers, literature reviews, and
 import re
 from pathlib import Path
 from . import config
+from . import authors as _authors
 
 
 def _infer_author(paper: dict) -> str:
     """Infer author name from title, metadata, or file name."""
-    explicit_author = paper.get("author") or paper.get("authors")
-    if explicit_author:
-        if isinstance(explicit_author, list):
-            return ", ".join(explicit_author)
-        return str(explicit_author)
+    names = _authors.as_list(paper.get("authors")) or _authors.as_list(paper.get("author"))
+    if names:
+        return _authors.display(names)
 
     title = paper.get("title") or ""
     # Check for patterns like "Al-Ghazali on Causality", "Craig's Kalam Argument", "By John Doe"
@@ -43,15 +42,19 @@ def _infer_author(paper: dict) -> str:
         if key.lower() in title.lower():
             return formal
 
-    return "Anonim (CosmoLab Corpus)"
+    return "Anonim"
 
 
 def format_in_text_apa(paper: dict) -> str:
     """Format in-text citation: (Author, Year)."""
-    author = _infer_author(paper)
-    last_name = author.split(",")[-1].strip() if "," in author else author.split()[-1]
+    names = _authors.as_list(paper.get("authors"))
+    if names:
+        short = _authors.in_text(names)
+    else:
+        author = _infer_author(paper)
+        short = author.split(",")[0].strip() if "," in author else author.split()[-1]
     year = paper.get("year") or "n.d."
-    return f"({last_name}, {year})"
+    return f"({short}, {year})"
 
 
 def format_apa(paper: dict) -> str:
@@ -63,7 +66,7 @@ def format_apa(paper: dict) -> str:
     url = paper.get("url") or ""
 
     doi_part = f" https://doi.org/{doi}" if doi else (f" {url}" if url else "")
-    return f"{author}. ({year}). *{title}*.{doi_part}".strip()
+    return f"{author.rstrip('.')}. ({year}). *{title}*.{doi_part}".strip()
 
 
 def format_chicago_bib(paper: dict) -> str:
@@ -75,7 +78,7 @@ def format_chicago_bib(paper: dict) -> str:
     url = paper.get("url") or ""
 
     loc = f" https://doi.org/{doi}." if doi else (f" {url}." if url else ".")
-    return f"{author}. {year}. \"{title}.\"{loc}".strip()
+    return f"{author.rstrip('.')}. {year}. \"{title}.\"{loc}".strip()
 
 
 def format_chicago_note(paper: dict, page: str = "") -> str:
@@ -100,7 +103,7 @@ def export_ris(papers: list[dict], out_path: Path | None = None) -> Path:
     for p in papers:
         title = p.get("title") or "Untitled"
         year = str(p.get("year") or "")
-        author = _infer_author(p)
+        author_lines = [f"AU  - {n}" for n in _authors.as_list(p.get("authors"))] or [f"AU  - {_infer_author(p)}"]
         doi = p.get("doi") or ""
         url = p.get("url") or ""
         abstract = p.get("abstract") or p.get("thesis") or ""
@@ -108,7 +111,7 @@ def export_ris(papers: list[dict], out_path: Path | None = None) -> Path:
         lines = [
             "TY  - JOUR",
             f"TI  - {title}",
-            f"AU  - {author}",
+            *author_lines,
         ]
         if year:
             lines.append(f"PY  - {year}")

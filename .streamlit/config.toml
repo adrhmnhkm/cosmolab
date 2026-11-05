@@ -1,9 +1,24 @@
 [theme]
-primaryColor = "#2563EB"
-backgroundColor = "#F8FAFC"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#0F172A"
-font = "sans serif"
+primaryColor = "#D4A12A"
+backgroundColor = "#E4EDEC"
+secondaryBackgroundColor = "#EEF3F2"
+textColor = "#2F4440"
+borderColor = "#D3DEDC"
+baseRadius = "0.9rem"
+buttonRadius = "full"
+dataframeHeaderBackgroundColor = "#3D5651"
+dataframeHeaderTextColor = "#FFFFFF"
+dataframeBorderColor = "#E4EDEC"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+
+[theme.sidebar]
+backgroundColor = "#3D5651"
+secondaryBackgroundColor = "#4A6560"
+textColor = "#EEF3F2"
+primaryColor = "#D4A12A"
+borderColor = "#55706B"
 
 [client]
 toolbarMode = "minimal"

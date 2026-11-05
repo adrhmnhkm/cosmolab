@@ -9,6 +9,7 @@ from difflib import SequenceMatcher
 from rich.console import Console
 from . import config
 from . import faculties as _faculties
+from . import authors as _authors
 from .utils import fire_cb as _fire_cb
 from .storage import safe_name, load_done, save_done, append_meta, read_meta
 
@@ -72,6 +73,7 @@ def _search_arxiv(query: str, max_results: int):
                 "pdf_url": pdf_link,
                 "abstract": summary,
                 "arxiv_id": entry.find("id", ns).text if entry.find("id", ns) is not None else "",
+                "authors": _authors.clean_names(a.findtext("name", default="", namespaces=ns) for a in entry.findall("author", ns)),
                 "published": entry.find("published", ns).text if entry.find("published", ns) is not None else "",
                 "publication_year": entry.find("published", ns).text[:4] if entry.find("published", ns) is not None else "",
                 "type": "preprint",
@@ -161,6 +163,7 @@ def _search_doaj(query: str, max_results: int):
             abstract = bib.get("abstract", "")
             works.append({
                 "id": f"doaj:{it.get('id', '')}",
+                "authors": _authors.from_named(bib.get("author")),
                 "title": title.replace("\n", " ").strip(),
                 "pdf_url": pdf_link,
                 "abstract": abstract,
@@ -182,7 +185,7 @@ def _search_semanticscholar(query: str, max_results: int):
     params = {
         "query": query,
         "limit": min(max_results, 25),
-        "fields": "paperId,title,year,abstract,openAccessPdf,externalIds"
+        "fields": "paperId,title,year,abstract,openAccessPdf,externalIds,authors"
     }
     headers = dict(config.HEADERS)
     s2_key = config.env_config.get("SEMANTIC_SCHOLAR_API_KEY")
@@ -204,6 +207,7 @@ def _search_semanticscholar(query: str, max_results: int):
             pub_year = str(p.get("year") or "")
             works.append({
                 "id": f"s2:{p.get('paperId')}",
+                "authors": _authors.from_named(p.get("authors")),
                 "title": title.replace("\n", " ").strip(),
                 "pdf_url": pdf_url,
                 "abstract": p.get("abstract") or "",
@@ -249,6 +253,7 @@ def _search_core(query: str, max_results: int):
             abstract = item.get("abstract") or ""
             works.append({
                 "id": f"core:{item.get('id')}",
+                "authors": _authors.from_named(item.get("authors")),
                 "title": title.replace("\n", " ").strip(),
                 "pdf_url": pdf_url,
                 "abstract": abstract,
@@ -298,6 +303,7 @@ def _search_crossref(query: str, max_results: int):
             abstract = item.get("abstract", "")
             works.append({
                 "id": f"crossref:{doi or item.get('URL')}",
+                "authors": _authors.from_crossref(item.get("author")),
                 "title": title.replace("\n", " ").strip(),
                 "pdf_url": pdf_url,
                 "abstract": abstract,
@@ -620,6 +626,7 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
             "arxiv_id": arxiv_id,
             "abstract": abstract_text,
             "faculty": item_faculty,
+            "authors": work.get("authors") or _authors.from_openalex(work),
         })
         existing_titles.append(title)
         if arxiv_id:
@@ -664,6 +671,7 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
                     "source": source,
                     "arxiv_id": item["arxiv_id"],
                     "faculty": item.get("faculty", "ilahiyyat"),
+                    "authors": item.get("authors") or [],
                 })
                 done.add(wid)
                 save_done(done)
@@ -748,6 +756,13 @@ def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty:
     except Exception as e:
         console.print(f"[yellow]WARN  Text extraction failed for {dest_name}: {e}[/yellow]")
 
+    try:
+        names, src = _authors.resolve(meta_entry, use_ai=True)
+        if names:
+            _authors.save_entry(dest_name, names, src)
+    except Exception as e:
+        console.print(f"[yellow]WARN  Author lookup failed for {dest_name}: {e}[/yellow]")
+
     return {
         "ok": True,
         "file": dest_name,
@@ -771,12 +786,14 @@ def import_by_doi(doi: str, faculty: str = None) -> dict:
     # 2. Get metadata
     title = f"Paper DOI {clean_doi}"
     year = ""
+    doi_authors = []
     try:
         r = _request_with_retry("GET", f"{config.UNPAYWALL}/{clean_doi}", params={"email": config.EMAIL}, headers=config.HEADERS, timeout=12)
         if r is not None and r.status_code == 200:
             data = r.json()
             title = data.get("title") or title
             year = str(data.get("year") or "")
+            doi_authors = _authors.from_crossref(data.get("z_authors"))
     except Exception:
         pass
 
@@ -796,6 +813,7 @@ def import_by_doi(doi: str, faculty: str = None) -> dict:
             "source": "unpaywall/doi",
             "arxiv_id": "",
             "faculty": item_faculty,
+            "authors": doi_authors or _authors.by_doi(clean_doi),
         })
         from . import extract
         txt_out = config.TEXT_DIR / f"{Path(fname).stem}.txt"
