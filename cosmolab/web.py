@@ -52,10 +52,26 @@ try:
 except Exception:
     pass
 
+# Logo files live in cosmolab/assets/
+ASSETS_DIR = Path(__file__).parent / "assets"
+LOGO_MARK_PNG = ASSETS_DIR / "logo-mark.png"
+LOGO_LIGHT_PNG = ASSETS_DIR / "logo-light.png"
+
+
+def _svg_data_uri(path: Path) -> str:
+    import base64
+    try:
+        return "data:image/svg+xml;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+
+
+LOGO_MARK_URI = _svg_data_uri(ASSETS_DIR / "logo-mark.svg")
+
 # Page Configuration
 st.set_page_config(
     page_title="CosmoLab • Asisten Riset Multidisipliner",
-    page_icon=":material/menu_book:",
+    page_icon=str(LOGO_MARK_PNG) if LOGO_MARK_PNG.exists() else ":material/menu_book:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -68,7 +84,9 @@ def _require_team_login():
     import time
     if os.environ.get("COSMOLAB_TEAM_MODE") != "1" or st.session_state.get("team_auth_ok"):
         return
-    st.markdown("### CosmoLab: masuk tim")
+    if LOGO_LIGHT_PNG.exists():
+        st.image(str(LOGO_LIGHT_PNG), width=300)
+    st.markdown("### Masuk tim")
     if not config.TEAM_PASSWORD:
         st.error("Password tim belum diatur di server. Hubungi admin tim.")
         st.stop()
@@ -611,8 +629,11 @@ st.markdown("""
     /* Sidebar */
     [data-testid="stSidebar"] { background: var(--cl-green); }
     .sidebar-brand-card { background: transparent; border: none; padding: 6px 4px 14px 4px; margin-bottom: 6px; }
-    .sidebar-brand-title { color: #FFFFFF; letter-spacing: 0.08em; }
-    .sidebar-brand-sub { color: #B9C9C6; }
+    .sidebar-brand-title { color: #FFFFFF; font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; gap: 10px; }
+    .sidebar-brand-lab { font-weight: 400; }
+    .sidebar-brand-mark { width: 42px; height: 42px; flex-shrink: 0; border-radius: 10px;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14); }
+    .sidebar-brand-sub { color: #B9C9C6; margin-left: 52px; margin-top: -4px; }
     .nav-cluster-header { color: var(--cl-gold); font-weight: 700; letter-spacing: 0.1em; margin-top: 18px; }
     [data-testid="stSidebar"] [data-testid="stAlertContainer"] {
         background: rgba(255, 255, 255, 0.08) !important;
@@ -864,11 +885,12 @@ def render_client_delivery(md_path: Path, key: str):
 st.sidebar.markdown("""
 <div class="sidebar-brand-card">
     <div class="sidebar-brand-title">
-        <span></span> COSMOLAB
+        {mark}<span>Cosmo<span class="sidebar-brand-lab">Lab</span></span>
     </div>
     <div class="sidebar-brand-sub">Asisten riset multidisipliner</div>
 </div>
-""", unsafe_allow_html=True)
+""".format(mark=f'<img class="sidebar-brand-mark" src="{LOGO_MARK_URI}" alt="">' if LOGO_MARK_URI else ""),
+    unsafe_allow_html=True)
 
 # Active client project (set per dashboard process via `cosmolab -P <proyek> ui`)
 _proj = config.project_info()
