@@ -1,63 +1,446 @@
 import json
+import importlib
 import subprocess
 import sys
+import html
+from datetime import datetime
 from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 from cosmolab import config
 from cosmolab import db
+from cosmolab import faculties as _faculties
 from cosmolab import export
 from cosmolab import ask as _ask
+from cosmolab import ask_agent as _ask_agent
+from cosmolab import sparring as _sparring
+from cosmolab import curriculum as _curriculum
 from cosmolab import harvest as _harvest
 from cosmolab import extract as _extract
 from cosmolab import analyze as _analyze
 from cosmolab import synthesize as _synthesize
+from cosmolab import writer as _writer
+from cosmolab import matrix as _matrix
+from cosmolab import citations as _citations
+from cosmolab import gap_finder as _gap_finder
+from cosmolab import inspector as _inspector
+from cosmolab import retrieval as _retrieval
+
+# Live hot-reloading of submodules inside Streamlit session
+try:
+    importlib.reload(config)
+    importlib.reload(db)
+    importlib.reload(_faculties)
+    importlib.reload(_sparring)
+    importlib.reload(_curriculum)
+    importlib.reload(_ask_agent)
+    importlib.reload(_writer)
+    importlib.reload(_harvest)
+    importlib.reload(_extract)
+    importlib.reload(_analyze)
+    importlib.reload(_synthesize)
+    importlib.reload(_matrix)
+    importlib.reload(_citations)
+    importlib.reload(_gap_finder)
+    importlib.reload(_inspector)
+except Exception:
+    pass
 
 # Page Configuration
 st.set_page_config(
-    page_title="Cosmolab Research Engine",
-    page_icon="🌌",
+    page_title="CosmoLab • Asisten Riset Multidisipliner",
+    page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom Styling
+# -------------------------------------------------------------
+# Modern Design System & CSS
+# -------------------------------------------------------------
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.2rem;
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* Main Container Padding */
+    .block-container {
+        padding-top: 1.8rem;
+        padding-bottom: 3.5rem;
+        max-width: 1280px;
+    }
+
+    /* Modern Hero Masthead */
+    .cosmo-hero {
+        background: linear-gradient(135deg, #0A1128 0%, #1C2541 45%, #1E3A8A 100%);
+        color: #FFFFFF;
+        padding: 26px 32px;
+        border-radius: 16px;
+        margin-bottom: 24px;
+        box-shadow: 0 12px 30px -8px rgba(10, 17, 40, 0.25), 0 4px 12px -2px rgba(10, 17, 40, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        position: relative;
+        overflow: hidden;
+    }
+    .cosmo-hero::after {
+        content: '';
+        position: absolute;
+        top: -60px;
+        right: -60px;
+        width: 220px;
+        height: 220px;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, rgba(255,255,255,0) 70%);
+        border-radius: 50%;
+        pointer-events: none;
+    }
+    .cosmo-hero-title {
+        font-size: 2.15rem;
+        font-weight: 800;
+        letter-spacing: -0.6px;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #FFFFFF;
+    }
+    .cosmo-hero-subtitle {
+        font-size: 1.02rem;
+        color: #CBD5E1;
+        line-height: 1.5;
+        max-width: 850px;
+        margin-bottom: 14px;
+    }
+    .cosmo-hero-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        backdrop-filter: blur(8px);
+    }
+    .hero-badge-primary {
+        background: rgba(59, 130, 246, 0.25);
+        color: #93C5FD;
+        border: 1px solid rgba(147, 197, 253, 0.4);
+    }
+    .hero-badge-accent {
+        background: rgba(245, 158, 11, 0.25);
+        color: #FCD34D;
+        border: 1px solid rgba(252, 211, 77, 0.4);
+    }
+    .hero-badge-model {
+        background: rgba(16, 185, 129, 0.25);
+        color: #6EE7B7;
+        border: 1px solid rgba(110, 231, 183, 0.4);
+    }
+
+    /* Sidebar Branding */
+    .sidebar-brand-card {
+        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+        padding: 16px;
+        border-radius: 12px;
+        border: 1px solid #334155;
+        margin-bottom: 18px;
+        color: #FFFFFF;
+    }
+    .sidebar-brand-title {
+        font-size: 1.25rem;
+        font-weight: 800;
+        letter-spacing: -0.4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 2px;
+    }
+    .sidebar-brand-version {
+        font-size: 0.7rem;
         font-weight: 700;
-        color: #1E3A8A;
-        margin-bottom: 0.2rem;
+        text-transform: uppercase;
+        background: #2563EB;
+        color: #FFFFFF;
+        padding: 2px 7px;
+        border-radius: 6px;
+        letter-spacing: 0.5px;
     }
-    .sub-header {
-        font-size: 1.05rem;
-        color: #4B5563;
-        margin-bottom: 1.5rem;
+    .sidebar-brand-sub {
+        font-size: 0.8rem;
+        color: #94A3B8;
+        line-height: 1.35;
     }
-    .metric-card {
-        background-color: #F3F4F6;
-        border-radius: 8px;
-        padding: 12px;
-        text-align: center;
-        border: 1px solid #E5E7EB;
+
+    /* Modern Metric Card Overrides */
+    [data-testid="stMetric"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 12px !important;
+        padding: 14px 18px !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease !important;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.07) !important;
+        border-color: #CBD5E1 !important;
+    }
+
+    /* Stance Badges */
+    .stance-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.2px;
     }
     .stance-supports {
+        background-color: #ECFDF5;
         color: #047857;
-        font-weight: bold;
+        border: 1px solid #A7F3D0;
     }
     .stance-critiques {
+        background-color: #FEF2F2;
         color: #B91C1C;
-        font-weight: bold;
+        border: 1px solid #FECACA;
+    }
+    .stance-mixed {
+        background-color: #FFFBEB;
+        color: #B45309;
+        border: 1px solid #FDE68A;
+    }
+    .stance-neutral {
+        background-color: #F8FAFC;
+        color: #475569;
+        border: 1px solid #E2E8F0;
+    }
+
+    /* Research Card Styling */
+    .research-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 18px 22px;
+        margin-bottom: 14px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        border-left: 4px solid #3B82F6;
+    }
+    .research-card:hover {
+        box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        border-color: #CBD5E1;
+        border-left-color: #1D4ED8;
+    }
+    .research-card-supports { border-left-color: #10B981 !important; }
+    .research-card-critiques { border-left-color: #EF4444 !important; }
+    .research-card-mixed { border-left-color: #F59E0B !important; }
+
+    /* Persona Duelist Card */
+    .persona-card {
+        background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin-bottom: 14px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .persona-card:hover {
+        border-color: #93C5FD;
+        transform: translateY(-2px);
+    }
+    .persona-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #0F172A;
+        margin-bottom: 2px;
+    }
+    .persona-title {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #64748B;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin-bottom: 8px;
+    }
+    .persona-desc {
+        font-size: 0.88rem;
+        color: #334155;
+        line-height: 1.45;
+    }
+
+    /* Reader Mode Typography */
+    .reader-container {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 14px;
+        padding: 36px 44px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+        font-family: 'Newsreader', Georgia, serif;
+        font-size: 1.12rem;
+        line-height: 1.85;
+        color: #1E293B;
+    }
+    .reader-container h1, .reader-container h2, .reader-container h3 {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 700;
+        color: #0F172A;
+        letter-spacing: -0.4px;
+    }
+
+    /* Logic Step Blocks */
+    .premise-block {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-left: 3px solid #6366F1;
+        border-radius: 6px;
+        padding: 8px 14px;
+        margin-bottom: 6px;
+        font-size: 0.92rem;
+    }
+
+    /* Academic Source Pill Ribbon */
+    .source-ribbon {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    .source-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #334155;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .source-chip-active {
+        border-color: #10B981;
+        background: #F0FDF4;
+        color: #065F46;
+    }
+    .dot-live {
+        width: 8px;
+        height: 8px;
+        background: #10B981;
+        border-radius: 50%;
+        display: inline-block;
+        box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
+    }
+
+    /* Buttons */
+    button[kind="primary"] {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+    }
+
+    /* Modern Left-Aligned Sidebar Nav Buttons */
+    [data-testid="stSidebar"] div.stButton > button {
+        text-align: left !important;
+        justify-content: flex-start !important;
+        display: flex !important;
+        align-items: center !important;
+        padding: 9px 14px !important;
+        border-radius: 9px !important;
+        font-size: 0.86rem !important;
+        margin-bottom: 2px !important;
+        transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        width: 100% !important;
+    }
+    /* Secondary (Inactive) Nav Button */
+    [data-testid="stSidebar"] div.stButton > button[kind="secondary"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        color: #334155 !important;
+        font-weight: 500 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+    }
+    [data-testid="stSidebar"] div.stButton > button[kind="secondary"]:hover {
+        background: #F1F5F9 !important;
+        border-color: #CBD5E1 !important;
+        color: #0F172A !important;
+        transform: translateX(4px) !important;
+    }
+    /* Primary (Active) Nav Button */
+    [data-testid="stSidebar"] div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%) !important;
+        border: 1px solid #1D4ED8 !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        font-size: 0.86rem !important;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.25) !important;
+        transform: translateX(2px) !important;
+    }
+    [data-testid="stSidebar"] div.stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 100%) !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
+    }
+
+    /* Sidebar cluster header label */
+    .nav-cluster-header {
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.8px;
+        color: #64748B;
+        text-transform: uppercase;
+        margin-top: 14px;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
+def render_hero(title: str, subtitle: str, icon: str = "🏛️", badges: list = None):
+    """Render modern high-impact hero masthead banner."""
+    badge_html = ""
+    if badges:
+        items = []
+        for b in badges:
+            b_class = b.get("class", "hero-badge-primary")
+            b_icon = b.get("icon", "")
+            b_text = b.get("text", "")
+            items.append(f'<span class="hero-badge {b_class}">{b_icon} {b_text}</span>')
+        badge_html = f'<div class="cosmo-hero-badges">{" ".join(items)}</div>'
+
+    html = f"""
+    <div class="cosmo-hero">
+        <div class="cosmo-hero-title">
+            <span>{icon}</span> {title}
+        </div>
+        <div class="cosmo-hero-subtitle">{subtitle}</div>
+        {badge_html}
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
 def render_mermaid(code: str, height: int = 450):
-    """Render Mermaid diagram inside Streamlit."""
+    """Render Mermaid diagram inside Streamlit with modern frame."""
     html_code = f"""
-    <div style="background: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+    <div style="background: #FFFFFF; padding: 18px; border-radius: 12px; border: 1px solid #E2E8F0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
       <pre class="mermaid" style="display: flex; justify-content: center;">
 {code}
       </pre>
@@ -67,283 +450,1896 @@ def render_mermaid(code: str, height: int = 450):
       mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
     </script>
     """
-    components.html(html_code, height=height, scrolling=True)
+    if hasattr(st, "iframe"):
+        st.iframe(html_code, height=height)
+    else:
+        components.html(html_code, height=height, scrolling=True)
 
 
-# Sidebar - Metrics & Navigation
-st.sidebar.markdown("## 🌌 **Cosmolab Engine**")
-st.sidebar.caption(f"Model Aktif: **{config.LLM_MODEL}**")
+# -------------------------------------------------------------
+# Sidebar - University Header, Faculty Filter & Campus Stats
+# -------------------------------------------------------------
+st.sidebar.markdown("""
+<div class="sidebar-brand-card">
+    <div class="sidebar-brand-title">
+        <span>🏛️</span> COSMOLAB <span class="sidebar-brand-version">v2.5</span>
+    </div>
+    <div class="sidebar-brand-sub">Asisten Riset Multidisipliner: Second Brain untuk Mencari, Membaca, Menganalisis, dan Menulis Riset Lintas Bidang</div>
+</div>
+""", unsafe_allow_html=True)
 
-# Load DB data
-papers = db.get_all_papers_with_analyses()
-total_papers = len(papers)
-total_analyzed = len([p for p in papers if p.get("thesis")])
-total_texts = len(list(config.TEXT_DIR.glob("*.txt")))
+# Faculty Filter in Sidebar
+faculty_list = _faculties.list_faculties()
+faculty_options = ["all"] + [f.id for f in faculty_list]
+faculty_labels = {"all": "🌐 Semua Fakultas (Universal)"}
+for f in faculty_list:
+    custom_tag = " [Kustom]" if getattr(f, "is_custom", False) else ""
+    faculty_labels[f.id] = f"{f.icon} {f.name}{custom_tag}"
 
-col_s1, col_s2 = st.sidebar.columns(2)
-col_s1.metric("Total Paper", total_papers)
-col_s2.metric("Dianalisis", total_analyzed)
-
-menu = st.sidebar.radio(
-    "Navigasi Modul:",
-    [
-        "📚 Paper Explorer",
-        "💬 Tanya Korpus (RAG)",
-        "🔍 Full-Text Search",
-        "🕸️ Diagram Argumen",
-        "⚡ Panen Paper Baru",
-        "📑 Laporan Sintesis",
-        "📤 Ekspor Data"
-    ]
+selected_faculty_id = st.sidebar.selectbox(
+    "🏛️ Fokus Fakultas / Program Studi:",
+    faculty_options,
+    format_func=lambda x: faculty_labels.get(x, x),
 )
 
+# Load DB papers
+all_papers = db.get_all_papers_with_analyses()
+if selected_faculty_id == "all":
+    papers = all_papers
+else:
+    papers = [p for p in all_papers if p.get("faculty") == selected_faculty_id]
+
+total_all = len(all_papers)
+total_active = len(papers)
+total_analyzed = len([p for p in papers if p.get("thesis")])
+
+col_s1, col_s2 = st.sidebar.columns(2)
+col_s1.metric("Paper Aktif", total_active, border=True)
+col_s2.metric("Dianalisis", total_analyzed, border=True)
+
+st.sidebar.markdown(f"<div style='font-size:0.78rem; color:#64748B; margin-top:-6px; margin-bottom:12px;'>Model AI: <b>{config.LLM_MODEL}</b></div>", unsafe_allow_html=True)
 st.sidebar.divider()
-st.sidebar.info("💡 **Cosmolab** mengintegrasikan arXiv, DOAJ, OpenAlex & DeepSeek untuk riset terstruktur.")
+
+if "active_nav_menu" not in st.session_state:
+    st.session_state["active_nav_menu"] = "📚 Paper Explorer & Korpus"
+
+def render_nav_item(label: str, target: str, badge: str = None):
+    is_active = (st.session_state["active_nav_menu"] == target)
+    display_title = f"{label}  ·  {badge}" if badge else label
+    if st.sidebar.button(
+        display_title,
+        key=f"nav_btn_{target}",
+        type="primary" if is_active else "secondary",
+        use_container_width=True
+    ):
+        st.session_state["active_nav_menu"] = target
+        st.rerun()
+
+st.sidebar.markdown("<div class='nav-cluster-header'>🎓 AKADEMI & DIALEKTIKA</div>", unsafe_allow_html=True)
+render_nav_item("📚 Penjelajah Korpus", "📚 Paper Explorer & Korpus", f"{total_active} Paper")
+render_nav_item("🗺️ Kurikulum & Silabus", "🗺️ Roadmap Belajar & Kurikulum", "Dean")
+render_nav_item("🥊 Arena Sparring Nalar", "🥊 Arena Sparring Nalar", "7 Tokoh")
+render_nav_item("💬 Tanya Korpus Dialektis", "💬 Tanya Korpus & Sintesis", "Second Brain")
+
+st.sidebar.markdown("<div class='nav-cluster-header'>✍️ RISET & PUBLIKASI</div>", unsafe_allow_html=True)
+render_nav_item("⚡ Bedah DOI Seketika", "⚡ Bedah DOI Seketika", "AMRC")
+render_nav_item("✍️ Studio Artikel Siap Baca", "✍️ Studio Artikel Siap Baca", "Essayist")
+render_nav_item("⚡ Panen Paper Ilmiah", "⚡ Panen Paper Ilmiah", "6 Sumber")
+render_nav_item("📑 Laporan Sintesis Riset", "📑 Laporan Sintesis", None)
+
+st.sidebar.markdown("<div class='nav-cluster-header'>🛠️ UTILITAS & INTEGRASI</div>", unsafe_allow_html=True)
+render_nav_item("🔍 Full-Text Search", "🔍 Full-Text Search", "FTS5")
+render_nav_item("🕸️ Diagram Pohon Argumen", "🕸️ Diagram Argumen", "Mermaid")
+render_nav_item("📤 Hub Ekspor & Flashcards", "📤 Ekspor Data & Flashcards", "Vault/Bib")
+
+menu = st.session_state["active_nav_menu"]
+
+st.sidebar.divider()
+
+fac_dist = db.get_faculty_distribution()
+with st.sidebar.expander("📊 Distribusi Korpus per Fakultas", expanded=False):
+    for f in faculty_list:
+        cnt = fac_dist.get(f.id, 0)
+        st.write(f"{f.icon} **{f.name}**: `{cnt}` paper")
+
+# Friendly Labels & Classes
+STANCE_LABELS = {
+    "supports": "🟢 Mendukung",
+    "critiques": "🔴 Mengkritik",
+    "mixed": "🟡 Campuran",
+    "neutral": "⚪ Netral",
+}
+TYPE_LABELS = {
+    "kalam": "Kalam",
+    "contingency": "Kontingensi",
+    "first-cause": "Sebab Pertama (Aquinas)",
+    "fine-tuning": "Penyetelan Sempurna (Fine-Tuning)",
+    "mixed": "Campuran",
+    "other": "Lainnya",
+}
+
 
 # -------------------------------------------------------------
-# Module 1: Paper Explorer
+# Module 1: Paper Explorer & Korpus
 # -------------------------------------------------------------
-if menu == "📚 Paper Explorer":
-    st.markdown('<div class="main-header">📚 Penjelajah Paper & Rekonstruksi Logika</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Daftar seluruh paper yang telah berhasil dipanen dan dianalisis secara terstruktur.</div>', unsafe_allow_html=True)
-
-    if not papers:
-        st.warning("Belum ada paper di database. Buka tab '⚡ Panen Paper Baru' untuk mengunduh paper.")
-    else:
-        col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
-        filter_q = col_f1.text_input("Saring Judul / Penulis:", placeholder="Ketik kata kunci judul...")
-        arg_types = ["Semua"] + sorted(list({p.get("argument_type") for p in papers if p.get("argument_type")}))
-        filter_type = col_f2.selectbox("Tipe Argumen:", arg_types)
-        stances = ["Semua", "supports", "critiques", "mixed", "neutral"]
-        filter_stance = col_f3.selectbox("Posisi / Stance:", stances)
-
-        # Filter papers
-        filtered = papers
-        if filter_q:
-            filtered = [p for p in filtered if filter_q.lower() in (p.get("title") or "").lower()]
-        if filter_type != "Semua":
-            filtered = [p for p in filtered if p.get("argument_type") == filter_type]
-        if filter_stance != "Semua":
-            filtered = [p for p in filtered if p.get("supports_or_critiques") == filter_stance]
-
-        st.caption(f"Menampilkan **{len(filtered)}** dari {len(papers)} paper:")
-
-        for idx, p in enumerate(filtered, start=1):
-            title = p.get("title") or "Untitled"
-            year = p.get("year") or "n.d."
-            arg_t = p.get("argument_type") or "unclassified"
-            stn = p.get("supports_or_critiques") or "-"
-            source = p.get("source") or "web"
-
-            with st.expander(f"**{idx}. [{year}] {title}** ({arg_t.upper()} | {stn})"):
-                col_m1, col_m2, col_m3 = st.columns(3)
-                col_m1.write(f"**Tahun**: {year}")
-                col_m1.write(f"**Sumber**: `{source}`")
-                col_m2.write(f"**Tipe Argumen**: `{arg_t}`")
-                col_m2.write(f"**Stance**: `{stn}`")
-                col_m3.write(f"**DOI**: {p.get('doi') or 'N/A'}")
-                if p.get("url"):
-                    col_m3.markdown(f"[🔗 Link PDF Asli]({p.get('url')})")
-
-                st.divider()
-
-                # Thesis
-                if p.get("thesis"):
-                    st.markdown("#### 🎯 Tesis Utama")
-                    st.info(p.get("thesis"))
-
-                # Premises
-                if p.get("premises_json"):
-                    try:
-                        premises = json.loads(p["premises_json"])
-                        if premises:
-                            st.markdown("#### 📐 Rekonstruksi Premis")
-                            for p_num, prem in enumerate(premises, 1):
-                                st.markdown(f"- **P{p_num}:** {prem}")
-                    except Exception:
-                        pass
-
-                # Conclusion
-                if p.get("conclusion"):
-                    st.markdown(f"**Kesimpulan:** `{p.get('conclusion')}`")
-
-                # Objection & Defense
-                col_o1, col_o2 = st.columns(2)
-                if p.get("key_objection"):
-                    col_o1.markdown("#### ⚠️ Objeksi Terkuat")
-                    col_o1.warning(p.get("key_objection"))
-                if p.get("key_defense"):
-                    col_o2.markdown("#### 🛡️ Tanggapan / Pertahanan")
-                    col_o2.success(p.get("key_defense"))
-
-                # Quotes
-                if p.get("quotes_json"):
-                    try:
-                        quotes = json.loads(p["quotes_json"])
-                        if quotes:
-                            st.markdown("#### 💬 Kutipan Kunci dari Paper")
-                            for q in quotes:
-                                st.markdown(f"> *\"{q.get('text', '')}\"* — **Hal. {q.get('page_hint', 'N/A')}**")
-                    except Exception:
-                        pass
-
-# -------------------------------------------------------------
-# Module 2: Tanya Korpus (RAG)
-# -------------------------------------------------------------
-elif menu == "💬 Tanya Korpus (RAG)":
-    st.markdown('<div class="main-header">💬 Tanya Korpus Riset (RAG Assistant)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Ajukan pertanyaan penelitian. DeepSeek akan memeriksa seluruh korpus paper dan menjawab dengan sitasi akurat.</div>', unsafe_allow_html=True)
-
-    # Pre-set prompt suggestions
-    suggestions = [
-        "Bagaimana para peneliti dalam paper ini membantah klaim bahwa fenomena kuantum membatalkan hukum kausalitas?",
-        "Apa saja argumen matematika yang diajukan mengenai ketakterhinggaan aktual?",
-        "Apa perbedaan mendasar antara indeterminisme dalam mekanika kuantum dengan konsep takdir/sebab dalam Kalām?",
-        "Apa keberatan filosofis terkuat terhadap premis bahwa alam semesta mulai ada?"
-    ]
-
-    selected_sug = st.selectbox("Pilih Contoh Pertanyaan Cepat:", ["(Ketik sendiri...)"] + suggestions)
-
-    user_q = st.text_area(
-        "Pertanyaan Anda:",
-        value=selected_sug if selected_sug != "(Ketik sendiri...)" else "",
-        placeholder="Ketik pertanyaan penelitian Anda di sini...",
-        height=100
+if menu == "📚 Paper Explorer & Korpus":
+    active_fac_name = faculty_labels.get(selected_faculty_id, "Universal")
+    render_hero(
+        title="Penjelajah Korpus & Rekonstruksi Logika",
+        subtitle=f"Fakultas Aktif: <b>{active_fac_name}</b>. Telaah literatur riset, premis formal silogisme, objeksi lawan, dan pertahanan rasional dalam satu basis data terstruktur.",
+        icon="📚",
+        badges=[
+            {"icon": "🏛️", "text": active_fac_name, "class": "hero-badge-primary"},
+            {"icon": "📄", "text": f"{len(papers)} Paper Tersedia", "class": "hero-badge-accent"},
+            {"icon": "🧠", "text": f"{total_analyzed} Selesai Dibedah", "class": "hero-badge-model"}
+        ]
     )
 
-    col_r1, col_r2 = st.columns([1, 4])
-    k_val = col_r1.slider("Jumlah Paper Rujukan:", min_value=2, max_value=8, value=5)
+    tab_pe1, tab_pe2 = st.tabs([
+        "📑 Kartu Bedah Silogisme Paper",
+        "📊 Matriks Sintesis Literatur (State of the Art Table)"
+    ])
 
-    if st.button("🚀 Ajukan Pertanyaan ke Korpus", type="primary"):
+    with tab_pe1:
+        if not papers:
+            st.warning(f"Belum ada paper di fakultas ini. Buka tab '⚡ Panen Paper Ilmiah' untuk mengunduh literatur bidang {active_fac_name}.")
+        else:
+            with st.container(border=True):
+                col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+                filter_q = col_f1.text_input("🔍 Cari Judul / Penulis:", placeholder="Ketik kata kunci...")
+                arg_types = ["Semua"] + sorted(list({p.get("argument_type") for p in papers if p.get("argument_type")}))
+                filter_type = col_f2.selectbox("Tipe Argumen:", arg_types, format_func=lambda x: TYPE_LABELS.get(x, x))
+                filter_status = col_f3.selectbox("Status Analisis:", ["Semua Status", "⚠️ Belum Dianalisis", "✅ Sudah Dianalisis"])
+                
+                # Use st.pills for modern stance filtering
+                st.markdown("<small style='color:#64748B; font-weight:600;'>FILTER SIKAP PENULIS (STANCE):</small>", unsafe_allow_html=True)
+                stance_keys = ["Semua", "supports", "critiques", "mixed", "neutral"]
+                filter_stance = st.pills(
+                    "Filter Sikap Penulis",
+                    stance_keys,
+                    default="Semua",
+                    format_func=lambda x: "🌐 Semua Sikap" if x == "Semua" else STANCE_LABELS.get(x, x),
+                    label_visibility="collapsed"
+                )
+
+            filtered = papers
+            if filter_q:
+                filtered = [p for p in filtered if filter_q.lower() in (p.get("title") or "").lower()]
+            if filter_type != "Semua":
+                filtered = [p for p in filtered if p.get("argument_type") == filter_type]
+            if filter_stance and filter_stance != "Semua":
+                filtered = [p for p in filtered if p.get("supports_or_critiques") == filter_stance]
+            if filter_status == "⚠️ Belum Dianalisis":
+                filtered = [p for p in filtered if not p.get("thesis")]
+            elif filter_status == "✅ Sudah Dianalisis":
+                filtered = [p for p in filtered if p.get("thesis")]
+
+            # Unanalyzed alert & batch analyze banner
+            unanalyzed_scope = [p for p in papers if not p.get("thesis")]
+            if unanalyzed_scope:
+                with st.container(border=True):
+                    col_ub1, col_ub2 = st.columns([3, 1])
+                    col_ub1.markdown(f"⚠️ **Terdapat {len(unanalyzed_scope)} paper yang belum dibedah oleh AI di tampilan ini.**")
+                    col_ub1.caption("Jalankan pembedahan AI sekarang untuk membedah seluruh naskah (Tesis, Metodologi, Premis & Kutipan Halaman).")
+                    if col_ub2.button(f"⚡ Bedah Semua ({len(unanalyzed_scope)} Paper)", type="primary", key="btn_batch_analyze_all", use_container_width=True):
+                        with st.spinner(f"Sedang membedah {len(unanalyzed_scope)} naskah dengan AI ({config.LLM_MODEL})..."):
+                            target_f = [p["file"] for p in unanalyzed_scope]
+                            _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id", files=target_f)
+                            db.sync_all()
+                            st.success(f"Pembedahan {len(unanalyzed_scope)} naskah selesai!")
+                            st.rerun()
+
+            st.caption(f"Menampilkan **{len(filtered)}** dari total **{len(papers)}** paper dalam fakultas ini:")
+
+            for idx, p in enumerate(filtered, start=1):
+                title = p.get("title") or "Untitled"
+                year = p.get("year") or "n.d."
+                arg_t = p.get("argument_type") or "unclassified"
+                stn = p.get("supports_or_critiques") or "neutral"
+                source = p.get("source") or "web"
+                p_faculty = p.get("faculty") or "ilahiyyat"
+                fac_info = _faculties.get_faculty(p_faculty)
+                fac_icon = fac_info.icon if fac_info else "📖"
+                fac_name = fac_info.name if fac_info else p_faculty
+
+                stance_str = STANCE_LABELS.get(stn, stn)
+                type_str = TYPE_LABELS.get(arg_t, arg_t)
+
+                with st.container(border=True):
+                    # Header row inside card
+                    col_c_top1, col_c_top2 = st.columns([4, 1])
+                    with col_c_top1:
+                        st.markdown(f"### {idx}. {title}")
+                        st.markdown(
+                            f"<span class='stance-pill stance-{stn}'>{stance_str}</span> "
+                            f"<span style='background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:3px 8px; border-radius:9999px; font-size:0.75rem; font-weight:600;'>{fac_icon} {fac_name}</span> "
+                            f"<span style='background:#F1F5F9; color:#475569; border:1px solid #E2E8F0; padding:3px 8px; border-radius:9999px; font-size:0.75rem; font-weight:600;'>📅 {year}</span> "
+                            f"<span style='background:#F1F5F9; color:#475569; border:1px solid #E2E8F0; padding:3px 8px; border-radius:9999px; font-size:0.75rem; font-weight:600;'>🏷️ {type_str}</span>",
+                            unsafe_allow_html=True
+                        )
+                    with col_c_top2:
+                        if p.get("url"):
+                            st.link_button("🔗 PDF Asli", p["url"], use_container_width=True)
+
+                    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+
+                    # Thesis & Analysis State
+                    if p.get("thesis"):
+                        st.info(f"🎯 **Tesis Utama:** {p.get('thesis')}")
+                    else:
+                        with st.container(border=True):
+                            col_u1, col_u2 = st.columns([3, 1])
+                            with col_u1:
+                                st.warning("⚠️ **Paper ini belum dibedah oleh AI.** Tesis, premis, metodologi, dan temuan bab pembahasan belum diekstrak.")
+                                st.caption("AI akan membaca naskah utuh (10–15 halaman) dan mengekstrak metodologi, temuan inti, rekonstruksi silogisme, serta kutipan bernomor halaman.")
+                            with col_u2:
+                                if st.button("🧠 Bedah Naskah Ini", key=f"btn_an_single_{idx}_{p.get('file')}", type="primary", use_container_width=True):
+                                    with st.spinner(f"Sedang membedah '{title[:35]}...' dengan AI ({config.LLM_MODEL})..."):
+                                        try:
+                                            _analyze.analyze_single_paper(p.get("file"), model=config.LLM_MODEL, lang="id")
+                                            db.sync_all()
+                                            st.success("Pembedahan naskah berhasil!")
+                                            st.rerun()
+                                        except Exception as err:
+                                            st.error(f"Gagal membedah naskah: {err}")
+
+                    # Logic expander
+                    with st.expander("📐 Bedah Silogisme, Objeksi & Format Sitasi", expanded=False):
+                        col_det1, col_det2 = st.columns(2)
+                        with col_det1:
+                            st.markdown("**Metadata Sumber:**")
+                            st.write(f"- Sumber Data: `{source}`")
+                            st.write(f"- DOI: `{p.get('doi') or 'N/A'}`")
+                            st.write(f"- File Lokal: `{p.get('file')}`")
+                        with col_det2:
+                            if p.get("conclusion"):
+                                st.markdown("**Kesimpulan Logis:**")
+                                st.code(p.get("conclusion"), language="text")
+
+                        # Research Method & Key Findings (if available)
+                        try:
+                            raw_an = json.loads(p.get("raw_json") or "{}")
+                            res_m = raw_an.get("research_method")
+                            if res_m:
+                                st.markdown(f"<div style='background:#F1F5F9; border-left:3px solid #2563EB; padding:6px 12px; border-radius:4px; font-size:0.85rem; margin-bottom:10px;'>🔬 <b>Metodologi Riset:</b> {res_m}</div>", unsafe_allow_html=True)
+                            
+                            key_finds = raw_an.get("key_findings")
+                            if key_finds and isinstance(key_finds, list):
+                                st.markdown("##### 💡 Temuan Inti (Hasil & Pembahasan):")
+                                for kf in key_finds:
+                                    st.markdown(f"- {kf}")
+                        except Exception:
+                            pass
+
+                        # Premises
+                        if p.get("premises_json"):
+                            try:
+                                premises = json.loads(p["premises_json"])
+                                if premises:
+                                    st.markdown("##### 📐 Rekonstruksi Premis Formal:")
+                                    for p_num, prem in enumerate(premises, 1):
+                                        st.markdown(f"<div class='premise-block'><b>P{p_num}:</b> {prem}</div>", unsafe_allow_html=True)
+                            except Exception:
+                                pass
+
+                        # Objection & Defense side by side
+                        col_o1, col_o2 = st.columns(2)
+                        if p.get("key_objection"):
+                            with col_o1:
+                                st.warning(f"⚠️ **Objeksi Terkuat Lawan:**\n\n{p.get('key_objection')}")
+                        if p.get("key_defense"):
+                            with col_o2:
+                                st.success(f"🛡️ **Pertahanan / Tanggapan Penulis:**\n\n{p.get('key_defense')}")
+
+                        # Quotes
+                        if p.get("quotes_json"):
+                            try:
+                                quotes = json.loads(p["quotes_json"])
+                                if quotes:
+                                    st.markdown("##### 💬 Kutipan Kunci dari Seluruh Isi Naskah:")
+                                    for q in quotes:
+                                        p_hint = q.get("page_hint", "N/A")
+                                        hint_label = p_hint if any(w in p_hint.lower() for w in ["halaman", "hlm", "bab", "abstrak", "abstract"]) else f"Halaman / Bagian: {p_hint}"
+                                        st.markdown(f"> *\"{q.get('text', '')}\"*\n>\n> — <span style='font-size:0.8rem; color:#475569;'>📍 <b>{hint_label}</b></span>", unsafe_allow_html=True)
+                            except Exception:
+                                pass
+
+                        # Citations
+                        apa_ref = _citations.format_apa(p)
+                        chicago_ref = _citations.format_chicago_bib(p)
+                        in_text_ref = _citations.format_in_text_apa(p)
+                        with st.expander("📚 Format Sitasi Akademik Standar (APA 7th & Chicago 17th)"):
+                            st.markdown(f"**APA 7th Reference:**")
+                            st.code(apa_ref, language="text")
+                            st.markdown(f"**Chicago 17th Bibliography:**")
+                            st.code(chicago_ref, language="text")
+                            st.markdown(f"**Sitasi Dalam Teks (In-Text APA):** `{in_text_ref}`")
+
+                        # Faculty reallocation
+                        with st.expander("⚙️ Ubah Pemetaan Fakultas untuk Paper Ini"):
+                            col_re1, col_re2 = st.columns([3, 1])
+                            new_fac = col_re1.selectbox(
+                                "Pindahkan ke Fakultas:",
+                                [f.id for f in faculty_list],
+                                index=[f.id for f in faculty_list].index(p_faculty) if p_faculty in [f.id for f in faculty_list] else 0,
+                                format_func=lambda x: faculty_labels.get(x, x),
+                                key=f"fac_change_{p.get('file')}"
+                            )
+                            if col_re2.button("💾 Simpan", key=f"btn_save_fac_{p.get('file')}", use_container_width=True):
+                                db.update_paper_faculty(p.get("file"), new_fac)
+                                st.success(f"Fakultas diperbarui ke: {faculty_labels.get(new_fac)}")
+                                st.rerun()
+
+                        # Re-analyze on demand
+                        if p.get("thesis"):
+                            with st.expander("🔄 Bedah Ulang Naskah Ini (Deep Scan v3)"):
+                                st.caption("Jalankan ulang analisis AI jika ingin memperbarui hasil bedah naskah dengan prompt v3 terbaru (metodologi riset & kutipan dari bab pembahasan).")
+                                if st.button("🚀 Jalankan Ulang Analisis AI", key=f"btn_re_an_{idx}_{p.get('file')}", use_container_width=True):
+                                    with st.spinner(f"Menganalisis ulang '{title[:35]}...' dengan AI ({config.LLM_MODEL})..."):
+                                        try:
+                                            _analyze.analyze_single_paper(p.get("file"), model=config.LLM_MODEL, lang="id", force=True)
+                                            db.sync_all()
+                                            st.success("Pembedahan ulang naskah selesai!")
+                                            st.rerun()
+                                        except Exception as err:
+                                            st.error(f"Gagal membedah ulang: {err}")
+
+    with tab_pe2:
+        st.markdown("### 📊 Matriks Sintesis Literatur (State of the Art Mapping)")
+        st.caption("Tabel komparasi riset ilmiah komprehensif memuat penulis, tahun, tesis utama, rekonstruksi premis formal, dan objeksi kritis siap ekspor.")
+
+        matrix_data = _matrix.build_literature_matrix(selected_faculty_id)
+
+        if not matrix_data:
+            st.info("Belum ada paper untuk ditampilkan dalam matriks.")
+        else:
+            col_m_tb1, col_m_tb2, col_m_tb3 = st.columns(3)
+            
+            csv_file = _matrix.export_matrix_csv(matrix_data)
+            csv_bytes = csv_file.read_bytes()
+            
+            md_file = _matrix.export_matrix_markdown(matrix_data)
+            md_text = md_file.read_text(encoding="utf-8")
+
+            with col_m_tb1:
+                st.download_button(
+                    "📥 Unduh CSV (Excel-Ready)",
+                    data=csv_bytes,
+                    file_name=csv_file.name,
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            with col_m_tb2:
+                st.download_button(
+                    "📝 Unduh Markdown Table (.md)",
+                    data=md_text,
+                    file_name=md_file.name,
+                    mime="text/markdown",
+                    use_container_width=True
+                )
+            with col_m_tb3:
+                if st.button("💎 Simpan ke Obsidian Vault", key="btn_save_matrix_obsidian", use_container_width=True):
+                    obs_out = _matrix.export_matrix_obsidian(matrix_data, faculty_labels.get(selected_faculty_id, "Semua Fakultas"))
+                    st.success(f"Tersimpan di Obsidian: `{obs_out.name}`")
+
+            # Audit Kebaruan Pustaka (Standar Dikti / Scopus 5 Tahun Terakhir)
+            recency = _matrix.calculate_recency_compliance(matrix_data, threshold_years=5)
+            with st.container(border=True):
+                col_rc1, col_rc2, col_rc3 = st.columns([1, 1, 2])
+                col_rc1.metric("Kepatuhan 5 Tahun", f"{recency['percentage']}%", border=False)
+                col_rc2.metric(f"Terbit {recency['cutoff_year']}+", f"{recency['recent_count']} / {recency['total']}", border=False)
+                with col_rc3:
+                    st.markdown(f"**Audit Kebaruan:** {recency['status_label']}")
+                    st.caption(recency['message'])
+
+            display_rows = []
+            for r in matrix_data:
+                display_rows.append({
+                    "No": r["no"],
+                    "Penulis & Tahun": f"{r['author']} ({r['year']})",
+                    "Judul": r["title"],
+                    "Fakultas": r["faculty"],
+                    "Sikap": r["stance"],
+                    "Tesis": r["thesis"],
+                    "Premis Inti": r["premises"],
+                    "Objeksi": r["key_objection"],
+                })
+            st.dataframe(display_rows, use_container_width=True, height=520)
+
+
+# -------------------------------------------------------------
+# Module 2: Roadmap Belajar & Kurikulum
+# -------------------------------------------------------------
+elif menu == "🗺️ Roadmap Belajar & Kurikulum":
+    render_hero(
+        title="Kurikulum & Silabus Progresif (The Academic Dean)",
+        subtitle="Peta jalan intelektual 4-tingkat berbasis perpaduan tradisi Turāth Kalam dan filsafat analitik kontemporer untuk penguasaan sistematis.",
+        icon="🗺️",
+        badges=[
+            {"icon": "🎓", "text": "4-Tier Progression", "class": "hero-badge-primary"},
+            {"icon": "⚡", "text": "Dynamic AI Dean", "class": "hero-badge-accent"},
+            {"icon": "💎", "text": "Obsidian Export Ready", "class": "hero-badge-model"}
+        ]
+    )
+
+    tab_road1, tab_road2 = st.tabs(["🏛️ Roadmap Fakultas Terstruktur", "✨ Generator Silabus AI untuk Topik Bebas"])
+
+    with tab_road1:
+        cur_fac_id = selected_faculty_id if selected_faculty_id != "all" else "ilahiyyat"
+        cur_fac_obj = _faculties.get_faculty(cur_fac_id)
+        
+        with st.container(border=True):
+            st.markdown(f"### {cur_fac_obj.icon} Kurikulum Fakultas: **{cur_fac_obj.name}**")
+            st.caption(cur_fac_obj.full_desc)
+
+        levels = _curriculum.get_learning_roadmap(cur_fac_id)
+
+        for idx_l, lvl in enumerate(levels):
+            with st.container(border=True):
+                st.markdown(f"#### 📍 **{lvl['title']}**")
+                st.info(lvl['description'])
+                if not lvl['papers']:
+                    st.caption("Belum ada paper di level ini dalam korpus lokal. Gunakan tab '⚡ Panen Paper Ilmiah' untuk menambah paper.")
+                else:
+                    for p_idx, p in enumerate(lvl['papers'], 1):
+                        col_p1, col_p2, col_p3 = st.columns([4, 1, 1])
+                        col_p1.markdown(f"**{p_idx}. [{p['year']}] {p['title']}**")
+                        col_p1.caption(f"🎯 *Tesis:* {p['thesis'][:150]}...")
+                        col_p2.write(f"Tipe: `{p['argument_type']}`")
+                        col_p3.markdown(f"<span class='stance-pill stance-{p['stance']}'>{p['stance']}</span>", unsafe_allow_html=True)
+                        st.markdown("<hr style='margin:4px 0; border:none; border-top:1px dashed #E2E8F0;'>", unsafe_allow_html=True)
+
+        with st.expander("📚 Rujukan Standar & Debat Inti Fakultas Ini", expanded=False):
+            col_ref1, col_ref2 = st.columns(2)
+            with col_ref1:
+                st.markdown("#### 📜 Naskah Turāth Klasik:")
+                for r in cur_fac_obj.classic_references:
+                    st.markdown(f"- 📖 {r}")
+            with col_ref2:
+                st.markdown("#### 🔬 Riset Analitik Modern:")
+                for r in cur_fac_obj.modern_references:
+                    st.markdown(f"- 📄 {r}")
+
+    with tab_road2:
+        with st.container(border=True):
+            st.markdown("### ✨ Generator Silabus AI: Rancang Kurikulum Topik Apa Saja")
+            st.caption("Ketik topik dari bidang apa pun yang ingin Anda pelajari secara mendalam. Dekan AI akan menyusun silabus 4 tingkat, bacaan wajib, dilema Sokrates, dan flashcards.")
+
+            col_tp1, col_tp2 = st.columns([2, 1])
+            custom_topic = col_tp1.text_input("Judul Topik / Mata Kuliah Baru:", placeholder="contoh: Teori Kausalitas Al-Ghazali vs Hume, Problem of Evil, Argumen Jiwa Ibn Sina...")
+            custom_desc = col_tp2.text_input("Fokus Khusus (Opsional):", placeholder="contoh: Komparasi dengan mekanika kuantum")
+
+            if st.button("🎓 Susun Silabus Kurikulum Lengkap", type="primary", use_container_width=True):
+                if not custom_topic.strip():
+                    st.error("Silakan masukkan topik terlebih dahulu.")
+                else:
+                    with st.spinner("Dekan Akademik AI sedang merancang silabus, memetakan naskah klasik, dan menyusun kartu nalar..."):
+                        syllabus_data = _curriculum.generate_ai_syllabus(custom_topic, custom_desc, model=config.LLM_MODEL)
+                        st.session_state["active_syllabus"] = syllabus_data
+
+        if "active_syllabus" in st.session_state:
+            syl = st.session_state["active_syllabus"]
+            with st.container(border=True):
+                st.markdown(f"## 🏛️ Silabus: **{syl.get('course_title')}**")
+                st.markdown(f"**Domain Bidang:** `{syl.get('faculty_domain', 'Multidisipliner')}`")
+                st.info(f"**Visi Pedagogis:**\n\n{syl.get('pedagogical_vision', '')}")
+
+                st.markdown("### 🗺️ Tahapan Belajar 4-Tingkat:")
+                for t in syl.get("tiers", []):
+                    t_title = t.get('title', f"Level {t.get('tier_num', '-')}")
+                    with st.expander(f"📍 **{t_title}**", expanded=True):
+                        st.write(t.get("description", ""))
+                        if t.get("key_concepts"):
+                            st.markdown("**Konsep Kunci:** " + ", ".join([f"`{c}`" for c in t["key_concepts"]]))
+                        if t.get("milestone_task"):
+                            st.warning(f"🏁 **Milestone Uji Nalar:** {t['milestone_task']}")
+
+                col_rb1, col_rb2 = st.columns(2)
+                with col_rb1:
+                    st.markdown("#### 📜 Naskah Klasik Turāth:")
+                    for r in syl.get("classic_turath_readings", []):
+                        st.markdown(f"- 📖 {r}")
+                with col_rb2:
+                    st.markdown("#### 🔬 Rujukan Akademik Modern:")
+                    for r in syl.get("modern_academic_readings", []):
+                        st.markdown(f"- 📄 {r}")
+
+                if syl.get("socratic_dilemma"):
+                    st.markdown("#### ⚡ Dilema Sokrates Inti:")
+                    st.info(syl["socratic_dilemma"])
+
+                if syl.get("flashcards"):
+                    st.markdown(f"#### 🧠 Kartu Active Recall ({len(syl['flashcards'])} kartu):")
+                    for fc in syl["flashcards"]:
+                        st.markdown(f"- **Q:** {fc.get('question')}  \n  *A:* {fc.get('answer')}")
+
+                if st.button("💎 Simpan Silabus ke Obsidian Vault", type="primary"):
+                    out_p = _curriculum.save_syllabus_to_obsidian(syl)
+                    st.success(f"Silabus berhasil disimpan ke Obsidian: `{out_p.name}`")
+
+
+# -------------------------------------------------------------
+# Module 3: Arena Sparring Nalar
+# -------------------------------------------------------------
+elif menu == "🥊 Arena Sparring Nalar":
+    render_hero(
+        title="Arena Sparring & Pelatihan Nalar Kritis",
+        subtitle="Uji ketahanan tesis dan silogisme Anda berhadapan langsung dengan para raksasa pemikiran: Hume, Al-Ghazali, Ibn Sina, Mackie, Dennett, dan The Ruthless Critic.",
+        icon="🥊",
+        badges=[
+            {"icon": "⚔️", "text": "Intellectual Duel", "class": "hero-badge-primary"},
+            {"icon": "💥", "text": "Enthymeme Detection", "class": "hero-badge-accent"},
+            {"icon": "🛡️", "text": "Socratic Method", "class": "hero-badge-model"}
+        ]
+    )
+
+    spar_tab1, spar_tab2 = st.tabs(["⚔️ Sparring dengan Lawan Debat Filosofis", "💥 The Ruthless Critic (Devil's Advocate Tesis Mandiri)"])
+
+    with spar_tab1:
+        personas = _sparring.list_personas()
+        
+        with st.container(border=True):
+            col_pers, col_dil = st.columns([1, 2])
+            
+            with col_pers:
+                selected_persona_id = st.selectbox(
+                    "Pilih Lawan Tanding:",
+                    [p["id"] for p in personas],
+                    format_func=lambda x: f"{_sparring.get_persona(x)['icon']} {_sparring.get_persona(x)['name']}"
+                )
+                cur_persona = _sparring.get_persona(selected_persona_id)
+                st.markdown(f"""
+                <div class="persona-card">
+                    <div class="persona-header">{cur_persona['icon']} {cur_persona['name']}</div>
+                    <div class="persona-title">{cur_persona['title']}</div>
+                    <div class="persona-desc">{cur_persona['desc']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col_dil:
+                dilemmas = _sparring.get_dilemmas_by_faculty(selected_faculty_id)
+                dilemma_options = ["(Ketik Dilema Bebas Sendiri)"] + [d["topic"] for d in dilemmas]
+                chosen_dilemma_title = st.selectbox("Pilih Kasus Dilema:", dilemma_options)
+                
+                if chosen_dilemma_title == "(Ketik Dilema Bebas Sendiri)":
+                    dilemma_text = st.text_area("Tuliskan Konteks / Dilema Bebas:", value="Apakah konsep keniscayaan kausalitas itu nyata atau sekadar kebiasaan indrawi?", height=85)
+                else:
+                    matched_d = next(d for d in dilemmas if d["topic"] == chosen_dilemma_title)
+                    dilemma_text = matched_d["dilemma"]
+                    st.info(dilemma_text)
+
+            user_statement = st.text_area(
+                "Tuliskan Argumen / Jawaban Anda untuk Menghadapi Lawan Tanding:",
+                height=130,
+                placeholder="Ketik penalaran logis, premis, atau sanggahan Anda di sini..."
+            )
+
+            launch_duel = st.button("🔥 Luncurkan Sparring Nalar!", type="primary", use_container_width=True)
+
+        if launch_duel:
+            if not user_statement.strip():
+                st.error("Silakan tuliskan argumen Anda terlebih dahulu.")
+            else:
+                with st.spinner(f"{cur_persona['name']} sedang menganalisis titik lemah logika Anda..."):
+                    res = _sparring.spar_with_persona(
+                        user_argument=user_statement,
+                        persona_id=selected_persona_id,
+                        dilemma_context=dilemma_text,
+                        faculty_id=selected_faculty_id,
+                        model=config.LLM_MODEL
+                    )
+                    st.session_state["last_spar_result"] = {
+                        "user_arg": user_statement,
+                        "persona": cur_persona,
+                        "res": res
+                    }
+
+        if "last_spar_result" in st.session_state:
+            spar_data = st.session_state["last_spar_result"]
+            p_obj = spar_data["persona"]
+            r_obj = spar_data["res"]
+
+            st.markdown("### ⚔️ Arena Duel Pemikiran:")
+            
+            with st.chat_message("user"):
+                st.markdown(f"**Tesis / Argumen Anda:**\n\n{spar_data['user_arg']}")
+
+            with st.chat_message("assistant", avatar=p_obj['icon']):
+                st.markdown(f"#### {p_obj['icon']} Respons {p_obj['name']} ({p_obj['title']}):")
+                st.markdown(r_obj.get("feedback", ""))
+
+            if r_obj.get("referenced_papers"):
+                with st.expander("📚 Rujukan Paper Korpus yang Digunakan"):
+                    for p in r_obj["referenced_papers"]:
+                        st.markdown(f"- **[{p.get('year', 'n.d.')}] {p.get('title')}** | Sikap: `{p.get('supports_or_critiques')}`")
+
+    with spar_tab2:
+        with st.container(border=True):
+            st.markdown("### 💥 The Ruthless Critic: Stress-Test Tesis Mandiri")
+            st.caption("AI akan membongkar premis tersembunyi (*enthymeme*), menyerang celah logika, dan memberikan rekomendasi pembenahan tesis agar *bulletproof*.")
+
+            default_arg = "Saya berpendapat bahwa mekanika kuantum tidak membatalkan premis kausalitas Kalam, karena fluktuasi vakum kuantum tetap memerlukan ruang hampa yang berenergi sebagai sebab materialnya, bukan ketiadaan mutlak."
+            user_arg = st.text_area("Tuliskan Draf Tesis / Argumen Anda:", value=default_arg, height=110)
+
+            run_critic = st.button("🔥 Bedah & Serang Tesis Saya!", type="primary", use_container_width=True)
+
+        if run_critic:
+            if not user_arg.strip():
+                st.error("Silakan masukkan tesis terlebih dahulu.")
+            else:
+                with st.spinner("The Ruthless Critic sedang mencari paper lawan di korpus dan membedah struktur logika Anda..."):
+                    critique_res = _sparring.criticize_argument(user_arg, model=config.LLM_MODEL)
+                    st.session_state["critic_result"] = critique_res
+
+        if "critic_result" in st.session_state:
+            with st.chat_message("assistant", avatar="💥"):
+                st.markdown(st.session_state["critic_result"].get("feedback", ""))
+
+
+# -------------------------------------------------------------
+# Module 4: Tanya Korpus & Sintesis (Universal Second Brain)
+# -------------------------------------------------------------
+elif menu == "💬 Tanya Korpus & Sintesis":
+    active_fac_name = faculty_labels.get(selected_faculty_id, "Universal")
+    render_hero(
+        title="Tanya Korpus & Sintesis Dialektis",
+        subtitle=f"Sintesis berimbang lintas korpus: Mengintegrasikan argumen kalam klasik, falsafa, dan filsafat analitik kontemporer untuk fakultas <b>{active_fac_name}</b>.",
+        icon="💬",
+        badges=[
+            {"icon": "🧠", "text": "Agentic Dialectic RAG", "class": "hero-badge-primary"},
+            {"icon": "⚖️", "text": "Multi-Perspective Synthesis", "class": "hero-badge-accent"},
+            {"icon": "🏛️", "text": active_fac_name, "class": "hero-badge-model"}
+        ]
+    )
+
+    fac_suggestions = {
+        "ilahiyyat": [
+            "Bagaimana para peneliti membantah klaim bahwa fluktuasi vakum kuantum membatalkan hukum kausalitas?",
+            "Apa bantahan matematika terhadap keberatan Hilbert's Hotel pada ketakterhinggaan waktu lampau?",
+            "Mengapa hipotesis Multiverse dianggap tidak menyelesaikan persoalan fine-tuning kosmos?"
+        ],
+        "epistemologi": [
+            "Bagaimana Al-Ghazali dalam Al-Munqidh menyelesaikan keraguan terhadap pancaindra dan akal?",
+            "Apa perbedaan epistemologis antara silogisme Burhani dengan Jadal dalam pembuktian akidah?",
+            "Bagaimana Reformed Epistemology Alvin Plantinga membela rasionalitas iman tanpa bukti deduktif?"
+        ],
+        "kausalitas": [
+            "Apa perbedaan mendasar antara doktrin Okasionalisme Al-Ghazali dengan Skeptisisme David Hume tentang sebab-akibat?",
+            "Bagaimana teori Kasb mazhab Asy'ari menjelaskan kebebasan memilih di bawah kedaulatan mutlak takdir?",
+            "Apakah indeterminisme fisika kuantum membuka ruang logis bagi tindakan Ilahi (Divine Action) di alam semesta?"
+        ],
+        "teodisi": [
+            "Bagaimana pembelaan Alvin Plantinga (Free Will Defense) menghadapi argumen logis kejahatan dari J.L. Mackie?",
+            "Apa respon teisme analitik terhadap problem penderitaan tanpa faedah (Gratuitous Evil) William Rowe?",
+            "Apa makna doktrin Al-Ghazali 'Laysa fi al-imkan abda' mimma kan' dalam konteks teodisi?"
+        ],
+        "falsafah_jiwa": [
+            "Bagaimana Argumen Manusia Terbang (The Flying Man) Ibn Sina membuktikan eksistensi jiwa immaterial?",
+            "Mengapa 'The Hard Problem of Consciousness' menjadi batu sandungan bagi materialisme dan fisikalisme?",
+            "Dapatkah kecerdasan buatan (AI) memiliki kesadaran sejati (qualia) menurut filsafat pikiran Islam?"
+        ],
+        "nubuwwat": [
+            "Bagaimana tradisi teologi Islam merespons kritik probabilitas David Hume mengenai mukjizat?",
+            "Apa distingsi logis antara hal yang mustahil secara akal (Mustahil Aqli) vs mustahil secara kebiasaan (Mustahil 'Adi)?",
+            "Bagaimana hermeneutika Ibn Rushd (Fasl al-Maqal) menyelesaikan pertentangan teks wahyu dengan akal demonstratif?"
+        ],
+    }
+
+    active_sug_list = fac_suggestions.get(selected_faculty_id, fac_suggestions["ilahiyyat"])
+    
+    with st.container(border=True):
+        selected_sug = st.selectbox("💡 Pilih Contoh Pertanyaan Akademik Terkurasi:", ["(Ketik pertanyaan sendiri...)"] + active_sug_list)
+
+        user_q = st.text_area(
+            "Pertanyaan Penelitian Anda:",
+            value=selected_sug if selected_sug != "(Ketik pertanyaan sendiri...)" else "",
+            placeholder="Ketik pertanyaan riset Anda di sini...",
+            height=95
+        )
+
+        col_r1, col_r2 = st.columns([1, 2])
+        k_val = col_r1.slider("Jumlah Paper Rujukan:", min_value=2, max_value=8, value=6)
+        rag_mode = col_r2.radio(
+            "Mode Penalaran:",
+            ["🧠 Agentic Second Brain (Dialektis Pro vs Kontra)", "⚡ Classic RAG (Cepat)"],
+            horizontal=True
+        )
+
+        ask_btn = st.button("🚀 Ajukan Pertanyaan ke Second Brain", type="primary", use_container_width=True)
+
+    if ask_btn:
         if not user_q.strip():
             st.error("Silakan masukkan pertanyaan terlebih dahulu.")
         else:
-            with st.spinner("DeepSeek sedang menelusuri korpus paper dan menyusun sintesis..."):
-                try:
-                    answer = _ask.ask(question=user_q, model=config.LLM_MODEL, top_k=k_val)
-                    st.markdown("### 📝 Jawaban Korpus:")
-                    st.markdown(answer)
-                except Exception as e:
-                    st.error(f"Gagal memproses pertanyaan: {e}")
+            if "Agentic" in rag_mode:
+                with st.spinner("Agen AI sedang menelusuri Second Brain, membandingkan kubu argumen, dan menyusun sintesis..."):
+                    try:
+                        res = _ask_agent.ask_agentic(question=user_q, model=config.LLM_MODEL, top_k=k_val)
+                        st.session_state["agentic_answer"] = {
+                            "q": user_q,
+                            "res": res
+                        }
+                    except Exception as e:
+                        st.error(f"Gagal memproses pertanyaan: {e}")
+            else:
+                with st.spinner("AI sedang menelusuri korpus paper..."):
+                    try:
+                        answer = _ask.ask(question=user_q, model=config.LLM_MODEL, top_k=k_val)
+                        st.session_state["classic_answer"] = {
+                            "q": user_q,
+                            "answer": answer
+                        }
+                    except Exception as e:
+                        st.error(f"Gagal memproses pertanyaan: {e}")
+
+    if "agentic_answer" in st.session_state:
+        ans_data = st.session_state["agentic_answer"]
+        res = ans_data["res"]
+
+        with st.expander("🔍 Langkah Penalaran & Eksplorasi Agen (Thought Process)", expanded=False):
+            for idx, step in enumerate(res.get("thought_steps", []), 1):
+                st.markdown(f"**Langkah {idx}:** {step}")
+
+        with st.chat_message("assistant", avatar="⚖️"):
+            st.markdown(res.get("answer", ""))
+
+        ref_papers = res.get("referenced_papers", [])
+        if ref_papers:
+            with st.expander(f"📚 Paper Rujukan yang Dianalisis ({len(ref_papers)} paper)", expanded=False):
+                for p in ref_papers:
+                    st.markdown(f"- **[{p.get('year', 'n.d.')}] {p.get('title')}** | Sikap: `{p.get('supports_or_critiques')}`")
+                    if p.get("thesis"):
+                        st.caption(f"  *Tesis:* {p.get('thesis')}")
+
+        if st.button("💎 Simpan ke Obsidian Vault", key="btn_save_agent_obsidian"):
+            saved_path = export.export_agent_synthesis_to_obsidian(ans_data["q"], res.get("answer", ""), ref_papers)
+            st.success(f"Berhasil disimpan ke Obsidian: `{saved_path.name}`")
+
+    elif "classic_answer" in st.session_state:
+        ans_data = st.session_state["classic_answer"]
+        with st.chat_message("assistant", avatar="📝"):
+            st.markdown(ans_data["answer"])
+
 
 # -------------------------------------------------------------
-# Module 3: Full-Text Search
+# Module 5: Studio Artikel Siap Baca
+# -------------------------------------------------------------
+elif menu == "✍️ Studio Artikel Siap Baca":
+    render_hero(
+        title="Studio Penulis Artikel Siap Baca (The Academic Essayist)",
+        subtitle="Ubah riset korpus dan dialektika pemikiran menjadi esai panjang mengalir, artikel jurnal, atau monograf siap publikasi dengan tipografi serif elegan dan tombol cetak PDF.",
+        icon="✍️",
+        badges=[
+            {"icon": "📰", "text": "Publication Ready", "class": "hero-badge-primary"},
+            {"icon": "🖨️", "text": "Print-to-PDF Styled", "class": "hero-badge-accent"},
+            {"icon": "📖", "text": "Merriweather Typography", "class": "hero-badge-model"}
+        ]
+    )
+
+    tab_art1, tab_art2 = st.tabs(["✨ Tulis Artikel Baru", "📂 Arsip Artikel Siap Baca"])
+
+    with tab_art1:
+        topic_presets = {
+            "ilahiyyat": "Menemukan Kembali Awal Mula: Dialektika Singularitas Kosmologi dan Argumen Kalam",
+            "kausalitas": "Teka-teki Sebab-Akibat: Mempertemukan Api Al-Ghazali, Skeptisisme Hume, dan Ketidakpastian Kuantum",
+            "teodisi": "Di Balik Tirai Penderitaan: Menimbang Keadilan Ilahi Antara Logika Mackie dan Teodisi Hikmah",
+            "falsafah_jiwa": "Manusia yang Melayang di Ruang Hampa: Mengapa Kesadaran Menolak Reduksi Materialistik",
+            "epistemologi": "Skeptisisme Radikal dan Batas Akal: Dari Al-Munqidh Al-Ghazali ke Cogito Descartes",
+            "nubuwwat": "Ketika Hukum Alam Terdiam: Menimbang Rasionalitas Mukjizat di Hadapan Keraguan Hume",
+        }
+        default_preset = topic_presets.get(selected_faculty_id, "Teka-teki Sebab-Akibat: Mempertemukan Api Al-Ghazali, Skeptisisme Hume, dan Ketidakpastian Kuantum")
+
+        with st.container(border=True):
+            col_a1, col_a2 = st.columns([2, 1])
+            article_topic = col_a1.text_input("Judul / Topik Artikel yang Ingin Ditulis:", value=default_preset)
+            
+            style_keys = list(_writer.ARTICLE_STYLES.keys())
+            article_style = col_a2.selectbox(
+                "Format & Gaya Penulisan:",
+                style_keys,
+                format_func=lambda x: _writer.ARTICLE_STYLES[x]["name"]
+            )
+            st.caption(f"💡 *{_writer.ARTICLE_STYLES[article_style]['desc']}*")
+
+            col_src1, col_src2 = st.columns(2)
+            with col_src1:
+                ref_mode = st.radio("Sumber Rujukan Korpus:", ["Otomatis Cari dari Second Brain", "Pilih Paper Tertentu dari Database"], horizontal=True)
+            
+            specific_papers = None
+            if ref_mode == "Pilih Paper Tertentu dari Database":
+                with col_src2:
+                    paper_options = [p["file"] for p in all_papers if p.get("thesis")]
+                    specific_papers = st.multiselect("Pilih Paper untuk Disintesis:", paper_options, default=paper_options[:3] if len(paper_options) >= 3 else paper_options)
+
+            col_cp1, col_cp2 = st.columns([2, 1])
+            custom_prompt = col_cp1.text_input("Instruksi / Sudut Pandang Khusus (Opsional):", placeholder="contoh: Jelaskan istilah teknis saat pertama kali muncul...")
+            model_choice = col_cp2.selectbox(
+                "Model Penulis AI:",
+                ["gemini-3-8-flash", "deepseek-v4-pro"],
+                format_func=lambda x: "⚡ Gemini 3.8 Flash (Cepat & Stabil ~15d)" if "gemini" in x else "🧠 DeepSeek V4 Pro (Penalaran Penuh ~90d)"
+            )
+
+            write_btn = st.button("🚀 Tulis Artikel Siap Baca Sekarang", type="primary", use_container_width=True)
+
+        if write_btn:
+            if not article_topic.strip():
+                st.error("Silakan masukkan topik artikel terlebih dahulu.")
+            else:
+                with st.spinner("The Academic Essayist sedang menenun riset korpus, membedah silogisme, dan menyusun esai panjang yang mengalir..."):
+                    art_result = _writer.generate_article(
+                        topic=article_topic,
+                        style=article_style,
+                        custom_instructions=custom_prompt,
+                        faculty_id=selected_faculty_id,
+                        paper_files=specific_papers,
+                        model=model_choice
+                    )
+                    st.session_state["current_article"] = art_result
+                    saved_files = _writer.save_article(art_result)
+                    st.session_state["saved_article_paths"] = saved_files
+
+        if "current_article" in st.session_state:
+            curr = st.session_state["current_article"]
+            saved = st.session_state.get("saved_article_paths", {})
+            html_content = _writer.format_article_html(curr)
+
+            # Action Toolbar inside a border container
+            with st.container(border=True):
+                col_tb1, col_tb2, col_tb3, col_tb4 = st.columns(4)
+                col_tb1.metric("Waktu Baca", f"~{curr.get('reading_time_min', 5)} menit", border=True)
+                col_tb2.metric("Gaya Format", curr.get("style", "essay").upper(), border=True)
+                
+                with col_tb3:
+                    st.download_button(
+                        "📄 Unduh Markdown (.md)",
+                        data=curr["content_md"],
+                        file_name=f"{curr.get('title', 'Artikel')[:40]}.md",
+                        mime="text/markdown",
+                        use_container_width=True
+                    )
+                with col_tb4:
+                    st.download_button(
+                        "🌐 Unduh HTML Siap Cetak",
+                        data=html_content,
+                        file_name=f"{curr.get('title', 'Artikel')[:40]}.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+
+            if saved.get("obsidian_path"):
+                st.success(f"Tersimpan di: `{saved['md_path'].name}` dan Vault Obsidian `{saved['obsidian_path'].name}`")
+
+            # Elegant Reader View
+            st.markdown("### 📖 Tinjauan Artikel (Reader View):")
+            if hasattr(st, "iframe"):
+                st.iframe(html_content, height=650)
+            else:
+                st.components.v1.html(html_content, height=650, scrolling=True)
+
+            if curr.get("referenced_papers"):
+                with st.expander("📚 Rujukan Paper yang Digunakan"):
+                    for rp in curr["referenced_papers"]:
+                        st.markdown(f"- **[{rp.get('year', 'n.d.')}] {rp.get('title')}** | {rp.get('supports_or_critiques')}")
+
+    with tab_art2:
+        articles_dir = config.ROOT / "articles"
+        articles_dir.mkdir(parents=True, exist_ok=True)
+        md_articles = sorted(list(articles_dir.glob("*.md")), reverse=True)
+
+        if not md_articles:
+            st.info("Belum ada artikel tersimpan. Silakan tulis artikel baru di tab sebelah.")
+        else:
+            selected_art_file = st.selectbox("Pilih Artikel untuk Dibaca / Diunduh:", [a.name for a in md_articles])
+            art_path = articles_dir / selected_art_file
+            art_text = art_path.read_text(encoding="utf-8")
+            
+            html_partner = articles_dir / f"{art_path.stem}.html"
+            html_partner_data = html_partner.read_text(encoding="utf-8") if html_partner.exists() else _writer.format_article_html({"title": art_path.stem, "content_md": art_text})
+
+            col_ar1, col_ar2 = st.columns(2)
+            with col_ar1:
+                st.download_button("⬇️ Unduh Markdown (.md)", data=art_text, file_name=selected_art_file, mime="text/markdown", use_container_width=True)
+            with col_ar2:
+                st.download_button("⬇️ Unduh HTML Cantik (.html)", data=html_partner_data, file_name=f"{art_path.stem}.html", mime="text/html", use_container_width=True)
+
+            st.divider()
+            if hasattr(st, "iframe"):
+                st.iframe(html_partner_data, height=650)
+            else:
+                st.markdown(art_text)
+
+
+# -------------------------------------------------------------
+# Module: Bedah DOI Seketika (AMRC & Elsevier Highlights)
+# -------------------------------------------------------------
+elif menu == "⚡ Bedah DOI Seketika":
+    render_hero(
+        title="Bedah DOI Seketika (Smart Paper Inspector)",
+        subtitle="Masukkan <b>DOI artikel ilmiah</b> apa saja dari Elsevier, Springer, Nature, Wiley, atau jurnal mana pun. Sistem seketika mengekstrak <b>Latar Belakang, Metodologi, Temuan Kunci, Kesimpulan</b>, serta <b>Celah Riset untuk Skripsi/Tesis</b>.",
+        icon="⚡",
+        badges=[
+            {"icon": "📋", "text": "AMRC Breakdown", "class": "hero-badge-primary"},
+            {"icon": "⚡", "text": "Elsevier Style Highlights", "class": "hero-badge-accent"},
+            {"icon": "🎓", "text": "Research Gap Finder", "class": "hero-badge-model"}
+        ]
+    )
+
+    if "inspector_doi_input" not in st.session_state:
+        st.session_state["inspector_doi_input"] = ""
+
+    st.markdown("##### 📌 Coba Contoh DOI Cepat:")
+    col_ex1, col_ex2, col_ex3 = st.columns(3)
+    if col_ex1.button("🧠 Elsevier (Kognisi & Memori)", use_container_width=True):
+        st.session_state["inspector_doi_input"] = "10.1016/j.concog.2020.102980"
+        st.rerun()
+    if col_ex2.button("🌌 Springer (Kalam & Matematika)", use_container_width=True):
+        st.session_state["inspector_doi_input"] = "10.1007/s00283-022-10224-8"
+        st.rerun()
+    if col_ex3.button("🏛️ Oxford Mind (Kausalitas)", use_container_width=True):
+        st.session_state["inspector_doi_input"] = "10.1093/mind/fzv156"
+        st.rerun()
+
+    doi_val = st.text_input(
+        "Masukkan DOI atau URL Paper Ilmiah:",
+        value=st.session_state["inspector_doi_input"],
+        placeholder="Contoh: 10.1016/j.concog.2020.102980 atau https://doi.org/10.1007/...",
+        help="Mendukung format DOI murni (10.xxxx/...) atau link https://doi.org/...",
+    )
+
+    col_btn1, col_btn2 = st.columns([1, 3])
+    run_inspect = col_btn1.button("🚀 Bedah Paper Sekarang", type="primary", use_container_width=True)
+
+    if run_inspect and doi_val.strip():
+        with st.spinner("🔍 Menghubungi Crossref, Semantic Scholar, OpenAlex & membedah dengan AI..."):
+            res = _inspector.inspect_paper(doi_val.strip())
+            st.session_state["last_inspection_res"] = res
+
+    if "last_inspection_res" in st.session_state and st.session_state["last_inspection_res"]:
+        res = st.session_state["last_inspection_res"]
+        if not res.get("success"):
+            st.error(f"❌ {res.get('error')}")
+        else:
+            a = res.get("analysis", {})
+
+            st.markdown("---")
+            # Header Card
+            pdf_link_html = f" • <a href='{res.get('pdf_url')}' target='_blank' style='background:#10B981; color:white; padding:3px 8px; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.8rem;'>📄 Unduh PDF Terbuka (Legal)</a>" if res.get("pdf_url") else ""
+            oa_badge = "<span style='background:#DCFCE7; color:#166534; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.85rem;'>🟢 Open Access (Tersedia Naskah Terbuka)</span>" if res.get("is_oa") else "<span style='background:#FEF3C7; color:#92400E; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.85rem;'>🔒 Paywalled / Berbayar</span>"
+            
+            st.markdown(f"""
+            <div style="background:white; border:1px solid #E2E8F0; border-radius:12px; padding:20px; margin-bottom:18px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+                <div style="font-size:0.85rem; color:#64748B; margin-bottom:6px;">
+                    <b>{res.get('venue') or res.get('publisher') or 'Jurnal Ilmiah'}</b> • Tahun {res.get('year')} • {oa_badge}{pdf_link_html} • <b>{res.get('citation_count')}</b> Sitasi
+                </div>
+                <h3 style="margin-top:0; color:#0F172A; font-weight:700;">{res.get('title')}</h3>
+                <div style="color:#475569; font-size:0.92rem; margin-bottom:10px;">
+                    ✍️ <b>Penulis:</b> {', '.join(res.get('authors', [])) or 'Anonim'}
+                </div>
+                <div>
+                    🔗 <a href="{res.get('url')}" target="_blank" style="text-decoration:none; color:#2563EB; font-weight:600;">https://doi.org/{res.get('doi')}</a>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # One-Sentence Takeaway
+            if a.get("one_sentence_takeaway"):
+                st.info(f"💡 **Intisari 1 Kalimat:** \"{a.get('one_sentence_takeaway')}\"")
+
+            # Elsevier-Style Highlights
+            if a.get("highlights"):
+                st.markdown("##### ⚡ Research Highlights (Gaya Elsevier ScienceDirect)")
+                hl_html = "".join(f"<li style='margin-bottom:6px; color:#1E293B;'>{h}</li>" for h in a.get("highlights"))
+                st.markdown(f"""
+                <div style="background:#F8FAFC; border-left:4px solid #10B981; padding:12px 18px; border-radius:0 8px 8px 0; margin-bottom:20px;">
+                    <ul style="margin:0; padding-left:20px;">{hl_html}</ul>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # AMRC Quadrants / Tabs
+            tab_prob, tab_meth, tab_res, tab_conc, tab_gap = st.tabs([
+                "📋 Latar Belakang & Masalah",
+                "🔬 Metodologi",
+                "📊 Temuan Kunci (Result)",
+                "🎯 Kesimpulan & Implikasi",
+                "🔍 Celah Riset (Untuk Skripsi/Tesis)"
+            ])
+
+            with tab_prob:
+                st.markdown(f"**Urgensi & Masalah yang Diteliti:**\n\n{a.get('problem_statement', '-')}")
+                if res.get("abstract"):
+                    with st.expander("📄 Teks Asli Abstrak dari Penerbit", expanded=False):
+                        st.write(res.get("abstract"))
+
+            with tab_meth:
+                st.markdown(f"**Desain Riset & Pendekatan Ilmiah:**\n\n{a.get('methodology', '-')}")
+
+            with tab_res:
+                st.markdown("**Temuan Signifikan:**")
+                kfs = a.get("key_findings", [])
+                if isinstance(kfs, list):
+                    for f in kfs:
+                        st.markdown(f"- {f}")
+                else:
+                    st.write(kfs)
+
+            with tab_conc:
+                st.markdown(f"**Kesimpulan Akhir & Dampak Riset:**\n\n{a.get('conclusion', '-')}")
+
+            with tab_gap:
+                st.markdown("💡 **Celah Riset & Ide Penelitian Turunan (Cocok untuk Judul Skripsi/Tesis Baru):**")
+                gaps = a.get("research_gaps", [])
+                if isinstance(gaps, list):
+                    for g in gaps:
+                        st.markdown(f"- 🎯 {g}")
+                else:
+                    st.write(gaps)
+
+            # Citation Section
+            st.markdown("---")
+            st.markdown("##### 📝 Format Sitasi & Rujukan")
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                st.markdown("**Format APA 7th:**")
+                st.code(res.get("apa_citation", ""), language="markdown")
+            with col_c2:
+                st.markdown("**Format BibTeX (Mendeley / Zotero / LaTeX):**")
+                st.code(res.get("bibtex", ""), language="bibtex")
+
+            # Actions
+            col_act1, col_act2 = st.columns(2)
+            if col_act1.button("💾 Simpan Hasil Bedah ke Disk", use_container_width=True):
+                saved_path = _inspector.save_inspection(res)
+                st.success(f"Berhasil disimpan di: `{saved_path}`")
+            
+            if col_act2.button("📥 Masukkan Metadata ke Database CosmoLab", use_container_width=True):
+                try:
+                    con = db.get_connection()
+                    con.execute("""
+                        INSERT OR REPLACE INTO papers (file, id, title, year, doi, url, source, abstract, faculty)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        f"doi_{res['doi'].replace('/', '_')}.pdf",
+                        res["doi"],
+                        res["title"],
+                        str(res["year"]),
+                        res["doi"],
+                        res["url"],
+                        "doi_inspector",
+                        res.get("abstract", ""),
+                        "ilahiyyat"
+                    ))
+                    con.commit()
+                    con.close()
+                    st.success("Berhasil ditambahkan ke Database Korpus CosmoLab!")
+                except Exception as e:
+                    st.error(f"Gagal menyimpan ke DB: {e}")
+
+
+# -------------------------------------------------------------
+# Module 6: Panen Paper Ilmiah (Multi-Faculty)
+# -------------------------------------------------------------
+elif menu == "⚡ Panen Paper Ilmiah":
+    render_hero(
+        title="Panen Paper Ilmiah Multi-Fakultas",
+        subtitle="Pencarian terpadu di <b>6 basis data akademik global</b> dengan resolusi preprint dan naskah terbuka legal melalui Unpaywall.",
+        icon="⚡",
+        badges=[
+            {"icon": "🌐", "text": "6 Academic Engines", "class": "hero-badge-primary"},
+            {"icon": "🔓", "text": "Unpaywall Auto-Resolver", "class": "hero-badge-accent"},
+            {"icon": "📥", "text": "Drag & Drop Manual PDF", "class": "hero-badge-model"}
+        ]
+    )
+
+    # Visual Ribbon of Connected Sources
+    st.markdown("""
+    <div class="source-ribbon">
+        <span class="source-chip source-chip-active"><span class="dot-live"></span> arXiv (Preprint Logika & Fisika)</span>
+        <span class="source-chip source-chip-active"><span class="dot-live"></span> DOAJ (Open Access Peer-Reviewed)</span>
+        <span class="source-chip source-chip-active"><span class="dot-live"></span> Semantic Scholar (Graph Sitasi)</span>
+        <span class="source-chip source-chip-active"><span class="dot-live"></span> Crossref (Polite Pool 150M+ Metadata)</span>
+        <span class="source-chip source-chip-active"><span class="dot-live"></span> OpenAlex (Indeks Global Terbuka)</span>
+        <span class="source-chip source-chip-active"><span class="dot-live"></span> CORE v3 (200M+ Repositori Kampus)</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.expander("🔑 Status Integrasi Repositori CORE (200M+ Paper Universitas Dunia)", expanded=False):
+        core_key = getattr(config, "CORE_API_KEY", "")
+        if core_key:
+            st.success(f"🟢 **CORE API Terhubung.** Kunci API terdeteksi di lingkungan sistem.")
+        else:
+            st.info(
+                "💡 **CORE API Key (Opsional):** CORE mengagregasi naskah tesis dan preprint dari ribuan repositori universitas dunia. "
+                "Untuk mengaktifkannya, daftarkan email Anda di [core.ac.uk/services/api](https://core.ac.uk/services/api) (gratis), lalu tambahkan `CORE_API_KEY=...` ke file `.env`."
+            )
+
+    badge_config = {
+        "search_start": ("#3B82F6", "🔍 SEARCH"),
+        "faculty_start": ("#6366F1", "🏛️ FACULTY"),
+        "query_step": ("#3B82F6", "🔍 QUERY"),
+        "paper_found": ("#06B6D4", "📄 FOUND"),
+        "download_start": ("#F59E0B", "📥 DOWNLOADING"),
+        "download_ok": ("#10B981", "✅ DOWNLOADED"),
+        "download_retry": ("#F97316", "🔄 RETRY"),
+        "download_fail": ("#EF4444", "❌ FAIL"),
+        "skip": ("#94A3B8", "⏩ SKIPPED"),
+        "duplicate": ("#94A3B8", "⏩ DUPLICATE"),
+        "no_pdf": ("#F43F5E", "🚫 NO OA PDF"),
+        "extract_start": ("#0EA5E9", "📄 EXTRACTING"),
+        "extract_ok": ("#10B981", "✅ EXTRACTED"),
+        "extract_skip": ("#94A3B8", "⏩ TEXT READY"),
+        "extract_fail": ("#EF4444", "❌ EXTRACT FAIL"),
+        "analyze_start": ("#8B5CF6", "🧠 ANALYZING AI"),
+        "analyze_ok": ("#10B981", "✅ ANALYZED"),
+        "analyze_skip": ("#94A3B8", "⏩ ALREADY ANALYZED"),
+        "analyze_fail": ("#EF4444", "❌ AI ERROR"),
+    }
+
+    def run_live_harvest_process(harvest_callable, auto_analyze: bool = True):
+        console_box = st.container(border=True)
+        with console_box:
+            st.markdown("#### ⚡ Konsol Pemantauan Panen & Analisis Real-Time")
+            status_box = st.empty()
+            progress_bar = st.progress(0.05, text="🚀 Menginisialisasi koneksi repositori global...")
+            
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            m_found = col_m1.empty()
+            m_downloaded = col_m2.empty()
+            m_extracted = col_m3.empty()
+            m_analyzed = col_m4.empty()
+
+            m_found.metric("🔍 Ditemukan", 0, border=True)
+            m_downloaded.metric("📥 Diunduh", 0, border=True)
+            m_extracted.metric("📄 Teks Siap", 0, border=True)
+            m_analyzed.metric("🧠 Dianalisis AI", 0, border=True)
+
+            st.markdown("<div style='font-size:0.82rem; font-weight:700; color:#64748B; margin-top:8px; margin-bottom:4px;'>📜 LIVE HARVEST ACTIVITY STREAM:</div>", unsafe_allow_html=True)
+            terminal_box = st.empty()
+
+        logs = []
+        counters = {"found": 0, "downloaded": 0, "extracted": 0, "analyzed": 0}
+        new_papers = []
+
+        def _ui_cb(event_type: str, message: str, data: dict = None):
+            now_t = datetime.now().strftime("%H:%M:%S")
+            color, b_label = badge_config.get(event_type, ("#64748B", "INFO"))
+
+            # Update metrics
+            if event_type == "paper_found":
+                counters["found"] += 1
+                m_found.metric("🔍 Ditemukan", counters["found"], border=True)
+                progress_bar.progress(min(0.35, 0.05 + counters["found"] * 0.02), text=f"🔍 Menemukan literatur ({counters['found']} naskah)...")
+            elif event_type == "download_ok":
+                counters["downloaded"] += 1
+                m_downloaded.metric("📥 Diunduh", counters["downloaded"], border=True)
+                progress_bar.progress(min(0.65, 0.35 + counters["downloaded"] * 0.05), text=f"📥 Mengunduh PDF legal ({counters['downloaded']} file siap)...")
+                if data and data.get("title"):
+                    new_papers.append(data)
+            elif event_type == "extract_ok":
+                counters["extracted"] += 1
+                m_extracted.metric("📄 Teks Siap", counters["extracted"], border=True)
+                progress_bar.progress(min(0.80, 0.65 + counters["extracted"] * 0.03), text=f"📄 Mengekstrak teks naskah ({counters['extracted']} selesai)...")
+            elif event_type == "analyze_ok":
+                counters["analyzed"] += 1
+                m_analyzed.metric("🧠 Dianalisis AI", counters["analyzed"], border=True)
+                progress_bar.progress(min(0.95, 0.80 + counters["analyzed"] * 0.03), text=f"🧠 Membedah naskah utuh ({counters['analyzed']} selesai)...")
+
+            safe_msg = html.escape(message)
+            line_html = (
+                f"<div style='font-family:\"JetBrains Mono\", monospace; font-size:0.78rem; line-height:1.45; margin-bottom:3px;'>"
+                f"<span style='color:#64748B;'>[{now_t}]</span> "
+                f"<span style='background:{color}22; color:{color}; border:1px solid {color}44; padding:1px 5px; border-radius:3px; font-weight:700;'>{b_label}</span> "
+                f"<span style='color:#CBD5E1;'>{safe_msg}</span>"
+                f"</div>"
+            )
+            logs.append(line_html)
+            
+            terminal_view = f"""
+            <div style='background:#0B0F19; border-radius:6px; padding:10px 12px; height:240px; overflow-y:auto; border:1px solid #1E293B;'>
+                {''.join(logs[-25:])}
+            </div>
+            """
+            terminal_box.markdown(terminal_view, unsafe_allow_html=True)
+
+        try:
+            status_box.info("🔄 **Sedang menjalankan pencarian & pengunduhan naskah...**")
+            harvest_stats = harvest_callable(_ui_cb)
+
+            target_files = [p['file'] for p in new_papers if p.get('file')]
+
+            # Step 2: Extraction
+            status_box.info("📄 **Mengekstrak teks lengkap dari berkas PDF baru...**")
+            try:
+                ext_stats = _extract.extract_all(progress_cb=_ui_cb, files=target_files if target_files else None)
+            except TypeError:
+                ext_stats = _extract.extract_all()
+
+            # Step 3: Analysis
+            if auto_analyze and counters["downloaded"] > 0:
+                status_box.info(f"🧠 **AI ({config.LLM_MODEL}) sedang membedah naskah utuh (Metodologi, Temuan Pembahasan & Kesimpulan)...**")
+                try:
+                    an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id", progress_cb=_ui_cb, files=target_files if target_files else None)
+                except TypeError:
+                    an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id")
+
+            # Sync DB
+            db.sync_all()
+
+            progress_bar.progress(1.0, text="✅ Seluruh tahapan panen, ekstraksi, dan analisis berhasil diselesaikan!")
+            status_box.success(
+                f"🎉 **Panen Berhasil Diselesaikan!** Ditemukan: {counters['found']} | Berhasil Diunduh: **{counters['downloaded']} paper** | "
+                f"Teks Siap: **{counters['extracted']}** | Dianalisis AI: **{counters['analyzed']}**."
+            )
+
+            if new_papers:
+                with st.expander(f"📚 Naskah yang Baru Saja Berhasil Diunduh ({len(new_papers)} Paper)", expanded=True):
+                    for p_idx, np in enumerate(new_papers[:8], 1):
+                        st.markdown(f"**{p_idx}. {np.get('title')}** &nbsp; <span style='font-size:0.75rem; color:#64748B;'>`{np.get('file', '')}`</span>", unsafe_allow_html=True)
+
+        except Exception as e:
+            status_box.error(f"❌ Terjadi kesalahan saat proses panen: {e}")
+
+    def run_live_analyze_process(target_files: list[str], model: str, lang: str, workers: int):
+        console_box = st.container(border=True)
+        with console_box:
+            st.markdown("#### 🧠 Konsol Studio Bedah Naskah Real-Time")
+            status_box = st.empty()
+            progress_bar = st.progress(0.05, text="Memulai pembedahan naskah...")
+            col_m1, col_m2 = st.columns(2)
+            m_extracted = col_m1.empty()
+            m_analyzed = col_m2.empty()
+            m_extracted.metric("📄 Teks Disiapkan", 0, border=True)
+            m_analyzed.metric("🧠 Dianalisis AI", 0, border=True)
+            terminal_box = st.empty()
+
+        logs = []
+        counters = {"extracted": 0, "analyzed": 0}
+        total = len(target_files)
+
+        def _an_cb(event_type: str, message: str, data: dict = None):
+            now_t = datetime.now().strftime("%H:%M:%S")
+            color, b_label = badge_config.get(event_type, ("#8B5CF6", "AI"))
+            if event_type == "extract_ok":
+                counters["extracted"] += 1
+                m_extracted.metric("📄 Teks Disiapkan", counters["extracted"], border=True)
+            elif event_type == "analyze_ok":
+                counters["analyzed"] += 1
+                m_analyzed.metric("🧠 Dianalisis AI", counters["analyzed"], border=True)
+                progress_bar.progress(min(1.0, counters["analyzed"] / max(1, total)), text=f"Pembedahan AI: {counters['analyzed']}/{total} paper...")
+
+            safe_msg = html.escape(message)
+            line_html = (
+                f"<div style='font-family:\"JetBrains Mono\", monospace; font-size:0.78rem; line-height:1.45; margin-bottom:3px;'>"
+                f"<span style='color:#64748B;'>[{now_t}]</span> "
+                f"<span style='background:{color}22; color:{color}; border:1px solid {color}44; padding:1px 5px; border-radius:3px; font-weight:700;'>{b_label}</span> "
+                f"<span style='color:#CBD5E1;'>{safe_msg}</span>"
+                f"</div>"
+            )
+            logs.append(line_html)
+            terminal_box.markdown(f"<div style='background:#0B0F19; border-radius:6px; padding:10px 12px; height:220px; overflow-y:auto; border:1px solid #1E293B;'>{''.join(logs[-25:])}</div>", unsafe_allow_html=True)
+
+        try:
+            status_box.info(f"📄 Menyiapkan teks naskah untuk {total} berkas...")
+            _extract.extract_all(progress_cb=_an_cb, files=target_files)
+            status_box.info(f"🧠 Membedah {total} naskah dengan AI ({model})...")
+            _analyze.analyze_all(model=model, concurrency=workers, lang=lang, force=True, progress_cb=_an_cb, files=target_files)
+            db.sync_all()
+            progress_bar.progress(1.0, text="✅ Seluruh naskah berhasil dibedah!")
+            status_box.success(f"🎉 Pembedahan selesai! {counters['analyzed']} paper berhasil dianalisis.")
+        except Exception as e:
+            status_box.error(f"❌ Terjadi kesalahan: {e}")
+
+    tab_h1, tab_h2, tab_h3, tab_h4, tab_h5 = st.tabs([
+        "🏛️ Panen Berdasarkan Fakultas",
+        "🔍 Pencarian Bebas & Petakan Fakultas",
+        "➕ Kelola & Tambah Fakultas / Prodi Baru",
+        "📥 Unggah PDF Manual / Impor DOI",
+        "🧠 Studio Bedah Naskah Mandiri"
+    ])
+
+    with tab_h1:
+        with st.container(border=True):
+            col_cat, col_fac = st.columns([1, 2])
+            cat_filter = col_cat.selectbox(
+                "Filter Kategori:",
+                ["Semua Kategori", "Multidisiplin & Terapan", "Filosofis & Teologis", "Kustom Peneliti"],
+                key="h_cat_filter"
+            )
+
+            filtered_faculties = faculty_list
+            if cat_filter != "Semua Kategori":
+                filtered_faculties = [f for f in faculty_list if getattr(f, "category", "") == cat_filter]
+                if not filtered_faculties:
+                    filtered_faculties = faculty_list
+
+            target_fac_id = col_fac.selectbox(
+                "Pilih Fakultas / Program Studi Sasaran:",
+                [f.id for f in filtered_faculties],
+                format_func=lambda x: faculty_labels.get(x, x),
+                key="h_fac_select"
+            )
+            target_fac_obj = _faculties.get_faculty(target_fac_id)
+            
+            st.markdown(
+                f"### {target_fac_obj.icon} **{target_fac_obj.name}** "
+                f"<span style='background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:3px 10px; border-radius:9999px; font-size:0.8rem; font-weight:600;'>{getattr(target_fac_obj, 'category', 'Umum')}</span>",
+                unsafe_allow_html=True
+            )
+            st.caption(target_fac_obj.full_desc or target_fac_obj.short_desc)
+            
+            st.markdown(f"**Query Terkurasi:** {', '.join([f'`{q}`' for q in target_fac_obj.default_queries])}")
+            
+            col_hp1, col_hp2 = st.columns([1, 1])
+            h_max_per_q = int(col_hp1.number_input("Maksimal Paper per Query:", min_value=2, max_value=25, value=6, key="hp_max"))
+            auto_an_fac = col_hp2.checkbox("🤖 Otomatis Ekstrak & Analisis ke Bahasa Indonesia", value=True, key="hp_auto")
+
+            harvest_fac_btn = st.button("📥 Panen Literatur Fakultas Ini", type="primary", key="btn_harvest_fac", use_container_width=True)
+
+        if harvest_fac_btn:
+            run_live_harvest_process(
+                lambda cb: _harvest.harvest_faculty(target_fac_id, max_results_per_query=h_max_per_q, workers=4, delay=0.5, progress_cb=cb),
+                auto_analyze=auto_an_fac
+            )
+
+    with tab_h2:
+        with st.container(border=True):
+            st.markdown("#### 🔍 Pencarian Bebas Lintas 6 Repositori Global")
+            st.caption("Cari topik apa saja (misal: 'green accounting', 'hukum tata negara', 'blended learning'). Paper akan langsung diunduh PDF legalnya dan dipetakan ke fakultas pilihan Anda.")
+            
+            col_c1, col_c2 = st.columns([3, 1])
+            custom_q = col_c1.text_input("Topik / Kata Kunci Paper Bebas:", value="islamic banking financial performance risk management")
+            custom_max = int(col_c2.number_input("Jumlah Maksimal Paper:", min_value=3, max_value=60, value=10, key="c_max"))
+
+            # Options include all registered faculties + option to create ad-hoc
+            fac_dropdown_keys = [f.id for f in faculty_list] + ["_new_faculty_on_the_fly_"]
+            def _format_fac_choice(k):
+                if k == "_new_faculty_on_the_fly_":
+                    return "➕ Ketik Fakultas / Prodi Baru Langsung..."
+                return faculty_labels.get(k, k)
+
+            col_cf1, col_cf2 = st.columns([2, 1])
+            chosen_fac_key = col_cf1.selectbox("Petakan Paper ke Fakultas:", fac_dropdown_keys, format_func=_format_fac_choice, key="c_fac_select")
+            auto_an_cust = col_cf2.checkbox("🤖 Auto Analisis AI", value=True, key="c_auto")
+
+            effective_fac_id = chosen_fac_key
+            if chosen_fac_key == "_new_faculty_on_the_fly_":
+                col_nf1, col_nf2 = st.columns([3, 1])
+                new_fac_name = col_nf1.text_input("Nama Fakultas / Prodi Baru:", placeholder="contoh: Teknik Arsitektur & Perkotaan", key="nf_name_input")
+                new_fac_icon = col_nf2.text_input("Icon Emoji:", value="🏛️", key="nf_icon_input")
+
+            harvest_cust_btn = st.button("📥 Mulai Panen Kustom", type="primary", key="btn_harvest_cust", use_container_width=True)
+
+        if harvest_cust_btn:
+            if chosen_fac_key == "_new_faculty_on_the_fly_":
+                if not new_fac_name.strip():
+                    st.error("Silakan masukkan nama fakultas/prodi baru terlebih dahulu.")
+                    st.stop()
+                # Create and register the new faculty permanently
+                saved_new_fac = _faculties.save_custom_faculty(
+                    name=new_fac_name.strip(),
+                    icon=new_fac_icon.strip() or "🎓",
+                    default_queries=[custom_q],
+                    short_desc=f"Fokus riset {new_fac_name.strip()}",
+                    category="Kustom Peneliti"
+                )
+                effective_fac_id = saved_new_fac.id
+                st.success(f"Fakultas '{saved_new_fac.name}' ({saved_new_fac.icon}) berhasil didaftarkan secara permanen!")
+
+            run_live_harvest_process(
+                lambda cb: _harvest.harvest(custom_q, max_results=custom_max, workers=4, delay=0.5, faculty=effective_fac_id, progress_cb=cb),
+                auto_analyze=auto_an_cust
+            )
+
+    with tab_h3:
+        with st.container(border=True):
+            st.markdown("### ➕ Kelola & Daftarkan Fakultas / Program Studi Baru")
+            st.caption(
+                "Buat program studi spesifik untuk riset klien Anda (misal: S2 Manajemen Rumah Sakit, S3 Hukum Lingkungan, S1 Pendidikan Bahasa). "
+                "Fakultas yang dibuat akan langsung memiliki tombol 1-klik panen dan terintegrasi di seluruh filter CosmoLab."
+            )
+
+            col_cf_form1, col_cf_form2 = st.columns([3, 1])
+            new_dept_name = col_cf_form1.text_input("Nama Fakultas / Program Studi:", placeholder="Contoh: Manajemen Rumah Sakit & Layanan Kesehatan", key="reg_fac_name")
+            new_dept_icon = col_cf_form2.text_input("Simbol Emoji:", value="🏥", key="reg_fac_icon")
+
+            col_cf_meta1, col_cf_meta2 = st.columns(2)
+            new_dept_category = col_cf_meta1.selectbox("Kategori Bidang:", ["Multidisiplin & Terapan", "Kustom Peneliti", "Sains & Humaniora"], key="reg_fac_cat")
+            new_dept_short = col_cf_meta2.text_input("Deskripsi Singkat:", placeholder="Contoh: Mutu faskes, akreditasi RS, kepuasan pasien BPJS", key="reg_fac_short")
+
+            new_dept_queries = st.text_area(
+                "Kata Kunci Panen Terkurasi (1 per baris atau pisahkan dengan koma):",
+                placeholder="hospital administration quality\nbpjs kesehatan patient satisfaction\nlean hospital management clinical governance\nelectronic medical record healthcare adoption",
+                key="reg_fac_queries",
+                height=110
+            )
+
+            if st.button("💾 Daftarkan & Simpan Fakultas Ini", type="primary", key="btn_save_custom_fac", use_container_width=True):
+                if not new_dept_name.strip():
+                    st.error("Nama Fakultas/Prodi wajib diisi.")
+                elif not new_dept_queries.strip():
+                    st.error("Harap masukkan minimal 1 kata kunci panen.")
+                else:
+                    raw_queries = [q.strip() for line in new_dept_queries.split("\n") for q in line.split(",") if q.strip()]
+                    saved_fac = _faculties.save_custom_faculty(
+                        name=new_dept_name.strip(),
+                        icon=new_dept_icon.strip() or "🎓",
+                        default_queries=raw_queries,
+                        short_desc=new_dept_short.strip(),
+                        category=new_dept_category,
+                    )
+                    st.success(f"Berhasil mendaftarkan fakultas baru: **{saved_fac.icon} {saved_fac.name}** dengan {len(raw_queries)} query terkurasi!")
+                    st.rerun()
+
+        st.markdown("#### 📋 Katalog Fakultas Kustom Peneliti")
+        custom_list = [f for f in faculty_list if getattr(f, "is_custom", False)]
+        if not custom_list:
+            st.info("Belum ada fakultas kustom yang didaftarkan. Gunakan formulir di atas untuk membuat fakultas/prodi baru sesuai bidang riset klien Anda.")
+        else:
+            for cfac in custom_list:
+                cfac_papers = [p for p in all_papers if p.get("faculty") == cfac.id]
+                with st.container(border=True):
+                    col_info, col_act = st.columns([3, 1])
+                    with col_info:
+                        st.markdown(f"**{cfac.icon} {cfac.name}** &nbsp; `id: {cfac.id}`")
+                        st.caption(cfac.short_desc or "Tidak ada deskripsi.")
+                        st.markdown(f"**Query Terdaftar:** {', '.join([f'`{q}`' for q in cfac.default_queries])}")
+                        st.markdown(f"<span style='font-size:0.8rem; color:#64748B;'>Paper di Database: <b>{len(cfac_papers)} paper</b></span>", unsafe_allow_html=True)
+
+                    with col_act:
+                        if st.button(f"📥 Panen Sekarang", key=f"btn_harvest_cf_{cfac.id}", use_container_width=True):
+                            run_live_harvest_process(
+                                lambda cb: _harvest.harvest_faculty(cfac.id, max_results_per_query=5, workers=4, delay=0.5, progress_cb=cb),
+                                auto_analyze=True
+                            )
+
+                        if st.button(f"🗑️ Hapus Fakultas", key=f"btn_del_cf_{cfac.id}", use_container_width=True):
+                            _faculties.delete_custom_faculty(cfac.id)
+                            st.warning(f"Fakultas '{cfac.name}' telah dihapus.")
+                            st.rerun()
+
+    with tab_h4:
+        with st.container(border=True):
+            st.markdown("### 📥 Solusi untuk Paper dari PhilPapers / Repositori Lokal")
+            st.caption(
+                "PhilPapers dan PhilArchive menerapkan proteksi bot Cloudflare Turnstile. "
+                "Gunakan dua metode praktis berikut untuk memasukkan paper ke Second Brain:"
+            )
+
+            col_m_up, col_m_doi = st.columns(2)
+
+            with col_m_up:
+                st.markdown("#### 1. Unggah PDF Manual (Drag & Drop)")
+                st.write("Unduh PDF dari browser Anda, lalu seret file ke sini:")
+                uploaded_pdf = st.file_uploader("Pilih File PDF:", type=["pdf"], key="manual_pdf_upload")
+                manual_title = st.text_input("Judul Paper (Opsional):", placeholder="Jika kosong, memakai nama file", key="manual_title_input")
+                manual_fac = st.selectbox("Petakan ke Fakultas:", [f.id for f in faculty_list], format_func=lambda x: faculty_labels.get(x, x), key="manual_fac_select")
+                auto_an_upload = st.checkbox("Langsung Analisis Silogisme ke Bahasa Indonesia", value=True, key="manual_auto_an")
+
+                if st.button("📥 Impor & Proses PDF Ini", type="primary", key="btn_import_pdf", use_container_width=True):
+                    if not uploaded_pdf:
+                        st.error("Silakan pilih file PDF terlebih dahulu.")
+                    else:
+                        with st.spinner("Menyimpan PDF dan mengekstrak teks..."):
+                            res = _harvest.import_local_pdf(
+                                file_bytes=uploaded_pdf.read(),
+                                filename=uploaded_pdf.name,
+                                title=manual_title,
+                                faculty=manual_fac
+                            )
+                            st.success(f"Berhasil mengimpor: {res['title']}!")
+
+                        if auto_an_upload:
+                            with st.spinner("Menganalisis silogisme paper dengan AI..."):
+                                an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id")
+                                st.success(f"Analisis selesai: {an_stats.get('ok', 0)} paper berhasil dianalisis.")
+
+                        db.sync_all()
+                        st.rerun()
+
+            with col_m_doi:
+                st.markdown("#### 2. Impor Lewat Nomor DOI")
+                st.write("Entri PhilPapers biasanya memiliki DOI. Tempelkan nomor DOI untuk mencari naskah Open Access legal:")
+                input_doi = st.text_input("Nomor DOI / Link DOI:", placeholder="contoh: 10.1007/s11153-021-09800-4", key="manual_doi_input")
+                doi_fac = st.selectbox("Petakan ke Fakultas (DOI):", [f.id for f in faculty_list], format_func=lambda x: faculty_labels.get(x, x), key="doi_fac_select")
+                auto_an_doi = st.checkbox("Langsung Analisis Silogisme (DOI)", value=True, key="doi_auto_an")
+
+                if st.button("🔍 Cari & Unduh Naskah Open Access", type="primary", key="btn_import_doi", use_container_width=True):
+                    if not input_doi.strip():
+                        st.error("Silakan masukkan nomor DOI.")
+                    else:
+                        with st.spinner("Menghubungi resolver Unpaywall & OpenAlex..."):
+                            doi_res = _harvest.import_by_doi(doi=input_doi, faculty=doi_fac)
+                            if "error" in doi_res:
+                                st.error(doi_res["error"])
+                            else:
+                                st.success(f"Berhasil mengunduh: {doi_res['title']}!")
+                                if auto_an_doi:
+                                    with st.spinner("Menganalisis silogisme paper..."):
+                                        an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id")
+                                        st.success(f"Analisis selesai: {an_stats.get('ok', 0)} paper berhasil dianalisis.")
+                                db.sync_all()
+                                st.rerun()
+
+    with tab_h5:
+        st.markdown("### 🧠 Studio Bedah Naskah Mandiri (Analyze Studio)")
+        st.caption(
+            "Pembedahan mendalam naskah ilmiah lokal (*Deep Scan v3*) dengan model kecerdasan buatan. "
+            "Fitur ini memungkinkan Anda membedah antrean naskah yang belum sempat dianalisis (misal: hasil unduhan baru, "
+            "unggahan PDF manual, atau panen tanpa auto-analisis), serta melakukan bedah ulang (*re-scan*) naskah tertentu kapan saja."
+        )
+
+        unanalyzed_all = [p for p in all_papers if not p.get("thesis")]
+        analyzed_all = [p for p in all_papers if p.get("thesis")]
+
+        col_st1, col_st2, col_st3 = st.columns(3)
+        col_st1.metric("📚 Total Korpus", len(all_papers), border=True)
+        col_st2.metric("✅ Selesai Dibedah", len(analyzed_all), border=True)
+        col_st3.metric("⚠️ Belum Dianalisis", len(unanalyzed_all), border=True)
+
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+        tab_sub1, tab_sub2 = st.tabs([
+            f"⚠️ Antrean Belum Dianalisis ({len(unanalyzed_all)})",
+            "🔄 Bedah Ulang Paper Tertentu (On-Demand Re-Scan)"
+        ])
+
+        with tab_sub1:
+            if not unanalyzed_all:
+                st.success("🎉 **Luar biasa! Seluruh naskah dalam korpus lokal Anda sudah selesai dibedah oleh AI secara lengkap.**")
+                st.caption("Jika Anda ingin memperbarui pembacaan naskah dengan prompt v3 terbaru (metodologi riset & bab pembahasan), silakan buka tab '🔄 Bedah Ulang Paper Tertentu'.")
+            else:
+                with st.container(border=True):
+                    st.markdown(f"#### ⚡ Eksekusi Pembedahan Massal ({len(unanalyzed_all)} Naskah)")
+                    st.caption("Sistem akan membaca teks naskah utuh (10–15 halaman), lalu mengekstrak metodologi, temuan bab pembahasan, rekonstruksi silogisme, serta kutipan bernomor halaman asli.")
+
+                    col_opt1, col_opt2, col_opt3 = st.columns([2, 1, 1])
+                    studio_model = col_opt1.selectbox("Model LLM:", [config.LLM_MODEL, "gemini-3-8-flash", "gemini-2.5-flash"], index=0, key="studio_model_opt")
+                    studio_workers = col_opt2.slider("Concurrency:", min_value=1, max_value=6, value=4, key="studio_workers_opt")
+                    studio_lang = col_opt3.selectbox("Bahasa Analisis:", ["id", "en"], format_func=lambda x: "🇮🇩 Bahasa Indonesia" if x == "id" else "🇬🇧 English", key="studio_lang_opt")
+
+                    # Multi-select options
+                    unanalyzed_dict = {p.get("file"): f"{p.get('title') or p.get('file')} ({p.get('year', 'n.d.')})" for p in unanalyzed_all}
+                    chosen_targets = st.multiselect(
+                        "Pilih Naskah Tertentu (Biarkan kosong untuk membedah SEMUA antrean):",
+                        options=list(unanalyzed_dict.keys()),
+                        format_func=lambda x: unanalyzed_dict.get(x, x),
+                        key="studio_chosen_targets"
+                    )
+
+                    target_files = chosen_targets if chosen_targets else list(unanalyzed_dict.keys())
+                    btn_text = f"🚀 Jalankan Pembedahan AI untuk {len(target_files)} Paper" if chosen_targets else f"⚡ Bedah Semua {len(unanalyzed_all)} Paper yang Belum Dianalisis"
+
+                    if st.button(btn_text, type="primary", key="btn_run_studio_batch", use_container_width=True):
+                        run_live_analyze_process(
+                            target_files=target_files,
+                            model=studio_model,
+                            lang=studio_lang,
+                            workers=studio_workers
+                        )
+                        st.rerun()
+
+                st.markdown("##### 📋 Daftar Rincian Naskah Belum Dianalisis:")
+                for u_idx, up in enumerate(unanalyzed_all, 1):
+                    with st.container(border=True):
+                        col_ui1, col_ui2 = st.columns([3, 1])
+                        u_fac = _faculties.get_faculty(up.get("faculty") or "ilahiyyat")
+                        u_icon = u_fac.icon if u_fac else "📖"
+                        u_fname = u_fac.name if u_fac else (up.get("faculty") or "Umum")
+                        with col_ui1:
+                            st.markdown(f"**{u_idx}. {up.get('title') or up.get('file')}**")
+                            st.caption(f"{u_icon} {u_fname} | 📅 {up.get('year', 'n.d.')} | Berkas: `{up.get('file')}`")
+                        with col_ui2:
+                            if st.button("🧠 Bedah Naskah Ini", key=f"btn_single_studio_{u_idx}_{up.get('file')}", use_container_width=True):
+                                with st.spinner(f"Sedang membedah '{up.get('title', '')[:30]}...' dengan {studio_model}..."):
+                                    try:
+                                        _analyze.analyze_single_paper(up.get("file"), model=studio_model, lang=studio_lang)
+                                        db.sync_all()
+                                        st.success("Analisis berhasil!")
+                                        st.rerun()
+                                    except Exception as err:
+                                        st.error(f"Gagal analisis: {err}")
+
+        with tab_sub2:
+            with st.container(border=True):
+                st.markdown("#### 🔄 Bedah Ulang Paper Tertentu (On-Demand Deep Scan)")
+                st.caption("Pilih paper mana saja di seluruh korpus untuk dianalisis ulang dengan prompt v3 terbaru (metodologi riset & kutipan dari bab pembahasan).")
+
+                all_file_map = {p.get("file"): f"[{'✅ Dibedah' if p.get('thesis') else '⚠️ Belum'}] {p.get('title') or p.get('file')} ({p.get('year', 'n.d.')})" for p in all_papers}
+                chosen_file = st.selectbox(
+                    "Pilih Paper dari Seluruh Korpus:",
+                    options=list(all_file_map.keys()),
+                    format_func=lambda x: all_file_map.get(x, x),
+                    key="studio_single_chosen"
+                )
+
+                if chosen_file:
+                    target_rec = next((p for p in all_papers if p.get("file") == chosen_file), None)
+                    if target_rec:
+                        if target_rec.get("thesis"):
+                            st.info(f"🎯 **Tesis Saat Ini:** {target_rec.get('thesis')}")
+                        else:
+                            st.warning("⚠️ Status: Paper ini saat ini belum memiliki hasil bedah analisis.")
+
+                        col_re1, col_re2 = st.columns(2)
+                        re_model = col_re1.selectbox("Model LLM:", [config.LLM_MODEL, "gemini-3-8-flash", "gemini-2.5-flash"], key="re_model_single")
+                        re_lang = col_re2.selectbox("Bahasa Analisis:", ["id", "en"], format_func=lambda x: "🇮🇩 Bahasa Indonesia" if x == "id" else "🇬🇧 English", key="re_lang_single")
+
+                        if st.button("🚀 Jalankan Pembedahan Ulang Sekarang", type="primary", key="btn_exec_single_re", use_container_width=True):
+                            with st.spinner(f"Menganalisis naskah '{chosen_file}' dengan {re_model}..."):
+                                try:
+                                    _analyze.analyze_single_paper(chosen_file, model=re_model, lang=re_lang, force=True)
+                                    db.sync_all()
+                                    st.success(f"Pembedahan ulang selesai untuk: {chosen_file}")
+                                    st.rerun()
+                                except Exception as err:
+                                    st.error(f"Gagal analisis: {err}")
+
+
+# -------------------------------------------------------------
+# Module 7: Full-Text Search
 # -------------------------------------------------------------
 elif menu == "🔍 Full-Text Search":
-    st.markdown('<div class="main-header">🔍 Pencarian Teks Penuh (SQLite FTS5)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Pencarian instan berbobot BM25 pada judul, abstrak, premis, dan isi teks seluruh paper.</div>', unsafe_allow_html=True)
+    render_hero(
+        title="Pencarian Cerdas Korpus (Hybrid Semantic & FTS5)",
+        subtitle="Pencarian berbobot multi-dimensi (judul, tesis, premis) dipadukan dengan ekspansi semantik RRF.",
+        icon="🔍",
+        badges=[
+            {"icon": "⚡", "text": "FTS5 BM25 Weighted", "class": "hero-badge-primary"},
+            {"icon": "🧠", "text": "Hybrid RRF Semantic", "class": "hero-badge-accent"}
+        ]
+    )
 
-    search_query = st.text_input("Ketik Kata Kunci Pencarian:", placeholder="contoh: kalam, indeterminism, hilbert, causality...")
-    limit_count = st.slider("Maksimal Hasil:", min_value=3, max_value=20, value=8)
+    with st.container(border=True):
+        col_s1, col_s2 = st.columns([3, 1])
+        search_query = col_s1.text_input("Ketik Kata Kunci / Pertanyaan Riset:", placeholder="contoh: apakah alam semesta punya awal mula, causality, hilbert, theodicy...")
+        limit_count = col_s2.slider("Maksimal Hasil:", min_value=3, max_value=20, value=8)
+        use_hybrid = st.checkbox("Gunakan Hybrid Semantic RRF (Paham Bahasa Indonesia & Konsep Abstrak)", value=True)
 
     if search_query:
-        results = db.search(search_query, limit=limit_count)
+        with st.spinner("Mencari paper yang relevan..."):
+            if use_hybrid:
+                results = _retrieval.hybrid_search(search_query, limit=limit_count, expand_concepts=True)
+            else:
+                results = db.search(search_query, limit=limit_count)
+
         if not results:
             st.warning(f"Tidak ada paper yang cocok dengan kata kunci: '{search_query}'")
         else:
-            st.success(f"Ditemukan **{len(results)}** paper relevan:")
+            mode_badge = "Hybrid RRF Semantic" if use_hybrid else "Exact Weighted FTS5"
+            st.success(f"Ditemukan **{len(results)}** paper relevan via **{mode_badge}**:")
             for r in results:
-                st.markdown(f"#### 📄 {r.get('title')} ({r.get('year', 'n.d.')})")
-                st.caption(f"Tipe: `{r.get('argument_type') or '-'}` | Stance: `{r.get('supports_or_critiques') or '-'}` | DOI: {r.get('doi') or 'N/A'}")
-                if r.get("key_objection"):
-                    st.markdown(f"**Objeksi Kunci:** {r.get('key_objection')}")
-                if r.get("snippet"):
-                    st.markdown(f"**Snippet Teks:** ...{r.get('snippet')}...")
-                st.divider()
+                with st.container(border=True):
+                    st.markdown(f"#### 📄 {r.get('title')} ({r.get('year', 'n.d.')})")
+                    score_txt = f" | RRF Score: `{r.get('rrf_score')}`" if "rrf_score" in r else ""
+                    st.caption(f"Tipe: `{r.get('argument_type') or '-'}` | Stance: `{r.get('supports_or_critiques') or '-'}` | Fakultas: `{r.get('faculty') or '-'}`{score_txt}")
+                    if r.get("thesis"):
+                        st.info(f"**Tesis Utama:** {r.get('thesis')}")
+                    if r.get("key_objection"):
+                        st.warning(f"**Objeksi Kunci:** {r.get('key_objection')}")
+                    if r.get("snippet"):
+                        st.markdown(f"**Kutipan Teks:** ...*{r.get('snippet')}*...")
+
 
 # -------------------------------------------------------------
-# Module 4: Diagram Argumen
+# Module 8: Diagram Argumen
 # -------------------------------------------------------------
 elif menu == "🕸️ Diagram Argumen":
-    st.markdown('<div class="main-header">🕸️ Visualisasi Pohon Argumen (Mermaid)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Visualisasi alur silogisme: Tesis ➔ Premis ➔ Kesimpulan ➔ Objeksi ➔ Tanggapan.</div>', unsafe_allow_html=True)
+    render_hero(
+        title="Visualisasi Pohon Argumen (Mermaid)",
+        subtitle="Visualisasi alur silogisme formal secara grafis: Tesis ➔ Premis ➔ Kesimpulan ➔ Objeksi ➔ Pertahanan.",
+        icon="🕸️",
+        badges=[
+            {"icon": "📐", "text": "Formal Syllogism Graph", "class": "hero-badge-primary"},
+            {"icon": "🛡️", "text": "Counter-Argument Topology", "class": "hero-badge-accent"}
+        ]
+    )
 
     paper_choices = [p["file"] for p in papers if p.get("thesis")]
     if not paper_choices:
-        st.warning("Belum ada paper yang selesai dianalisis.")
+        st.warning("Belum ada paper yang selesai dianalisis di fakultas ini.")
     else:
-        selected_file = st.selectbox("Pilih Paper untuk Divisualisasikan:", paper_choices)
+        with st.container(border=True):
+            selected_file = st.selectbox("Pilih Paper untuk Divisualisasikan:", paper_choices)
+        
         stem = Path(selected_file).stem
         mermaid_code = export.generate_mermaid_graph(stem)
 
-        st.markdown(f"### Diagram Logika: *{stem}*")
+        st.markdown(f"### 📐 Diagram Logika: *{stem}*")
         render_mermaid(mermaid_code)
 
         with st.expander("Lihat Kode Sumber Mermaid"):
             st.code(mermaid_code, language="mermaid")
 
-# -------------------------------------------------------------
-# Module 5: Panen Paper Baru
-# -------------------------------------------------------------
-elif menu == "⚡ Panen Paper Baru":
-    st.markdown('<div class="main-header">⚡ Panen Paper Akademik Baru</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Pencarian multi-sumber konkuren di <b>arXiv, DOAJ, Semantic Scholar, dan OpenAlex</b>.</div>', unsafe_allow_html=True)
-
-    col_h1, col_h2 = st.columns([3, 1])
-    h_query = col_h1.text_input("Topik / Kata Kunci Paper:", value="kalam cosmological argument quantum causality")
-    h_max = col_h2.number_input("Jumlah Paper Maksimal:", min_value=5, max_value=60, value=20)
-
-    if st.button("📥 Mulai Panen Paralel", type="primary"):
-        with st.spinner(f"Sedang mencari di 4 sumber dan mengunduh PDF secara paralel..."):
-            try:
-                stats = _harvest.harvest(h_query, max_results=h_max, workers=4, delay=0.5)
-                st.success(f"Panen selesai! Berhasil mengunduh: {stats.get('downloaded', 0)} paper baru.")
-                st.json(stats)
-                db.sync_all()
-            except Exception as e:
-                st.error(f"Gagal saat panen: {e}")
 
 # -------------------------------------------------------------
-# Module 6: Laporan Sintesis
+# Module 9: Laporan Sintesis & Celah Riset
 # -------------------------------------------------------------
 elif menu == "📑 Laporan Sintesis":
-    st.markdown('<div class="main-header">📑 Laporan Sintesis Lintas Paper</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Hasilkan atau baca laporan tinjauan pustaka komparatif (Literature Review).</div>', unsafe_allow_html=True)
+    render_hero(
+        title="Laporan Sintesis & Celah Riset (State of the Art & Novelty)",
+        subtitle="Hasilkan tinjauan pustaka komparatif (*Literature Review*) komprehensif dan deteksi kesenjangan ilmiah (*Research Gap*) untuk proposal riset baru.",
+        icon="📑",
+        badges=[
+            {"icon": "📖", "text": "Literature Review", "class": "hero-badge-primary"},
+            {"icon": "🔍", "text": "Research Gap Finder", "class": "hero-badge-accent"},
+            {"icon": "💎", "text": "Novelty Generator", "class": "hero-badge-model"}
+        ]
+    )
 
-    col_s1, col_s2 = st.columns([1, 2])
-    lang_choice = col_s1.selectbox("Bahasa Laporan:", ["id", "en"], format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English")
-    
-    if col_s2.button("✨ Buat Laporan Sintesis Baru dengan DeepSeek"):
-        with st.spinner("DeepSeek sedang menyusun laporan sintesis lintas korpus..."):
-            res = _synthesize.synthesize(model=config.LLM_MODEL, lang=lang_choice)
-            st.success(f"Laporan berhasil dibuat!")
+    tab_synth1, tab_synth2 = st.tabs([
+        "📑 Tinjauan Pustaka Komparatif (Literature Review)",
+        "🔍 Pendeteksi Celah Riset & Kebaruan (Research Gap & Novelty Finder)"
+    ])
 
-    st.divider()
-    st.markdown("### 📂 Laporan yang Sudah Tersedia:")
-    reports = sorted(list(config.SYNTH_DIR.glob("*.md")), reverse=True)
-    if not reports:
-        st.info("Belum ada laporan sintesis.")
-    else:
-        selected_rep = st.selectbox("Pilih Laporan untuk Dibaca:", [r.name for r in reports])
-        rep_file = config.SYNTH_DIR / selected_rep
-        st.markdown(rep_file.read_text(encoding="utf-8"))
+    with tab_synth1:
+        with st.container(border=True):
+            col_s1, col_s2 = st.columns([1, 2])
+            lang_choice = col_s1.selectbox("Bahasa Laporan:", ["id", "en"], format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English")
+            
+            gen_synth = col_s2.button("✨ Buat Laporan Sintesis Baru dengan DeepSeek", use_container_width=True)
+
+        if gen_synth:
+            with st.spinner("DeepSeek sedang menyusun laporan sintesis lintas korpus..."):
+                res = _synthesize.synthesize(model=config.LLM_MODEL, lang=lang_choice)
+                st.success(f"Laporan berhasil dibuat!")
+
+        st.markdown("### 📂 Laporan Tinjauan Pustaka yang Tersedia:")
+        reports = sorted(list(config.SYNTH_DIR.glob("*.md")), reverse=True)
+        if not reports:
+            st.info("Belum ada laporan sintesis.")
+        else:
+            with st.container(border=True):
+                selected_rep = st.selectbox("Pilih Laporan untuk Dibaca:", [r.name for r in reports])
+                rep_file = config.SYNTH_DIR / selected_rep
+                st.markdown(rep_file.read_text(encoding="utf-8"))
+
+    with tab_synth2:
+        with st.container(border=True):
+            st.markdown("### 🔍 Deteksi Kesenjangan Riset & Peluang Kebaruan Ilmiah")
+            st.caption("AI akan membedah seluruh korpus untuk menemukan perdebatan yang masih buntu, titik buta metodologis, dan merumuskan 3 usulan proposal riset dengan nilai kebaruan (novelty) tinggi.")
+
+            col_gap1, col_gap2 = st.columns([2, 1])
+            gap_focus = col_gap1.text_input("Sudut Pandang / Fokus Khusus (Opsional):", placeholder="contoh: Komparasi kausalitas Al-Ghazali dengan interpretasi kuantum Bohm...")
+            gap_model = col_gap2.selectbox("Model Konsultan AI:", ["deepseek-v4-pro", "gemini-3-8-flash"], format_func=lambda x: "🧠 DeepSeek V4 Pro" if "deepseek" in x else "⚡ Gemini 3.8 Flash")
+
+            btn_find_gap = st.button("🚀 Analisis Celah Riset & Rancang Proposal Baru", type="primary", use_container_width=True)
+
+        if btn_find_gap:
+            with st.spinner("Konsultan Riset AI sedang mengaudit korpus, memetakan titik buntu dialektika, dan merumuskan usulan proposal kebaruan..."):
+                gap_report = _gap_finder.find_research_gaps(
+                    faculty_id=selected_faculty_id,
+                    custom_focus=gap_focus,
+                    model=gap_model
+                )
+                st.session_state["current_gap_report"] = gap_report
+                saved_gap = _gap_finder.save_gap_report(gap_report)
+                st.session_state["saved_gap_paths"] = saved_gap
+
+        if "current_gap_report" in st.session_state:
+            rep = st.session_state["current_gap_report"]
+            saved_paths = st.session_state.get("saved_gap_paths", {})
+
+            with st.container(border=True):
+                st.markdown(f"## 🏛️ Domain: **{rep.get('faculty_domain')}**")
+                st.info(f"**Ringkasan Eksekutif Riset:**\n\n{rep.get('executive_summary', '')}")
+
+                col_gp1, col_gp2 = st.columns(2)
+                with col_gp1:
+                    st.markdown("#### ✅ Konsensus yang Mapan:")
+                    for c in rep.get("established_consensus", []):
+                        st.markdown(f"- {c}")
+                with col_gp2:
+                    st.markdown("#### 👁️ Titik Buta Metodologis (Blindspots):")
+                    for b in rep.get("methodological_blindspots", []):
+                        st.markdown(f"- 🔍 {b}")
+
+                st.markdown("---")
+                st.markdown("### ⚔️ Perdebatan Terbuka yang Belum Tuntas (Unresolved Tensions):")
+                for idx_ut, ut in enumerate(rep.get("unresolved_tensions", []), 1):
+                    with st.expander(f"⚡ {idx_ut}. {ut.get('issue', 'Isu Perdebatan')}", expanded=True):
+                        st.write(f"**Kubu Tesis/Teisme:** {ut.get('thesis_side')}")
+                        st.write(f"**Kubu Antitesis/Kritik:** {ut.get('antithesis_side')}")
+                        st.warning(f"⚠️ **Mengapa Belum Tuntas:** {ut.get('why_stuck')}")
+
+                st.markdown("---")
+                st.markdown("### 🎯 Usulan Topik Proposal Riset Baru (High-Novelty Proposals):")
+                for idx_p, prop in enumerate(rep.get("novel_research_proposals", []), 1):
+                    with st.container(border=True):
+                        st.markdown(f"#### 💎 Usulan {idx_p}: {prop.get('title')}")
+                        col_pr1, col_pr2 = st.columns([1, 1])
+                        col_pr1.markdown(f"**Jenjang Target:** `{prop.get('target_level', 'Tesis S2/S3')}`")
+                        col_pr2.markdown(f"**Kerangka Teori:** `{prop.get('theoretical_framework', '-')}`")
+                        
+                        st.write(f"**Kesenjangan yang Dijawab:** {prop.get('gap_addressed')}")
+                        st.success(f"**Tesis / Hipotesis Kerja:** {prop.get('proposed_hypothesis')}")
+                        st.info(f"**Nilai Kebaruan (Novelty):** {prop.get('expected_novelty')}")
+                        
+                        if prop.get("research_questions"):
+                            st.markdown("**Rumusan Masalah Utama:**")
+                            for q in prop["research_questions"]:
+                                st.markdown(f"- {q}")
+
+                if saved_paths.get("md_path"):
+                    col_g_dl1, col_g_dl2 = st.columns(2)
+                    with col_g_dl1:
+                        st.download_button(
+                            "📄 Unduh Laporan Celah Riset (.md)",
+                            data=saved_paths["markdown_content"],
+                            file_name=saved_paths["md_path"].name,
+                            mime="text/markdown",
+                            use_container_width=True
+                        )
+                    with col_g_dl2:
+                        st.success(f"Tersimpan di Vault Obsidian: `{saved_paths['obsidian_path'].name}`")
+
 
 # -------------------------------------------------------------
-# Module 7: Ekspor Data
+# Module 10: Ekspor Data & Flashcards
 # -------------------------------------------------------------
-elif menu == "📤 Ekspor Data":
-    st.markdown('<div class="main-header">📤 Ekspor ke Reference Manager & Catatan Riset</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Simpan korpus riset ke format Zotero/Mendeley (BibTeX) atau Obsidian Vault.</div>', unsafe_allow_html=True)
+elif menu == "📤 Ekspor Data & Flashcards":
+    render_hero(
+        title="Ekspor Data & Kartu Active Recall",
+        subtitle="Integrasi korpus CosmoLab University ke Zotero, Mendeley, Obsidian Vault, dan Anki untuk alur riset berkelanjutan.",
+        icon="📤",
+        badges=[
+            {"icon": "🗃️", "text": "BibTeX & RIS Integration", "class": "hero-badge-primary"},
+            {"icon": "💎", "text": "Obsidian [[Wikilinks]]", "class": "hero-badge-accent"},
+            {"icon": "🧠", "text": "Anki Active Recall", "class": "hero-badge-model"}
+        ]
+    )
 
-    col_e1, col_e2 = st.columns(2)
+    col_e1, col_e2, col_e3, col_e4 = st.columns(4)
 
     with col_e1:
-        st.markdown("### 🗃️ Ekspor ke BibTeX (.bib)")
-        st.write("Format standar untuk diimpor ke **Zotero, Mendeley, atau dokumen LaTeX**.")
-        if st.button("Generate references.bib"):
-            bib_path = export.export_bibtex()
-            st.success(f"Berhasil diekspor ke: `{bib_path}`")
-            st.download_button(
-                "⬇️ Unduh File references.bib",
-                data=bib_path.read_text(encoding="utf-8"),
-                file_name="references.bib",
-                mime="text/plain"
-            )
+        with st.container(border=True):
+            st.markdown("### 🗃️ Ekspor BibTeX")
+            st.write("Format standar untuk **LaTeX & Zotero**.")
+            if st.button("Generate .bib", use_container_width=True):
+                bib_path = export.export_bibtex()
+                st.success(f"Berhasil!")
+                st.download_button(
+                    "⬇️ Unduh .bib",
+                    data=bib_path.read_text(encoding="utf-8"),
+                    file_name="references.bib",
+                    mime="text/plain",
+                    use_container_width=True
+                )
 
     with col_e2:
-        st.markdown("### 💎 Ekspor ke Obsidian Vault")
-        st.write("Menghasilkan catatan Markdown dengan `[[wikilinks]]`, tag hierarkis, dan indeks matriks.")
-        if st.button("Generate Obsidian Vault"):
-            vault_path = export.export_obsidian()
-            st.success(f"Berhasil diekspor ke folder: `{vault_path}`")
-            st.info("Buka Obsidian, lalu pilih **Open folder as vault** dan arahkan ke folder `data/obsidian`.")
+        with st.container(border=True):
+            st.markdown("### 🏷️ Ekspor RIS")
+            st.write("Format standar untuk **Zotero & Mendeley**.")
+            if st.button("Generate .ris", use_container_width=True):
+                all_p = db.get_all_papers_with_analyses()
+                ris_path = _citations.export_ris(all_p)
+                st.success(f"Berhasil!")
+                st.download_button(
+                    "⬇️ Unduh .ris",
+                    data=ris_path.read_text(encoding="utf-8"),
+                    file_name="references.ris",
+                    mime="text/plain",
+                    use_container_width=True
+                )
+
+    with col_e3:
+        with st.container(border=True):
+            st.markdown("### 💎 Ekspor Obsidian")
+            st.write("Catatan Markdown berformat `[[wikilinks]]`.")
+            if st.button("Generate Vault", use_container_width=True):
+                vault_path = export.export_obsidian()
+                st.success(f"Berhasil!")
+                st.info("Buka Obsidian, lalu pilih **Open folder as vault** ke `data/obsidian`.")
+
+    with col_e4:
+        with st.container(border=True):
+            st.markdown("### 🗂️ Active Recall")
+            st.write("Flashcards Spaced Repetition untuk **Anki**.")
+            if st.button("Generate Cards", use_container_width=True):
+                fc_path = export.export_flashcards_to_obsidian()
+                st.success(f"Berhasil!")
+                st.download_button(
+                    "⬇️ Unduh Cards.md",
+                    data=fc_path.read_text(encoding="utf-8"),
+                    file_name="Cosmology_Active_Recall_Cards.md",
+                    mime="text/plain",
+                    use_container_width=True
+                )

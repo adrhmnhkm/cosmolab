@@ -10,25 +10,25 @@ def safe_name(s: str) -> str:
 
 def load_done() -> set:
     if config.DONE_FILE.exists():
-        return set(json.loads(config.DONE_FILE.read_text()))
+        return set(json.loads(config.DONE_FILE.read_text(encoding="utf-8")))
     return set()
 
 
 def save_done(done: set) -> None:
     config.DONE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    config.DONE_FILE.write_text(json.dumps(sorted(done)))
+    config.DONE_FILE.write_text(json.dumps(sorted(done)), encoding="utf-8")
 
 
 def append_meta(record: dict) -> None:
     config.META_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with config.META_FILE.open("a") as f:
-        f.write(json.dumps(record) + "\n")
+    with config.META_FILE.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def read_meta() -> list:
     if not config.META_FILE.exists():
         return []
-    return [json.loads(l) for l in config.META_FILE.read_text().splitlines() if l.strip()]
+    return [json.loads(l) for l in config.META_FILE.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
 def write_json(path: Path, obj) -> None:
@@ -37,4 +37,4 @@ def write_json(path: Path, obj) -> None:
 
 
 def read_json(path: Path):
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))

@@ -17,10 +17,16 @@ DB_FILE = ROOT / "cosmolab.db"
 OBSIDIAN_DIR = ROOT / "obsidian"
 
 EMAIL = env_config.get("COSMOLAB_EMAIL") or os.environ.get("COSMOLAB_EMAIL", "you@example.com")
-HEADERS = {"User-Agent": f"PersonalResearchArchive/1.0 ({EMAIL})"}
+HEADERS = {
+    "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 PersonalResearchArchive/1.0 ({EMAIL})",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
+}
 
 OPENALEX = "https://api.openalex.org/works"
 UNPAYWALL = "https://api.unpaywall.org/v2"
+CORE_API_URL = "https://api.core.ac.uk/v3/search/works"
+CORE_API_KEY = env_config.get("CORE_API_KEY") or os.environ.get("CORE_API_KEY", "")
+CROSSREF_API_URL = "https://api.crossref.org/works"
 
 # LLM Gateway Configuration - prioritize .env file over system env
 LLM_API_KEY = (

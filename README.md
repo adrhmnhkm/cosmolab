@@ -1,7 +1,8 @@
 # cosmolab
 
-Personal research pipeline: harvest OA papers on the cosmological argument,
-extract text, run LLM analysis, and synthesize a cross-paper report.
+Multidisciplinary research assistant: harvest open-access papers from any field,
+extract text, run LLM analysis, ask questions across the corpus, and write
+cross-paper syntheses, literature matrices, and articles.
 
 ## Setup
 
@@ -31,10 +32,13 @@ cosmolab status
 
 ### 2. Search & Knowledge Management
 ```bash
-# Full-text search (FTS5) across titles, abstracts, texts, & premises
-cosmolab search "kalam infinity"
+# Hybrid semantic search with RRF & column weighting (supports Indonesian & conceptual queries)
+cosmolab search "apakah alam semesta punya awal mula"
 
-# Ask research questions directly across your paper corpus (RAG)
+# Exact weighted FTS5 search
+cosmolab search "kalam infinity" --exact
+
+# Ask research questions directly across your paper corpus (with RRF retrieval & LLM re-ranking)
 cosmolab ask "Apa kritik matematika terhadap tak terhingga aktual pada argumen Kalam?"
 
 # Export to Obsidian Vault notes with [[wikilinks]], tags, and comparative index

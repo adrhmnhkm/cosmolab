@@ -160,7 +160,7 @@ tags: [{', '.join(tags)}]
 
     # Generate _Index.md
     index_content = f"""---
-title: "Cosmological Argument Research Corpus"
+title: "CosmoLab Research Corpus"
 tags: [index, cosmology, corpus]
 ---
 
@@ -216,3 +216,127 @@ def generate_mermaid_graph(file_stem: str) -> str:
             lines.append(f'  Defense["[*] Tanggapan: {defense}"] -->|Menjawab| Objection')
 
     return "\n".join(lines)
+
+
+def export_agent_synthesis_to_obsidian(question: str, answer: str, referenced_papers: list[dict] = None) -> Path:
+    """Export an Agentic synthesis answer into Obsidian Vault as an interconnected research note."""
+    import datetime
+    config.ensure_dirs()
+    synth_vault = config.OBSIDIAN_DIR / "synthesis"
+    synth_vault.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    clean_q_slug = re.sub(r"[^\w\-]+", "_", question)[:40] or "sintesis"
+    filename = f"sintesis_{timestamp}_{clean_q_slug}.md"
+    file_path = synth_vault / filename
+
+    # Generate wikilinks to referenced papers
+    paper_links = []
+    for p in (referenced_papers or []):
+        f = p.get("file", "")
+        if f:
+            link_name = Path(f).stem
+            title = p.get("title", link_name)
+            year = p.get("year", "n.d.")
+            stance = p.get("supports_or_critiques", "-")
+            paper_links.append(f"- [[{link_name}]] — *{title}* ({year}) | Sikap: `{stance}`")
+
+    paper_links_str = "\n".join(paper_links) if paper_links else "*Tidak ada paper spesifik yang ditautkan.*"
+
+    content = f"""---
+title: "Sintesis Riset: {question[:60]}"
+date: {datetime.date.today()}
+tags: [cosmolab, synthesis, agentic-research, second-brain]
+---
+
+# 🧠 Sintesis Riset Dialektis: {question}
+
+## 📝 Pertanyaan Peneliti:
+> {question}
+
+---
+
+## ⚖️ Hasil Sintesis Agen:
+{answer}
+
+---
+
+## 🔗 Paper Terkait dalam Vault:
+{paper_links_str}
+
+---
+*Dihasilkan oleh Cosmolab Agentic Second Brain.*
+"""
+    file_path.write_text(content, encoding="utf-8")
+    console.print(f"[green]OK  Sintesis disimpan ke Obsidian: {file_path}[/green]")
+    return file_path
+
+
+def export_flashcards_to_obsidian(vault_dir: Path | None = None) -> Path:
+    """Generate Active Recall / Spaced Repetition flashcards for all analyzed papers into Obsidian Vault."""
+    config.ensure_dirs()
+    vault = vault_dir or config.OBSIDIAN_DIR
+    fc_dir = vault / "flashcards"
+    fc_dir.mkdir(parents=True, exist_ok=True)
+    fc_file = fc_dir / "Cosmology_Active_Recall_Cards.md"
+
+    papers = [p for p in db.get_all_papers_with_analyses() if p.get("thesis")]
+    cards = []
+
+    cards.append("""---
+title: "CosmoLab Active Recall Cards"
+tags: [flashcard, spaced-repetition, cosmology, logic]
+---
+
+# 🗂️ Kartu Latihan Ingatan Aktif (Active Recall)
+*Gunakan dengan plugin Obsidian Spaced Repetition atau Anki.*
+
+""")
+
+    for p in papers:
+        stem = Path(p["file"]).stem
+        year = p.get("year", "n.d.")
+        arg_type = p.get("argument_type", "general")
+        thesis = p.get("thesis", "")
+        obj = p.get("key_objection", "")
+        defense = p.get("key_defense", "")
+        
+        premises = []
+        if p.get("premises_json"):
+            try:
+                premises = json.loads(p["premises_json"])
+            except Exception:
+                pass
+        conclusion = p.get("conclusion", "")
+
+        # Card 1: Thesis Card
+        cards.append(f"""#flashcard/cosmology/{arg_type}
+Apa tesis utama dan posisi ilmiah dari paper [[{stem}]] ({year})?
+?
+Tesis: {thesis}
+Posisi: {p.get('supports_or_critiques', 'neutral')}
+Tipe Argumen: {arg_type}
+""")
+
+        # Card 2: Dialectical Objection & Defense Card
+        if obj and obj != "-" and defense and defense != "-":
+            cards.append(f"""#flashcard/cosmology/{arg_type}
+Dalam [[{stem}]], apa keberatan/objeksi terkuat yang dihadapi dan bagaimana pembelaan yang diajukan?
+?
+Keberatan (Objection): {obj}
+Tanggapan (Defense): {defense}
+""")
+
+        # Card 3: Syllogism Card
+        if premises and conclusion:
+            p_text = " \n".join(f"• P{i}: {prem}" for i, prem in enumerate(premises, 1))
+            cards.append(f"""#flashcard/cosmology/{arg_type}
+Bagaimana rekonstruksi silogisme premis dan kesimpulan dari [[{stem}]]?
+?
+{p_text}
+Kesimpulan: {conclusion}
+""")
+
+    fc_file.write_text("\n\n---\n\n".join(cards), encoding="utf-8")
+    console.print(f"[green]OK  Flashcards exported to: {fc_file}[/green] ({len(cards)-1} cards)")
+    return fc_file

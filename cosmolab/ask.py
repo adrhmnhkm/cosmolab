@@ -13,15 +13,16 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from . import config
 from . import db
+from . import retrieval
 
 console = Console(force_terminal=True, legacy_windows=False)
 
-SYSTEM_PROMPT = """You are a rigorous philosophical research assistant specializing in cosmological arguments (Kalam, Contingency, First Cause, Fine-Tuning) and philosophy of science/religion.
+SYSTEM_PROMPT = """You are CosmoLab, a rigorous multidisciplinary research assistant. You work across fields (humanities, philosophy, religion, law, economics, education, psychology, science, technology, health) and adapt your terminology and methods to the field of the question.
 
 Answer the user's question accurately using ONLY the provided corpus context.
 Guidelines:
 1. Cite papers inline by title and year, e.g. `[Title (Year)]`.
-2. Present premises, objections, defenses, and technical concepts precisely.
+2. Present claims, evidence, methods, objections, and technical concepts precisely, using the standard terms of the relevant field.
 3. If multiple papers take conflicting positions, contrast their arguments.
 4. If the context does not contain enough evidence, explicitly state what is missing.
 5. Answer in the same language as the question (use formal Indonesian if asked in Indonesian, English if asked in English).
@@ -29,15 +30,23 @@ Guidelines:
 
 
 def ask(question: str, model: str = None, top_k: int = 5) -> str:
-    """Query the research corpus using full-text retrieval and LLM synthesis (RAG)."""
+    """Query the research corpus using advanced hybrid retrieval (FTS5 + Conceptual RRF) and LLM re-ranking."""
     config.ensure_dirs()
     model = model or config.NINEROUTER_MODEL
 
-    # Retrieve relevant papers via FTS5
-    results = db.search(question, limit=top_k)
+    # Retrieve candidate papers via Hybrid Search (FTS5 + Semantic Concept RRF)
+    console.print("[cyan]RETRIEVING CORPUS[/cyan] [dim](Hybrid FTS5 + Semantic RRF)...[/dim]")
+    candidates = retrieval.hybrid_search(question, limit=top_k * 3, expand_concepts=True, model=model)
+
+    # Re-rank candidates using LLM micro cross-attention
+    if candidates:
+        console.print(f"[cyan]RE-RANKING[/cyan] [dim]Evaluating {len(candidates)} candidates for dialectical precision...[/dim]")
+        results = retrieval.rerank_papers(question, candidates, top_k=top_k, model=model)
+    else:
+        results = []
 
     if not results:
-        # If no strict match, fallback to loading top available analyzed papers
+        # If no match, fallback to loading top available analyzed papers
         all_papers = db.get_all_papers_with_analyses()
         results = [p for p in all_papers if p.get("thesis")][:top_k]
 

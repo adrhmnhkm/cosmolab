@@ -7,8 +7,8 @@ from . import config
 console = Console(force_terminal=True, legacy_windows=False)
 
 
-SYNTH_PROMPT_EN = """You are given N structured analyses of philosophy papers on the
-cosmological argument. Produce a markdown report with these sections:
+SYNTH_PROMPT_EN = """You are given N structured analyses of academic papers on a shared
+research topic. Produce a markdown report with these sections:
 
 1. **Positions map** - group papers by (argument_type x supports_or_critiques).
 2. **Recurring premises** - list premises that appear across papers, and where they are contested.
@@ -19,15 +19,15 @@ cosmological argument. Produce a markdown report with these sections:
 Cite papers by their `title` (year) inline. Be concrete; avoid filler.
 """
 
-SYNTH_PROMPT_ID = """Kamu diberikan N analisis terstruktur dari paper filsafat tentang
-argumen kosmologis. Buat laporan markdown dengan bagian-bagian berikut:
+SYNTH_PROMPT_ID = """Kamu diberikan N analisis terstruktur dari paper akademik tentang
+satu topik riset. Buat laporan markdown dengan bagian-bagian berikut:
 
-1. **Peta posisi** - kelompokkan paper berdasarkan tipe argumen (kalam, aquinas, leibniz, dll) dan apakah paper tersebut mendukung atau mengkritik argumen. Gunakan tabel dengan kolom: Tipe Argumen | Paper yang Mendukung | Paper yang Mengkritik.
+1. **Peta posisi** - kelompokkan paper berdasarkan tipe argumen atau pendekatan riset dan apakah paper tersebut mendukung atau mengkritik argumen. Gunakan tabel dengan kolom: Tipe Argumen | Paper yang Mendukung | Paper yang Mengkritik.
 2. **Premis berulang** - daftar premis utama yang muncul di berbagai paper. Untuk setiap premis:
    - Tunjukkan di paper mana muncul
    - Sebutkan bantahan atau kontroversi yang ditemukan
-   - PENTING: gunakan terminologi filosofis yang tepat: "mulai ada" untuk "begin to exist", jangan gunakan "bereksistensi kausal"
-3. **5 objeksi terkuat & balasan** - objeksi filosofis terkuat terhadap argumen, dan respons/balasan terbaik yang ditemukan dalam paper.
+   - PENTING: gunakan terminologi baku bidang terkait secara tepat dan konsisten
+3. **5 objeksi terkuat & balasan** - objeksi atau kritik terkuat terhadap argumen, dan respons/balasan terbaik yang ditemukan dalam paper.
 4. **Gap** - topik atau pertanyaan yang tidak dibahas oleh paper manapun dalam dataset ini.
 5. **Urutan bacaan untuk pemula** - rekomendasi urutan membaca paper.
 
@@ -105,7 +105,7 @@ def synthesize(model: str = None, lang: str = "en") -> dict:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report = config.SYNTH_DIR / f"report_{stamp}_{lang}.md"
     report.write_text(
-        f"# Cosmological Argument Corpus - Synthesis\n\n"
+        f"# CosmoLab Corpus - Synthesis\n\n"
         f"_Generated {stamp} - {len(analyses)} papers - model={model} - lang={lang}_\n\n"
         f"{body}\n\n## Comparison table\n\n{table}\n",
         encoding="utf-8",

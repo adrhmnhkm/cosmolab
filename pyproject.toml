@@ -1,7 +1,7 @@
 [project]
 name = "cosmolab"
 version = "0.1.0"
-description = "Personal research pipeline for cosmological argument papers"
+description = "Multidisciplinary research assistant: harvest, analyze, and synthesize open-access papers"
 requires-python = ">=3.10"
 dependencies = [
     "requests>=2.31",
