@@ -18,11 +18,16 @@ from . import db
 
 console = Console(force_terminal=True, legacy_windows=False)
 
-INSPECTOR_DIR = config.ROOT / "inspections"
+# None = follow the active project (config.ROOT).
+INSPECTOR_DIR = None
+
+
+def _inspector_dir() -> Path:
+    return INSPECTOR_DIR or (config.ROOT / "inspections")
 
 
 def ensure_inspector_dir():
-    INSPECTOR_DIR.mkdir(parents=True, exist_ok=True)
+    _inspector_dir().mkdir(parents=True, exist_ok=True)
 
 
 def normalize_doi(raw: str) -> str:
@@ -375,7 +380,7 @@ def save_inspection(inspection_data: Dict[str, Any]) -> Path:
     time_prefix = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_name = f"{time_prefix}_{doi_slug}"
 
-    json_path = INSPECTOR_DIR / f"{base_name}.json"
+    json_path = _inspector_dir() / f"{base_name}.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(inspection_data, f, indent=2, ensure_ascii=False)
 
@@ -427,7 +432,7 @@ def save_inspection(inspection_data: Dict[str, Any]) -> Path:
 {inspection_data.get('bibtex')}
 ```
 """
-    md_path = INSPECTOR_DIR / f"{base_name}.md"
+    md_path = _inspector_dir() / f"{base_name}.md"
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md_content)
 

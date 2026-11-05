@@ -25,6 +25,8 @@ from cosmolab import citations as _citations
 from cosmolab import gap_finder as _gap_finder
 from cosmolab import inspector as _inspector
 from cosmolab import retrieval as _retrieval
+from cosmolab import verify as _verify
+from cosmolab import deliverables as _deliverables
 
 # Live hot-reloading of submodules inside Streamlit session
 try:
@@ -43,6 +45,8 @@ try:
     importlib.reload(_citations)
     importlib.reload(_gap_finder)
     importlib.reload(_inspector)
+    importlib.reload(_verify)
+    importlib.reload(_deliverables)
 except Exception:
     pass
 
@@ -53,6 +57,46 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+
+def _require_team_login():
+    """In team mode (`cosmolab ui --team`), ask for the team password before showing anything."""
+    import hmac
+    import os
+    import time
+    if os.environ.get("COSMOLAB_TEAM_MODE") != "1" or st.session_state.get("team_auth_ok"):
+        return
+    st.markdown("### 🔒 CosmoLab: masuk tim")
+    if not config.TEAM_PASSWORD:
+        st.error("Password tim belum diatur di server. Hubungi admin tim.")
+        st.stop()
+    tries = st.session_state.get("team_auth_tries", 0)
+    with st.form("team_login"):
+        pw = st.text_input("Password tim", type="password")
+        submitted = st.form_submit_button("Masuk")
+    if submitted:
+        if tries >= 5:
+            time.sleep(min(30, 2 ** (tries - 4)))  # slow down repeated guesses
+        if hmac.compare_digest(pw.encode("utf-8"), config.TEAM_PASSWORD.encode("utf-8")):
+            st.session_state["team_auth_ok"] = True
+            st.rerun()
+        st.session_state["team_auth_tries"] = tries + 1
+        st.error("Password salah.")
+    st.stop()
+
+
+_require_team_login()
+
+
+def _e(value) -> str:
+    """Escape text from papers, AI output or users before it goes into raw HTML."""
+    return html.escape("" if value is None else str(value))
+
+
+def _safe_url(url) -> str:
+    """Allow only http(s) links in raw HTML."""
+    url = str(url or "")
+    return html.escape(url) if url.lower().startswith(("http://", "https://")) else "#"
 
 # -------------------------------------------------------------
 # Modern Design System & CSS
@@ -396,6 +440,27 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
     }
 
+    /* Compact paper card */
+    .paper-card-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #0F172A;
+        line-height: 1.35;
+    }
+    .paper-card-meta {
+        font-size: 0.8rem;
+        color: #64748B;
+        margin: 2px 0 8px 0;
+    }
+    .paper-card-thesis {
+        font-size: 0.9rem;
+        color: #334155;
+        line-height: 1.5;
+        border-left: 3px solid #2563EB;
+        padding-left: 10px;
+        margin-bottom: 8px;
+    }
+
     /* Sidebar cluster header label */
     .nav-cluster-header {
         font-size: 0.72rem;
@@ -456,28 +521,99 @@ def render_mermaid(code: str, height: int = 450):
         components.html(html_code, height=height, scrolling=True)
 
 
+def render_client_delivery(md_path: Path, key: str):
+    """Citation check + Word/PDF export with firm letterhead for one Markdown result."""
+    st.markdown("##### 📦 Kirim ke Klien (Word / PDF berkop firma)")
+    st.caption(
+        "Sitasi diperiksa dulu ke koleksi proyek dan Crossref. Dokumen hanya dibuat kalau semua sitasi "
+        "terverifikasi, atau peneliti menyatakan sudah memeriksa manual."
+    )
+    state_key = f"verify_report_{key}"
+    col_v1, col_v2 = st.columns([1, 1])
+    online = col_v2.toggle("Cek online ke Crossref", value=True, key=f"online_{key}")
+    if col_v1.button("🔎 Periksa Sitasi", key=f"verify_btn_{key}", use_container_width=True):
+        with st.spinner("Memeriksa rujukan..."):
+            st.session_state[state_key] = _verify.verify_file(md_path, online=online)
+            _verify.save_report(st.session_state[state_key])
+
+    report = st.session_state.get(state_key)
+    if report is None or report.source != str(md_path):
+        return
+
+    rows = [
+        {"Rujukan": r.raw[:140], "Status": _verify.LABELS[r.status], "Catatan": (r.note + (f" DOI: {r.doi}" if r.doi else "")).strip()}
+        for r in report.references
+    ] + [
+        {"Rujukan": f"(teks) {c.text}", "Status": _verify.LABELS[c.status], "Catatan": c.note}
+        for c in report.citations if c.status != _verify.CITE_OK
+    ]
+    if rows:
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+    else:
+        st.info("Tidak ada daftar rujukan atau kutipan yang terdeteksi di dokumen ini.")
+
+    if report.ok:
+        st.success("Semua sitasi terverifikasi.")
+        manual_ok = True
+    else:
+        st.warning(f"{len(report.blocking)} sitasi belum terverifikasi otomatis. Periksa manual sebelum dikirim.")
+        manual_ok = st.checkbox(
+            "Saya sudah memeriksa manual semua sitasi yang ditandai dan menyetujuinya.",
+            key=f"manual_{key}",
+        )
+
+    reviewer = st.text_input("Nama peneliti pemeriksa (tercantum di dokumen):", key=f"reviewer_{key}")
+    title_override = st.text_input("Judul dokumen (kosongkan untuk memakai judul artikel):", key=f"title_{key}")
+    if st.button("📄 Buat Word & PDF", key=f"deliver_btn_{key}", type="primary",
+                 disabled=not (manual_ok and reviewer.strip()), use_container_width=True):
+        try:
+            with st.spinner("Menyusun dokumen klien..."):
+                result = _deliverables.deliver(
+                    md_path, reviewer=reviewer, title=title_override or None,
+                    online=report.online, allow_unverified=manual_ok,
+                )
+            st.session_state[f"deliver_files_{key}"] = [str(f) for f in result["files"]]
+        except Exception as e:
+            st.error(f"Gagal membuat dokumen: {e}")
+
+    for f in st.session_state.get(f"deliver_files_{key}", []):
+        fp = Path(f)
+        if fp.exists():
+            mime = "application/pdf" if fp.suffix == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            st.download_button(f"⬇️ Unduh {fp.suffix[1:].upper()}: {fp.name}", data=fp.read_bytes(),
+                               file_name=fp.name, mime=mime, key=f"dl_{key}_{fp.suffix}", use_container_width=True)
+
+
 # -------------------------------------------------------------
 # Sidebar - University Header, Faculty Filter & Campus Stats
 # -------------------------------------------------------------
 st.sidebar.markdown("""
 <div class="sidebar-brand-card">
     <div class="sidebar-brand-title">
-        <span>🏛️</span> COSMOLAB <span class="sidebar-brand-version">v2.5</span>
+        <span>🏛️</span> COSMOLAB
     </div>
-    <div class="sidebar-brand-sub">Asisten Riset Multidisipliner: Second Brain untuk Mencari, Membaca, Menganalisis, dan Menulis Riset Lintas Bidang</div>
+    <div class="sidebar-brand-sub">Asisten riset multidisipliner</div>
 </div>
 """, unsafe_allow_html=True)
+
+# Active client project (set per dashboard process via `cosmolab -P <proyek> ui`)
+_proj = config.project_info()
+if config.PROJECT:
+    _client = f" · {_proj['client']}" if _proj.get("client") else ""
+    st.sidebar.info(f"📁 Proyek: **{config.PROJECT}**{_client}")
+else:
+    st.sidebar.warning("📁 Data utama (bukan proyek klien)")
 
 # Faculty Filter in Sidebar
 faculty_list = _faculties.list_faculties()
 faculty_options = ["all"] + [f.id for f in faculty_list]
-faculty_labels = {"all": "🌐 Semua Fakultas (Universal)"}
+faculty_labels = {"all": "🌐 Semua bidang"}
 for f in faculty_list:
     custom_tag = " [Kustom]" if getattr(f, "is_custom", False) else ""
     faculty_labels[f.id] = f"{f.icon} {f.name}{custom_tag}"
 
 selected_faculty_id = st.sidebar.selectbox(
-    "🏛️ Fokus Fakultas / Program Studi:",
+    "Bidang ilmu",
     faculty_options,
     format_func=lambda x: faculty_labels.get(x, x),
 )
@@ -493,12 +629,11 @@ total_all = len(all_papers)
 total_active = len(papers)
 total_analyzed = len([p for p in papers if p.get("thesis")])
 
-col_s1, col_s2 = st.sidebar.columns(2)
-col_s1.metric("Paper Aktif", total_active, border=True)
-col_s2.metric("Dianalisis", total_analyzed, border=True)
-
-st.sidebar.markdown(f"<div style='font-size:0.78rem; color:#64748B; margin-top:-6px; margin-bottom:12px;'>Model AI: <b>{config.LLM_MODEL}</b></div>", unsafe_allow_html=True)
-st.sidebar.divider()
+# One readable progress line instead of two cramped metric cards
+st.sidebar.progress(
+    total_analyzed / total_active if total_active else 0.0,
+    text=f"{total_analyzed} dari {total_active} paper sudah dianalisis",
+)
 
 if "active_nav_menu" not in st.session_state:
     st.session_state["active_nav_menu"] = "📚 Paper Explorer & Korpus"
@@ -515,32 +650,45 @@ def render_nav_item(label: str, target: str, badge: str = None):
         st.session_state["active_nav_menu"] = target
         st.rerun()
 
-st.sidebar.markdown("<div class='nav-cluster-header'>🎓 AKADEMI & DIALEKTIKA</div>", unsafe_allow_html=True)
-render_nav_item("📚 Penjelajah Korpus", "📚 Paper Explorer & Korpus", f"{total_active} Paper")
-render_nav_item("🗺️ Kurikulum & Silabus", "🗺️ Roadmap Belajar & Kurikulum", "Dean")
-render_nav_item("🥊 Arena Sparring Nalar", "🥊 Arena Sparring Nalar", "7 Tokoh")
-render_nav_item("💬 Tanya Korpus Dialektis", "💬 Tanya Korpus & Sintesis", "Second Brain")
+# Menu follows the research workflow: collect, read, then ask and write.
+st.sidebar.markdown("<div class='nav-cluster-header'>1 · Kumpulkan paper</div>", unsafe_allow_html=True)
+render_nav_item("⚡ Cari & unduh paper", "⚡ Panen Paper Ilmiah")
+render_nav_item("🔗 Analisis dari DOI", "⚡ Bedah DOI Seketika")
 
-st.sidebar.markdown("<div class='nav-cluster-header'>✍️ RISET & PUBLIKASI</div>", unsafe_allow_html=True)
-render_nav_item("⚡ Bedah DOI Seketika", "⚡ Bedah DOI Seketika", "AMRC")
-render_nav_item("✍️ Studio Artikel Siap Baca", "✍️ Studio Artikel Siap Baca", "Essayist")
-render_nav_item("⚡ Panen Paper Ilmiah", "⚡ Panen Paper Ilmiah", "6 Sumber")
-render_nav_item("📑 Laporan Sintesis Riset", "📑 Laporan Sintesis", None)
+st.sidebar.markdown("<div class='nav-cluster-header'>2 · Baca & analisis</div>", unsafe_allow_html=True)
+render_nav_item("📚 Koleksi paper", "📚 Paper Explorer & Korpus", str(total_active))
+render_nav_item("🔍 Cari kata di naskah", "🔍 Full-Text Search")
+render_nav_item("🕸️ Diagram argumen", "🕸️ Diagram Argumen")
 
-st.sidebar.markdown("<div class='nav-cluster-header'>🛠️ UTILITAS & INTEGRASI</div>", unsafe_allow_html=True)
-render_nav_item("🔍 Full-Text Search", "🔍 Full-Text Search", "FTS5")
-render_nav_item("🕸️ Diagram Pohon Argumen", "🕸️ Diagram Argumen", "Mermaid")
-render_nav_item("📤 Hub Ekspor & Flashcards", "📤 Ekspor Data & Flashcards", "Vault/Bib")
+st.sidebar.markdown("<div class='nav-cluster-header'>3 · Tanya & tulis</div>", unsafe_allow_html=True)
+render_nav_item("💬 Tanya koleksi", "💬 Tanya Korpus & Sintesis")
+render_nav_item("✍️ Tulis artikel", "✍️ Studio Artikel Siap Baca")
+render_nav_item("📑 Laporan sintesis", "📑 Laporan Sintesis")
+
+st.sidebar.markdown("<div class='nav-cluster-header'>Lainnya</div>", unsafe_allow_html=True)
+render_nav_item("🗺️ Kurikulum belajar", "🗺️ Roadmap Belajar & Kurikulum")
+render_nav_item("🥊 Latihan debat", "🥊 Arena Sparring Nalar")
+render_nav_item("📤 Ekspor data", "📤 Ekspor Data & Flashcards")
 
 menu = st.session_state["active_nav_menu"]
 
 st.sidebar.divider()
 
+# Technical details live at the bottom, out of the researcher's way
+from cosmolab import usage as _usage
+_month = datetime.now().strftime("%Y-%m")
+_u = _usage.summarize(_usage.load(config.ROOT, _month), by="month")
 fac_dist = db.get_faculty_distribution()
-with st.sidebar.expander("📊 Distribusi Korpus per Fakultas", expanded=False):
+with st.sidebar.expander("⚙️ Info teknis", expanded=False):
+    st.caption(f"Model AI: {config.LLM_MODEL}")
+    if _u:
+        _cost = _usage.format_money(_u[0]["cost"]) if _usage.pricing() else "tarif belum diisi"
+        st.caption(f"Pemakaian AI bulan ini: {_u[0]['total_tokens']:,} token · {_u[0]['calls']} panggilan · {_cost}")
+    st.caption("Paper per bidang:")
     for f in faculty_list:
         cnt = fac_dist.get(f.id, 0)
-        st.write(f"{f.icon} **{f.name}**: `{cnt}` paper")
+        if cnt:
+            st.caption(f"{f.icon} {f.name}: {cnt}")
 
 # Friendly Labels & Classes
 STANCE_LABELS = {
@@ -565,19 +713,14 @@ TYPE_LABELS = {
 if menu == "📚 Paper Explorer & Korpus":
     active_fac_name = faculty_labels.get(selected_faculty_id, "Universal")
     render_hero(
-        title="Penjelajah Korpus & Rekonstruksi Logika",
-        subtitle=f"Fakultas Aktif: <b>{active_fac_name}</b>. Telaah literatur riset, premis formal silogisme, objeksi lawan, dan pertahanan rasional dalam satu basis data terstruktur.",
+        title="Koleksi Paper",
+        subtitle=f"Bidang: <b>{active_fac_name}</b>. Telusuri paper, lihat hasil analisis AI, dan ambil format sitasinya.",
         icon="📚",
-        badges=[
-            {"icon": "🏛️", "text": active_fac_name, "class": "hero-badge-primary"},
-            {"icon": "📄", "text": f"{len(papers)} Paper Tersedia", "class": "hero-badge-accent"},
-            {"icon": "🧠", "text": f"{total_analyzed} Selesai Dibedah", "class": "hero-badge-model"}
-        ]
     )
 
     tab_pe1, tab_pe2 = st.tabs([
-        "📑 Kartu Bedah Silogisme Paper",
-        "📊 Matriks Sintesis Literatur (State of the Art Table)"
+        "📑 Daftar paper",
+        "📊 Matriks literatur"
     ])
 
     with tab_pe1:
@@ -585,22 +728,21 @@ if menu == "📚 Paper Explorer & Korpus":
             st.warning(f"Belum ada paper di fakultas ini. Buka tab '⚡ Panen Paper Ilmiah' untuk mengunduh literatur bidang {active_fac_name}.")
         else:
             with st.container(border=True):
-                col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
-                filter_q = col_f1.text_input("🔍 Cari Judul / Penulis:", placeholder="Ketik kata kunci...")
-                arg_types = ["Semua"] + sorted(list({p.get("argument_type") for p in papers if p.get("argument_type")}))
-                filter_type = col_f2.selectbox("Tipe Argumen:", arg_types, format_func=lambda x: TYPE_LABELS.get(x, x))
-                filter_status = col_f3.selectbox("Status Analisis:", ["Semua Status", "⚠️ Belum Dianalisis", "✅ Sudah Dianalisis"])
-                
-                # Use st.pills for modern stance filtering
-                st.markdown("<small style='color:#64748B; font-weight:600;'>FILTER SIKAP PENULIS (STANCE):</small>", unsafe_allow_html=True)
-                stance_keys = ["Semua", "supports", "critiques", "mixed", "neutral"]
-                filter_stance = st.pills(
-                    "Filter Sikap Penulis",
-                    stance_keys,
-                    default="Semua",
-                    format_func=lambda x: "🌐 Semua Sikap" if x == "Semua" else STANCE_LABELS.get(x, x),
-                    label_visibility="collapsed"
-                )
+                col_f1, col_f2 = st.columns([3, 2])
+                filter_q = col_f1.text_input("Cari judul", placeholder="Ketik kata kunci...")
+                filter_status = col_f2.selectbox("Status", ["Semua Status", "⚠️ Belum Dianalisis", "✅ Sudah Dianalisis"],
+                                                 format_func=lambda x: {"Semua Status": "Semua paper", "⚠️ Belum Dianalisis": "Belum dianalisis", "✅ Sudah Dianalisis": "Sudah dianalisis"}[x])
+
+                with st.expander("Filter lain", expanded=False):
+                    arg_types = ["Semua"] + sorted(list({p.get("argument_type") for p in papers if p.get("argument_type")}))
+                    filter_type = st.selectbox("Jenis argumen", arg_types, format_func=lambda x: TYPE_LABELS.get(x, x))
+                    stance_keys = ["Semua", "supports", "critiques", "mixed", "neutral"]
+                    filter_stance = st.pills(
+                        "Sikap penulis",
+                        stance_keys,
+                        default="Semua",
+                        format_func=lambda x: "Semua" if x == "Semua" else STANCE_LABELS.get(x, x),
+                    )
 
             filtered = papers
             if filter_q:
@@ -618,10 +760,10 @@ if menu == "📚 Paper Explorer & Korpus":
             unanalyzed_scope = [p for p in papers if not p.get("thesis")]
             if unanalyzed_scope:
                 with st.container(border=True):
-                    col_ub1, col_ub2 = st.columns([3, 1])
-                    col_ub1.markdown(f"⚠️ **Terdapat {len(unanalyzed_scope)} paper yang belum dibedah oleh AI di tampilan ini.**")
-                    col_ub1.caption("Jalankan pembedahan AI sekarang untuk membedah seluruh naskah (Tesis, Metodologi, Premis & Kutipan Halaman).")
-                    if col_ub2.button(f"⚡ Bedah Semua ({len(unanalyzed_scope)} Paper)", type="primary", key="btn_batch_analyze_all", use_container_width=True):
+                    col_ub1, col_ub2 = st.columns([2, 1])
+                    col_ub1.markdown(f"**{len(unanalyzed_scope)} paper belum dianalisis.**")
+                    col_ub1.caption("AI mengekstrak tesis, metodologi, temuan, dan kutipan dengan nomor halaman.")
+                    if col_ub2.button(f"Analisis semua ({len(unanalyzed_scope)})", type="primary", key="btn_batch_analyze_all", use_container_width=True):
                         with st.spinner(f"Sedang membedah {len(unanalyzed_scope)} naskah dengan AI ({config.LLM_MODEL})..."):
                             target_f = [p["file"] for p in unanalyzed_scope]
                             _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id", files=target_f)
@@ -629,7 +771,7 @@ if menu == "📚 Paper Explorer & Korpus":
                             st.success(f"Pembedahan {len(unanalyzed_scope)} naskah selesai!")
                             st.rerun()
 
-            st.caption(f"Menampilkan **{len(filtered)}** dari total **{len(papers)}** paper dalam fakultas ini:")
+            st.caption(f"Menampilkan {len(filtered)} dari {len(papers)} paper")
 
             for idx, p in enumerate(filtered, start=1):
                 title = p.get("title") or "Untitled"
@@ -645,46 +787,43 @@ if menu == "📚 Paper Explorer & Korpus":
                 stance_str = STANCE_LABELS.get(stn, stn)
                 type_str = TYPE_LABELS.get(arg_t, arg_t)
 
+                meta_bits = [str(year), fac_name, stance_str]
+                if arg_t not in ("unclassified", "other"):
+                    meta_bits.append(type_str)
+
                 with st.container(border=True):
-                    # Header row inside card
-                    col_c_top1, col_c_top2 = st.columns([4, 1])
-                    with col_c_top1:
-                        st.markdown(f"### {idx}. {title}")
-                        st.markdown(
-                            f"<span class='stance-pill stance-{stn}'>{stance_str}</span> "
-                            f"<span style='background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:3px 8px; border-radius:9999px; font-size:0.75rem; font-weight:600;'>{fac_icon} {fac_name}</span> "
-                            f"<span style='background:#F1F5F9; color:#475569; border:1px solid #E2E8F0; padding:3px 8px; border-radius:9999px; font-size:0.75rem; font-weight:600;'>📅 {year}</span> "
-                            f"<span style='background:#F1F5F9; color:#475569; border:1px solid #E2E8F0; padding:3px 8px; border-radius:9999px; font-size:0.75rem; font-weight:600;'>🏷️ {type_str}</span>",
-                            unsafe_allow_html=True
-                        )
-                    with col_c_top2:
-                        if p.get("url"):
-                            st.link_button("🔗 PDF Asli", p["url"], use_container_width=True)
+                    st.markdown(
+                        f"<div class='paper-card-title'>{idx}. {_e(title)}</div>"
+                        f"<div class='paper-card-meta'>{_e(' · '.join(meta_bits))}</div>",
+                        unsafe_allow_html=True,
+                    )
 
-                    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-
-                    # Thesis & Analysis State
                     if p.get("thesis"):
-                        st.info(f"🎯 **Tesis Utama:** {p.get('thesis')}")
-                    else:
-                        with st.container(border=True):
-                            col_u1, col_u2 = st.columns([3, 1])
-                            with col_u1:
-                                st.warning("⚠️ **Paper ini belum dibedah oleh AI.** Tesis, premis, metodologi, dan temuan bab pembahasan belum diekstrak.")
-                                st.caption("AI akan membaca naskah utuh (10–15 halaman) dan mengekstrak metodologi, temuan inti, rekonstruksi silogisme, serta kutipan bernomor halaman.")
-                            with col_u2:
-                                if st.button("🧠 Bedah Naskah Ini", key=f"btn_an_single_{idx}_{p.get('file')}", type="primary", use_container_width=True):
-                                    with st.spinner(f"Sedang membedah '{title[:35]}...' dengan AI ({config.LLM_MODEL})..."):
-                                        try:
-                                            _analyze.analyze_single_paper(p.get("file"), model=config.LLM_MODEL, lang="id")
-                                            db.sync_all()
-                                            st.success("Pembedahan naskah berhasil!")
-                                            st.rerun()
-                                        except Exception as err:
-                                            st.error(f"Gagal membedah naskah: {err}")
+                        st.markdown(f"<div class='paper-card-thesis'>{_e(p.get('thesis'))}</div>", unsafe_allow_html=True)
+
+                    col_a1, col_a2, col_a3 = st.columns([2, 1, 1])
+                    with col_a1:
+                        if not p.get("thesis"):
+                            st.caption("⚪ Belum dianalisis. AI membaca naskah utuh, sekitar 1 menit per paper.")
+                        else:
+                            st.caption("✅ Sudah dianalisis")
+                    with col_a2:
+                        if not p.get("thesis"):
+                            if st.button("Analisis", key=f"btn_an_single_{idx}_{p.get('file')}", type="primary", use_container_width=True):
+                                with st.spinner(f"Menganalisis '{title[:35]}...'"):
+                                    try:
+                                        _analyze.analyze_single_paper(p.get("file"), model=config.LLM_MODEL, lang="id")
+                                        db.sync_all()
+                                        st.success("Analisis selesai.")
+                                        st.rerun()
+                                    except Exception as err:
+                                        st.error(f"Analisis gagal: {err}")
+                    with col_a3:
+                        if p.get("url"):
+                            st.link_button("Buka sumber", p["url"], use_container_width=True)
 
                     # Logic expander
-                    with st.expander("📐 Bedah Silogisme, Objeksi & Format Sitasi", expanded=False):
+                    with st.expander("Lihat detail analisis", expanded=False):
                         col_det1, col_det2 = st.columns(2)
                         with col_det1:
                             st.markdown("**Metadata Sumber:**")
@@ -701,7 +840,7 @@ if menu == "📚 Paper Explorer & Korpus":
                             raw_an = json.loads(p.get("raw_json") or "{}")
                             res_m = raw_an.get("research_method")
                             if res_m:
-                                st.markdown(f"<div style='background:#F1F5F9; border-left:3px solid #2563EB; padding:6px 12px; border-radius:4px; font-size:0.85rem; margin-bottom:10px;'>🔬 <b>Metodologi Riset:</b> {res_m}</div>", unsafe_allow_html=True)
+                                st.markdown(f"<div style='background:#F1F5F9; border-left:3px solid #2563EB; padding:6px 12px; border-radius:4px; font-size:0.85rem; margin-bottom:10px;'>🔬 <b>Metodologi Riset:</b> {_e(res_m)}</div>", unsafe_allow_html=True)
                             
                             key_finds = raw_an.get("key_findings")
                             if key_finds and isinstance(key_finds, list):
@@ -718,7 +857,7 @@ if menu == "📚 Paper Explorer & Korpus":
                                 if premises:
                                     st.markdown("##### 📐 Rekonstruksi Premis Formal:")
                                     for p_num, prem in enumerate(premises, 1):
-                                        st.markdown(f"<div class='premise-block'><b>P{p_num}:</b> {prem}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div class='premise-block'><b>P{p_num}:</b> {_e(prem)}</div>", unsafe_allow_html=True)
                             except Exception:
                                 pass
 
@@ -740,7 +879,7 @@ if menu == "📚 Paper Explorer & Korpus":
                                     for q in quotes:
                                         p_hint = q.get("page_hint", "N/A")
                                         hint_label = p_hint if any(w in p_hint.lower() for w in ["halaman", "hlm", "bab", "abstrak", "abstract"]) else f"Halaman / Bagian: {p_hint}"
-                                        st.markdown(f"> *\"{q.get('text', '')}\"*\n>\n> — <span style='font-size:0.8rem; color:#475569;'>📍 <b>{hint_label}</b></span>", unsafe_allow_html=True)
+                                        st.markdown(f"> *\"{_e(q.get('text', ''))}\"*\n>\n> — <span style='font-size:0.8rem; color:#475569;'>📍 <b>{_e(hint_label)}</b></span>", unsafe_allow_html=True)
                             except Exception:
                                 pass
 
@@ -886,7 +1025,7 @@ elif menu == "🗺️ Roadmap Belajar & Kurikulum":
                         col_p1.markdown(f"**{p_idx}. [{p['year']}] {p['title']}**")
                         col_p1.caption(f"🎯 *Tesis:* {p['thesis'][:150]}...")
                         col_p2.write(f"Tipe: `{p['argument_type']}`")
-                        col_p3.markdown(f"<span class='stance-pill stance-{p['stance']}'>{p['stance']}</span>", unsafe_allow_html=True)
+                        col_p3.markdown(f"<span class='stance-pill stance-{_e(p['stance'])}'>{_e(p['stance'])}</span>", unsafe_allow_html=True)
                         st.markdown("<hr style='margin:4px 0; border:none; border-top:1px dashed #E2E8F0;'>", unsafe_allow_html=True)
 
         with st.expander("📚 Rujukan Standar & Debat Inti Fakultas Ini", expanded=False):
@@ -1082,14 +1221,9 @@ elif menu == "🥊 Arena Sparring Nalar":
 elif menu == "💬 Tanya Korpus & Sintesis":
     active_fac_name = faculty_labels.get(selected_faculty_id, "Universal")
     render_hero(
-        title="Tanya Korpus & Sintesis Dialektis",
-        subtitle=f"Sintesis berimbang lintas korpus: Mengintegrasikan argumen kalam klasik, falsafa, dan filsafat analitik kontemporer untuk fakultas <b>{active_fac_name}</b>.",
+        title="Tanya Koleksi",
+        subtitle=f"Ajukan pertanyaan riset. AI menjawab hanya dari paper di koleksi (bidang: <b>{active_fac_name}</b>) dan menyebutkan rujukannya.",
         icon="💬",
-        badges=[
-            {"icon": "🧠", "text": "Agentic Dialectic RAG", "class": "hero-badge-primary"},
-            {"icon": "⚖️", "text": "Multi-Perspective Synthesis", "class": "hero-badge-accent"},
-            {"icon": "🏛️", "text": active_fac_name, "class": "hero-badge-model"}
-        ]
     )
 
     fac_suggestions = {
@@ -1125,34 +1259,40 @@ elif menu == "💬 Tanya Korpus & Sintesis":
         ],
     }
 
-    active_sug_list = fac_suggestions.get(selected_faculty_id, fac_suggestions["ilahiyyat"])
+    generic_suggestions = [
+        "Apa temuan utama paper-paper di koleksi ini, dan di mana mereka saling bertentangan?",
+        "Metodologi apa saja yang dipakai, dan apa kelemahan masing-masing?",
+        "Pertanyaan apa yang belum dijawab oleh paper-paper ini?",
+    ]
+    active_sug_list = fac_suggestions.get(selected_faculty_id, generic_suggestions)
     
     with st.container(border=True):
-        selected_sug = st.selectbox("💡 Pilih Contoh Pertanyaan Akademik Terkurasi:", ["(Ketik pertanyaan sendiri...)"] + active_sug_list)
+        selected_sug = st.selectbox("Contoh pertanyaan (opsional)", ["(Ketik pertanyaan sendiri...)"] + active_sug_list)
 
         user_q = st.text_area(
-            "Pertanyaan Penelitian Anda:",
+            "Pertanyaan Anda",
             value=selected_sug if selected_sug != "(Ketik pertanyaan sendiri...)" else "",
             placeholder="Ketik pertanyaan riset Anda di sini...",
             height=95
         )
 
         col_r1, col_r2 = st.columns([1, 2])
-        k_val = col_r1.slider("Jumlah Paper Rujukan:", min_value=2, max_value=8, value=6)
+        k_val = col_r1.slider("Jumlah paper yang dibaca", min_value=2, max_value=8, value=6)
         rag_mode = col_r2.radio(
-            "Mode Penalaran:",
-            ["🧠 Agentic Second Brain (Dialektis Pro vs Kontra)", "⚡ Classic RAG (Cepat)"],
+            "Jenis jawaban",
+            ["Agentic", "Classic"],
+            format_func=lambda x: "Mendalam: bandingkan pendapat pro dan kontra" if x == "Agentic" else "Cepat: jawaban ringkas",
             horizontal=True
         )
 
-        ask_btn = st.button("🚀 Ajukan Pertanyaan ke Second Brain", type="primary", use_container_width=True)
+        ask_btn = st.button("Tanyakan", type="primary", use_container_width=True)
 
     if ask_btn:
         if not user_q.strip():
             st.error("Silakan masukkan pertanyaan terlebih dahulu.")
         else:
             if "Agentic" in rag_mode:
-                with st.spinner("Agen AI sedang menelusuri Second Brain, membandingkan kubu argumen, dan menyusun sintesis..."):
+                with st.spinner("Membaca paper dan membandingkan pendapat. Biasanya 30–90 detik..."):
                     try:
                         res = _ask_agent.ask_agentic(question=user_q, model=config.LLM_MODEL, top_k=k_val)
                         st.session_state["agentic_answer"] = {
@@ -1162,7 +1302,7 @@ elif menu == "💬 Tanya Korpus & Sintesis":
                     except Exception as e:
                         st.error(f"Gagal memproses pertanyaan: {e}")
             else:
-                with st.spinner("AI sedang menelusuri korpus paper..."):
+                with st.spinner("Membaca paper. Biasanya 10–30 detik..."):
                     try:
                         answer = _ask.ask(question=user_q, model=config.LLM_MODEL, top_k=k_val)
                         st.session_state["classic_answer"] = {
@@ -1176,7 +1316,7 @@ elif menu == "💬 Tanya Korpus & Sintesis":
         ans_data = st.session_state["agentic_answer"]
         res = ans_data["res"]
 
-        with st.expander("🔍 Langkah Penalaran & Eksplorasi Agen (Thought Process)", expanded=False):
+        with st.expander("Langkah kerja AI", expanded=False):
             for idx, step in enumerate(res.get("thought_steps", []), 1):
                 st.markdown(f"**Langkah {idx}:** {step}")
 
@@ -1185,13 +1325,13 @@ elif menu == "💬 Tanya Korpus & Sintesis":
 
         ref_papers = res.get("referenced_papers", [])
         if ref_papers:
-            with st.expander(f"📚 Paper Rujukan yang Dianalisis ({len(ref_papers)} paper)", expanded=False):
+            with st.expander(f"Paper yang dipakai ({len(ref_papers)})", expanded=False):
                 for p in ref_papers:
                     st.markdown(f"- **[{p.get('year', 'n.d.')}] {p.get('title')}** | Sikap: `{p.get('supports_or_critiques')}`")
                     if p.get("thesis"):
                         st.caption(f"  *Tesis:* {p.get('thesis')}")
 
-        if st.button("💎 Simpan ke Obsidian Vault", key="btn_save_agent_obsidian"):
+        if st.button("Simpan jawaban ke catatan Obsidian", key="btn_save_agent_obsidian"):
             saved_path = export.export_agent_synthesis_to_obsidian(ans_data["q"], res.get("answer", ""), ref_papers)
             st.success(f"Berhasil disimpan ke Obsidian: `{saved_path.name}`")
 
@@ -1206,17 +1346,12 @@ elif menu == "💬 Tanya Korpus & Sintesis":
 # -------------------------------------------------------------
 elif menu == "✍️ Studio Artikel Siap Baca":
     render_hero(
-        title="Studio Penulis Artikel Siap Baca (The Academic Essayist)",
-        subtitle="Ubah riset korpus dan dialektika pemikiran menjadi esai panjang mengalir, artikel jurnal, atau monograf siap publikasi dengan tipografi serif elegan dan tombol cetak PDF.",
+        title="Tulis Artikel",
+        subtitle="AI menulis draf artikel dari paper di koleksi. Draf wajib diperiksa peneliti sebelum dikirim ke klien.",
         icon="✍️",
-        badges=[
-            {"icon": "📰", "text": "Publication Ready", "class": "hero-badge-primary"},
-            {"icon": "🖨️", "text": "Print-to-PDF Styled", "class": "hero-badge-accent"},
-            {"icon": "📖", "text": "Merriweather Typography", "class": "hero-badge-model"}
-        ]
     )
 
-    tab_art1, tab_art2 = st.tabs(["✨ Tulis Artikel Baru", "📂 Arsip Artikel Siap Baca"])
+    tab_art1, tab_art2 = st.tabs(["✨ Tulis baru", "📂 Artikel tersimpan & kirim ke klien"])
 
     with tab_art1:
         topic_presets = {
@@ -1227,15 +1362,15 @@ elif menu == "✍️ Studio Artikel Siap Baca":
             "epistemologi": "Skeptisisme Radikal dan Batas Akal: Dari Al-Munqidh Al-Ghazali ke Cogito Descartes",
             "nubuwwat": "Ketika Hukum Alam Terdiam: Menimbang Rasionalitas Mukjizat di Hadapan Keraguan Hume",
         }
-        default_preset = topic_presets.get(selected_faculty_id, "Teka-teki Sebab-Akibat: Mempertemukan Api Al-Ghazali, Skeptisisme Hume, dan Ketidakpastian Kuantum")
+        default_preset = topic_presets.get(selected_faculty_id, "")
 
         with st.container(border=True):
-            col_a1, col_a2 = st.columns([2, 1])
-            article_topic = col_a1.text_input("Judul / Topik Artikel yang Ingin Ditulis:", value=default_preset)
+            col_a1, col_a2 = st.columns([3, 2])
+            article_topic = col_a1.text_input("Topik atau judul artikel", value=default_preset, placeholder="contoh: Dampak kebijakan zakat produktif terhadap UMKM")
             
             style_keys = list(_writer.ARTICLE_STYLES.keys())
             article_style = col_a2.selectbox(
-                "Format & Gaya Penulisan:",
+                "Jenis tulisan",
                 style_keys,
                 format_func=lambda x: _writer.ARTICLE_STYLES[x]["name"]
             )
@@ -1243,29 +1378,32 @@ elif menu == "✍️ Studio Artikel Siap Baca":
 
             col_src1, col_src2 = st.columns(2)
             with col_src1:
-                ref_mode = st.radio("Sumber Rujukan Korpus:", ["Otomatis Cari dari Second Brain", "Pilih Paper Tertentu dari Database"], horizontal=True)
+                ref_mode = st.radio("Paper rujukan", ["Otomatis Cari dari Second Brain", "Pilih Paper Tertentu dari Database"],
+                                    format_func=lambda x: "Pilih otomatis" if x.startswith("Otomatis") else "Saya pilih sendiri", horizontal=True)
             
             specific_papers = None
             if ref_mode == "Pilih Paper Tertentu dari Database":
                 with col_src2:
                     paper_options = [p["file"] for p in all_papers if p.get("thesis")]
-                    specific_papers = st.multiselect("Pilih Paper untuk Disintesis:", paper_options, default=paper_options[:3] if len(paper_options) >= 3 else paper_options)
+                    _paper_titles = {p["file"]: p.get("title") or p["file"] for p in all_papers}
+                    specific_papers = st.multiselect("Paper yang dipakai", paper_options, default=paper_options[:3] if len(paper_options) >= 3 else paper_options,
+                                                     format_func=lambda f: _paper_titles.get(f, f))
 
-            col_cp1, col_cp2 = st.columns([2, 1])
-            custom_prompt = col_cp1.text_input("Instruksi / Sudut Pandang Khusus (Opsional):", placeholder="contoh: Jelaskan istilah teknis saat pertama kali muncul...")
+            col_cp1, col_cp2 = st.columns([3, 2])
+            custom_prompt = col_cp1.text_input("Instruksi tambahan (opsional)", placeholder="contoh: Jelaskan istilah teknis saat pertama kali muncul...")
             model_choice = col_cp2.selectbox(
-                "Model Penulis AI:",
+                "Kecepatan",
                 ["gemini-3-8-flash", "deepseek-v4-pro"],
-                format_func=lambda x: "⚡ Gemini 3.8 Flash (Cepat & Stabil ~15d)" if "gemini" in x else "🧠 DeepSeek V4 Pro (Penalaran Penuh ~90d)"
+                format_func=lambda x: "Cepat (±15 detik)" if "gemini" in x else "Mendalam (±90 detik)"
             )
 
-            write_btn = st.button("🚀 Tulis Artikel Siap Baca Sekarang", type="primary", use_container_width=True)
+            write_btn = st.button("Tulis artikel", type="primary", use_container_width=True)
 
         if write_btn:
             if not article_topic.strip():
                 st.error("Silakan masukkan topik artikel terlebih dahulu.")
             else:
-                with st.spinner("The Academic Essayist sedang menenun riset korpus, membedah silogisme, dan menyusun esai panjang yang mengalir..."):
+                with st.spinner("Menulis artikel dari paper di koleksi..."):
                     art_result = _writer.generate_article(
                         topic=article_topic,
                         style=article_style,
@@ -1285,13 +1423,13 @@ elif menu == "✍️ Studio Artikel Siap Baca":
 
             # Action Toolbar inside a border container
             with st.container(border=True):
-                col_tb1, col_tb2, col_tb3, col_tb4 = st.columns(4)
-                col_tb1.metric("Waktu Baca", f"~{curr.get('reading_time_min', 5)} menit", border=True)
-                col_tb2.metric("Gaya Format", curr.get("style", "essay").upper(), border=True)
+                st.success(f"Draf selesai: sekitar {curr.get('reading_time_min', 5)} menit baca. "
+                           "Untuk mengirim ke klien, buka tab **Artikel tersimpan & kirim ke klien**.")
+                col_tb3, col_tb4 = st.columns(2)
                 
                 with col_tb3:
                     st.download_button(
-                        "📄 Unduh Markdown (.md)",
+                        "Unduh draf (.md)",
                         data=curr["content_md"],
                         file_name=f"{curr.get('title', 'Artikel')[:40]}.md",
                         mime="text/markdown",
@@ -1299,25 +1437,25 @@ elif menu == "✍️ Studio Artikel Siap Baca":
                     )
                 with col_tb4:
                     st.download_button(
-                        "🌐 Unduh HTML Siap Cetak",
+                        "Unduh draf (.html)",
                         data=html_content,
                         file_name=f"{curr.get('title', 'Artikel')[:40]}.html",
                         mime="text/html",
                         use_container_width=True
                     )
 
-            if saved.get("obsidian_path"):
-                st.success(f"Tersimpan di: `{saved['md_path'].name}` dan Vault Obsidian `{saved['obsidian_path'].name}`")
+            if saved.get("md_path"):
+                st.caption(f"Tersimpan sebagai `{saved['md_path'].name}`")
 
             # Elegant Reader View
-            st.markdown("### 📖 Tinjauan Artikel (Reader View):")
+            st.markdown("#### Pratinjau")
             if hasattr(st, "iframe"):
                 st.iframe(html_content, height=650)
             else:
                 st.components.v1.html(html_content, height=650, scrolling=True)
 
             if curr.get("referenced_papers"):
-                with st.expander("📚 Rujukan Paper yang Digunakan"):
+                with st.expander("Paper yang dipakai"):
                     for rp in curr["referenced_papers"]:
                         st.markdown(f"- **[{rp.get('year', 'n.d.')}] {rp.get('title')}** | {rp.get('supports_or_critiques')}")
 
@@ -1327,22 +1465,25 @@ elif menu == "✍️ Studio Artikel Siap Baca":
         md_articles = sorted(list(articles_dir.glob("*.md")), reverse=True)
 
         if not md_articles:
-            st.info("Belum ada artikel tersimpan. Silakan tulis artikel baru di tab sebelah.")
+            st.info("Belum ada artikel. Tulis artikel baru di tab sebelah.")
         else:
-            selected_art_file = st.selectbox("Pilih Artikel untuk Dibaca / Diunduh:", [a.name for a in md_articles])
+            selected_art_file = st.selectbox("Pilih artikel", [a.name for a in md_articles])
             art_path = articles_dir / selected_art_file
             art_text = art_path.read_text(encoding="utf-8")
             
             html_partner = articles_dir / f"{art_path.stem}.html"
             html_partner_data = html_partner.read_text(encoding="utf-8") if html_partner.exists() else _writer.format_article_html({"title": art_path.stem, "content_md": art_text})
 
-            col_ar1, col_ar2 = st.columns(2)
-            with col_ar1:
-                st.download_button("⬇️ Unduh Markdown (.md)", data=art_text, file_name=selected_art_file, mime="text/markdown", use_container_width=True)
-            with col_ar2:
-                st.download_button("⬇️ Unduh HTML Cantik (.html)", data=html_partner_data, file_name=f"{art_path.stem}.html", mime="text/html", use_container_width=True)
+            render_client_delivery(art_path, key=f"art_{art_path.stem}")
 
-            st.divider()
+            with st.expander("Unduhan internal (Markdown / HTML, bukan untuk klien)"):
+                col_ar1, col_ar2 = st.columns(2)
+                with col_ar1:
+                    st.download_button("Unduh .md", data=art_text, file_name=selected_art_file, mime="text/markdown", use_container_width=True)
+                with col_ar2:
+                    st.download_button("Unduh .html", data=html_partner_data, file_name=f"{art_path.stem}.html", mime="text/html", use_container_width=True)
+
+            st.markdown("#### Pratinjau")
             if hasattr(st, "iframe"):
                 st.iframe(html_partner_data, height=650)
             else:
@@ -1403,20 +1544,20 @@ elif menu == "⚡ Bedah DOI Seketika":
 
             st.markdown("---")
             # Header Card
-            pdf_link_html = f" • <a href='{res.get('pdf_url')}' target='_blank' style='background:#10B981; color:white; padding:3px 8px; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.8rem;'>📄 Unduh PDF Terbuka (Legal)</a>" if res.get("pdf_url") else ""
+            pdf_link_html = f" • <a href='{_safe_url(res.get('pdf_url'))}' target='_blank' style='background:#10B981; color:white; padding:3px 8px; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.8rem;'>📄 Unduh PDF Terbuka (Legal)</a>" if res.get("pdf_url") else ""
             oa_badge = "<span style='background:#DCFCE7; color:#166534; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.85rem;'>🟢 Open Access (Tersedia Naskah Terbuka)</span>" if res.get("is_oa") else "<span style='background:#FEF3C7; color:#92400E; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.85rem;'>🔒 Paywalled / Berbayar</span>"
             
             st.markdown(f"""
             <div style="background:white; border:1px solid #E2E8F0; border-radius:12px; padding:20px; margin-bottom:18px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
                 <div style="font-size:0.85rem; color:#64748B; margin-bottom:6px;">
-                    <b>{res.get('venue') or res.get('publisher') or 'Jurnal Ilmiah'}</b> • Tahun {res.get('year')} • {oa_badge}{pdf_link_html} • <b>{res.get('citation_count')}</b> Sitasi
+                    <b>{_e(res.get('venue') or res.get('publisher') or 'Jurnal Ilmiah')}</b> • Tahun {_e(res.get('year'))} • {oa_badge}{pdf_link_html} • <b>{_e(res.get('citation_count'))}</b> Sitasi
                 </div>
-                <h3 style="margin-top:0; color:#0F172A; font-weight:700;">{res.get('title')}</h3>
+                <h3 style="margin-top:0; color:#0F172A; font-weight:700;">{_e(res.get('title'))}</h3>
                 <div style="color:#475569; font-size:0.92rem; margin-bottom:10px;">
-                    ✍️ <b>Penulis:</b> {', '.join(res.get('authors', [])) or 'Anonim'}
+                    ✍️ <b>Penulis:</b> {_e(', '.join(res.get('authors', [])) or 'Anonim')}
                 </div>
                 <div>
-                    🔗 <a href="{res.get('url')}" target="_blank" style="text-decoration:none; color:#2563EB; font-weight:600;">https://doi.org/{res.get('doi')}</a>
+                    🔗 <a href="{_safe_url(res.get('url'))}" target="_blank" style="text-decoration:none; color:#2563EB; font-weight:600;">https://doi.org/{_e(res.get('doi'))}</a>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1428,7 +1569,7 @@ elif menu == "⚡ Bedah DOI Seketika":
             # Elsevier-Style Highlights
             if a.get("highlights"):
                 st.markdown("##### ⚡ Research Highlights (Gaya Elsevier ScienceDirect)")
-                hl_html = "".join(f"<li style='margin-bottom:6px; color:#1E293B;'>{h}</li>" for h in a.get("highlights"))
+                hl_html = "".join(f"<li style='margin-bottom:6px; color:#1E293B;'>{_e(h)}</li>" for h in a.get("highlights"))
                 st.markdown(f"""
                 <div style="background:#F8FAFC; border-left:4px solid #10B981; padding:12px 18px; border-radius:0 8px 8px 0; margin-bottom:20px;">
                     <ul style="margin:0; padding-left:20px;">{hl_html}</ul>
@@ -1520,29 +1661,19 @@ elif menu == "⚡ Bedah DOI Seketika":
 # -------------------------------------------------------------
 elif menu == "⚡ Panen Paper Ilmiah":
     render_hero(
-        title="Panen Paper Ilmiah Multi-Fakultas",
-        subtitle="Pencarian terpadu di <b>6 basis data akademik global</b> dengan resolusi preprint dan naskah terbuka legal melalui Unpaywall.",
+        title="Cari & Unduh Paper",
+        subtitle="Cari paper di 6 basis data akademik. CosmoLab hanya mengunduh naskah yang legal dan terbuka (open access).",
         icon="⚡",
-        badges=[
-            {"icon": "🌐", "text": "6 Academic Engines", "class": "hero-badge-primary"},
-            {"icon": "🔓", "text": "Unpaywall Auto-Resolver", "class": "hero-badge-accent"},
-            {"icon": "📥", "text": "Drag & Drop Manual PDF", "class": "hero-badge-model"}
-        ]
     )
 
     # Visual Ribbon of Connected Sources
     st.markdown("""
-    <div class="source-ribbon">
-        <span class="source-chip source-chip-active"><span class="dot-live"></span> arXiv (Preprint Logika & Fisika)</span>
-        <span class="source-chip source-chip-active"><span class="dot-live"></span> DOAJ (Open Access Peer-Reviewed)</span>
-        <span class="source-chip source-chip-active"><span class="dot-live"></span> Semantic Scholar (Graph Sitasi)</span>
-        <span class="source-chip source-chip-active"><span class="dot-live"></span> Crossref (Polite Pool 150M+ Metadata)</span>
-        <span class="source-chip source-chip-active"><span class="dot-live"></span> OpenAlex (Indeks Global Terbuka)</span>
-        <span class="source-chip source-chip-active"><span class="dot-live"></span> CORE v3 (200M+ Repositori Kampus)</span>
+    <div style="font-size:0.8rem; color:#64748B; margin-bottom:10px;">
+        Sumber: arXiv · DOAJ · Semantic Scholar · Crossref · OpenAlex · CORE
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("🔑 Status Integrasi Repositori CORE (200M+ Paper Universitas Dunia)", expanded=False):
+    with st.expander("Sumber tambahan: CORE (opsional)", expanded=False):
         core_key = getattr(config, "CORE_API_KEY", "")
         if core_key:
             st.success(f"🟢 **CORE API Terhubung.** Kunci API terdeteksi di lingkungan sistem.")
@@ -1553,31 +1684,31 @@ elif menu == "⚡ Panen Paper Ilmiah":
             )
 
     badge_config = {
-        "search_start": ("#3B82F6", "🔍 SEARCH"),
-        "faculty_start": ("#6366F1", "🏛️ FACULTY"),
-        "query_step": ("#3B82F6", "🔍 QUERY"),
-        "paper_found": ("#06B6D4", "📄 FOUND"),
-        "download_start": ("#F59E0B", "📥 DOWNLOADING"),
-        "download_ok": ("#10B981", "✅ DOWNLOADED"),
-        "download_retry": ("#F97316", "🔄 RETRY"),
-        "download_fail": ("#EF4444", "❌ FAIL"),
-        "skip": ("#94A3B8", "⏩ SKIPPED"),
-        "duplicate": ("#94A3B8", "⏩ DUPLICATE"),
-        "no_pdf": ("#F43F5E", "🚫 NO OA PDF"),
-        "extract_start": ("#0EA5E9", "📄 EXTRACTING"),
-        "extract_ok": ("#10B981", "✅ EXTRACTED"),
-        "extract_skip": ("#94A3B8", "⏩ TEXT READY"),
-        "extract_fail": ("#EF4444", "❌ EXTRACT FAIL"),
-        "analyze_start": ("#8B5CF6", "🧠 ANALYZING AI"),
-        "analyze_ok": ("#10B981", "✅ ANALYZED"),
-        "analyze_skip": ("#94A3B8", "⏩ ALREADY ANALYZED"),
-        "analyze_fail": ("#EF4444", "❌ AI ERROR"),
+        "search_start": ("#3B82F6", "🔍 MENCARI"),
+        "faculty_start": ("#6366F1", "🏛️ BIDANG"),
+        "query_step": ("#3B82F6", "🔍 KATA KUNCI"),
+        "paper_found": ("#06B6D4", "📄 DITEMUKAN"),
+        "download_start": ("#F59E0B", "📥 MENGUNDUH"),
+        "download_ok": ("#10B981", "✅ TERUNDUH"),
+        "download_retry": ("#F97316", "🔄 COBA LAGI"),
+        "download_fail": ("#EF4444", "❌ GAGAL"),
+        "skip": ("#94A3B8", "⏩ DILEWATI"),
+        "duplicate": ("#94A3B8", "⏩ SUDAH ADA"),
+        "no_pdf": ("#F43F5E", "🚫 TIDAK ADA PDF TERBUKA"),
+        "extract_start": ("#0EA5E9", "📄 MEMBACA TEKS"),
+        "extract_ok": ("#10B981", "✅ TEKS SIAP"),
+        "extract_skip": ("#94A3B8", "⏩ TEKS SUDAH ADA"),
+        "extract_fail": ("#EF4444", "❌ TEKS GAGAL"),
+        "analyze_start": ("#8B5CF6", "🧠 MENGANALISIS"),
+        "analyze_ok": ("#10B981", "✅ TERANALISIS"),
+        "analyze_skip": ("#94A3B8", "⏩ SUDAH DIANALISIS"),
+        "analyze_fail": ("#EF4444", "❌ AI GAGAL"),
     }
 
     def run_live_harvest_process(harvest_callable, auto_analyze: bool = True):
         console_box = st.container(border=True)
         with console_box:
-            st.markdown("#### ⚡ Konsol Pemantauan Panen & Analisis Real-Time")
+            st.markdown("#### Proses berjalan")
             status_box = st.empty()
             progress_bar = st.progress(0.05, text="🚀 Menginisialisasi koneksi repositori global...")
             
@@ -1673,7 +1804,7 @@ elif menu == "⚡ Panen Paper Ilmiah":
             if new_papers:
                 with st.expander(f"📚 Naskah yang Baru Saja Berhasil Diunduh ({len(new_papers)} Paper)", expanded=True):
                     for p_idx, np in enumerate(new_papers[:8], 1):
-                        st.markdown(f"**{p_idx}. {np.get('title')}** &nbsp; <span style='font-size:0.75rem; color:#64748B;'>`{np.get('file', '')}`</span>", unsafe_allow_html=True)
+                        st.markdown(f"**{p_idx}. {_e(np.get('title'))}** &nbsp; <span style='font-size:0.75rem; color:#64748B;'>`{_e(np.get('file', ''))}`</span>", unsafe_allow_html=True)
 
         except Exception as e:
             status_box.error(f"❌ Terjadi kesalahan saat proses panen: {e}")
@@ -1681,7 +1812,7 @@ elif menu == "⚡ Panen Paper Ilmiah":
     def run_live_analyze_process(target_files: list[str], model: str, lang: str, workers: int):
         console_box = st.container(border=True)
         with console_box:
-            st.markdown("#### 🧠 Konsol Studio Bedah Naskah Real-Time")
+            st.markdown("#### Proses analisis berjalan")
             status_box = st.empty()
             progress_bar = st.progress(0.05, text="Memulai pembedahan naskah...")
             col_m1, col_m2 = st.columns(2)
@@ -1728,19 +1859,19 @@ elif menu == "⚡ Panen Paper Ilmiah":
         except Exception as e:
             status_box.error(f"❌ Terjadi kesalahan: {e}")
 
-    tab_h1, tab_h2, tab_h3, tab_h4, tab_h5 = st.tabs([
-        "🏛️ Panen Berdasarkan Fakultas",
-        "🔍 Pencarian Bebas & Petakan Fakultas",
-        "➕ Kelola & Tambah Fakultas / Prodi Baru",
-        "📥 Unggah PDF Manual / Impor DOI",
-        "🧠 Studio Bedah Naskah Mandiri"
+    tab_h2, tab_h1, tab_h4, tab_h5, tab_h3 = st.tabs([
+        "🔍 Cari topik",
+        "🏛️ Per bidang ilmu",
+        "📥 Unggah PDF / DOI",
+        "🧠 Analisis paper",
+        "➕ Kelola bidang ilmu"
     ])
 
     with tab_h1:
         with st.container(border=True):
             col_cat, col_fac = st.columns([1, 2])
             cat_filter = col_cat.selectbox(
-                "Filter Kategori:",
+                "Kategori",
                 ["Semua Kategori", "Multidisiplin & Terapan", "Filosofis & Teologis", "Kustom Peneliti"],
                 key="h_cat_filter"
             )
@@ -1752,7 +1883,7 @@ elif menu == "⚡ Panen Paper Ilmiah":
                     filtered_faculties = faculty_list
 
             target_fac_id = col_fac.selectbox(
-                "Pilih Fakultas / Program Studi Sasaran:",
+                "Bidang ilmu",
                 [f.id for f in filtered_faculties],
                 format_func=lambda x: faculty_labels.get(x, x),
                 key="h_fac_select"
@@ -1760,19 +1891,20 @@ elif menu == "⚡ Panen Paper Ilmiah":
             target_fac_obj = _faculties.get_faculty(target_fac_id)
             
             st.markdown(
-                f"### {target_fac_obj.icon} **{target_fac_obj.name}** "
-                f"<span style='background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:3px 10px; border-radius:9999px; font-size:0.8rem; font-weight:600;'>{getattr(target_fac_obj, 'category', 'Umum')}</span>",
+                f"### {_e(target_fac_obj.icon)} **{_e(target_fac_obj.name)}** "
+                f"<span style='background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:3px 10px; border-radius:9999px; font-size:0.8rem; font-weight:600;'>{_e(getattr(target_fac_obj, 'category', 'Umum'))}</span>",
                 unsafe_allow_html=True
             )
             st.caption(target_fac_obj.full_desc or target_fac_obj.short_desc)
             
-            st.markdown(f"**Query Terkurasi:** {', '.join([f'`{q}`' for q in target_fac_obj.default_queries])}")
+            st.markdown(f"**Kata kunci yang dicari:** {', '.join([f'`{q}`' for q in target_fac_obj.default_queries])}")
             
             col_hp1, col_hp2 = st.columns([1, 1])
-            h_max_per_q = int(col_hp1.number_input("Maksimal Paper per Query:", min_value=2, max_value=25, value=6, key="hp_max"))
-            auto_an_fac = col_hp2.checkbox("🤖 Otomatis Ekstrak & Analisis ke Bahasa Indonesia", value=True, key="hp_auto")
+            h_max_per_q = int(col_hp1.number_input("Paper per kata kunci", min_value=2, max_value=25, value=6, key="hp_max"))
+            col_hp2.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
+            auto_an_fac = col_hp2.checkbox("Langsung analisis setelah diunduh", value=True, key="hp_auto")
 
-            harvest_fac_btn = st.button("📥 Panen Literatur Fakultas Ini", type="primary", key="btn_harvest_fac", use_container_width=True)
+            harvest_fac_btn = st.button("Cari & unduh", type="primary", key="btn_harvest_fac", use_container_width=True)
 
         if harvest_fac_btn:
             run_live_harvest_process(
@@ -1782,36 +1914,39 @@ elif menu == "⚡ Panen Paper Ilmiah":
 
     with tab_h2:
         with st.container(border=True):
-            st.markdown("#### 🔍 Pencarian Bebas Lintas 6 Repositori Global")
-            st.caption("Cari topik apa saja (misal: 'green accounting', 'hukum tata negara', 'blended learning'). Paper akan langsung diunduh PDF legalnya dan dipetakan ke fakultas pilihan Anda.")
+            st.caption("Kata kunci bahasa Inggris memberi hasil paling banyak.")
             
             col_c1, col_c2 = st.columns([3, 1])
-            custom_q = col_c1.text_input("Topik / Kata Kunci Paper Bebas:", value="islamic banking financial performance risk management")
-            custom_max = int(col_c2.number_input("Jumlah Maksimal Paper:", min_value=3, max_value=60, value=10, key="c_max"))
+            custom_q = col_c1.text_input("Topik atau kata kunci", placeholder="contoh: green accounting, blended learning, islamic microfinance")
+            custom_max = int(col_c2.number_input("Jumlah paper", min_value=3, max_value=60, value=10, key="c_max"))
 
             # Options include all registered faculties + option to create ad-hoc
             fac_dropdown_keys = [f.id for f in faculty_list] + ["_new_faculty_on_the_fly_"]
             def _format_fac_choice(k):
                 if k == "_new_faculty_on_the_fly_":
-                    return "➕ Ketik Fakultas / Prodi Baru Langsung..."
+                    return "➕ Bidang baru..."
                 return faculty_labels.get(k, k)
 
             col_cf1, col_cf2 = st.columns([2, 1])
-            chosen_fac_key = col_cf1.selectbox("Petakan Paper ke Fakultas:", fac_dropdown_keys, format_func=_format_fac_choice, key="c_fac_select")
-            auto_an_cust = col_cf2.checkbox("🤖 Auto Analisis AI", value=True, key="c_auto")
+            chosen_fac_key = col_cf1.selectbox("Simpan ke bidang", fac_dropdown_keys, format_func=_format_fac_choice, key="c_fac_select",
+                                              index=fac_dropdown_keys.index(selected_faculty_id) if selected_faculty_id in fac_dropdown_keys else 0)
+            col_cf2.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
+            auto_an_cust = col_cf2.checkbox("Langsung analisis", value=True, key="c_auto")
 
             effective_fac_id = chosen_fac_key
             if chosen_fac_key == "_new_faculty_on_the_fly_":
                 col_nf1, col_nf2 = st.columns([3, 1])
-                new_fac_name = col_nf1.text_input("Nama Fakultas / Prodi Baru:", placeholder="contoh: Teknik Arsitektur & Perkotaan", key="nf_name_input")
-                new_fac_icon = col_nf2.text_input("Icon Emoji:", value="🏛️", key="nf_icon_input")
+                new_fac_name = col_nf1.text_input("Nama bidang baru", placeholder="contoh: Teknik Arsitektur & Perkotaan", key="nf_name_input")
+                new_fac_icon = col_nf2.text_input("Ikon", value="🏛️", key="nf_icon_input")
 
-            harvest_cust_btn = st.button("📥 Mulai Panen Kustom", type="primary", key="btn_harvest_cust", use_container_width=True)
+            harvest_cust_btn = st.button("Cari & unduh", type="primary", key="btn_harvest_cust", use_container_width=True)
 
-        if harvest_cust_btn:
+        if harvest_cust_btn and not custom_q.strip():
+            st.error("Isi topik atau kata kunci dulu.")
+        elif harvest_cust_btn:
             if chosen_fac_key == "_new_faculty_on_the_fly_":
                 if not new_fac_name.strip():
-                    st.error("Silakan masukkan nama fakultas/prodi baru terlebih dahulu.")
+                    st.error("Isi nama bidang baru dulu.")
                     st.stop()
                 # Create and register the new faculty permanently
                 saved_new_fac = _faculties.save_custom_faculty(
@@ -1822,7 +1957,7 @@ elif menu == "⚡ Panen Paper Ilmiah":
                     category="Kustom Peneliti"
                 )
                 effective_fac_id = saved_new_fac.id
-                st.success(f"Fakultas '{saved_new_fac.name}' ({saved_new_fac.icon}) berhasil didaftarkan secara permanen!")
+                st.success(f"Bidang '{saved_new_fac.name}' tersimpan.")
 
             run_live_harvest_process(
                 lambda cb: _harvest.harvest(custom_q, max_results=custom_max, workers=4, delay=0.5, faculty=effective_fac_id, progress_cb=cb),
@@ -1831,28 +1966,24 @@ elif menu == "⚡ Panen Paper Ilmiah":
 
     with tab_h3:
         with st.container(border=True):
-            st.markdown("### ➕ Kelola & Daftarkan Fakultas / Program Studi Baru")
-            st.caption(
-                "Buat program studi spesifik untuk riset klien Anda (misal: S2 Manajemen Rumah Sakit, S3 Hukum Lingkungan, S1 Pendidikan Bahasa). "
-                "Fakultas yang dibuat akan langsung memiliki tombol 1-klik panen dan terintegrasi di seluruh filter CosmoLab."
-            )
+            st.caption("Buat bidang ilmu sendiri untuk riset klien, misalnya Manajemen Rumah Sakit atau Hukum Lingkungan. Bidang ini langsung muncul di semua pilihan bidang.")
 
             col_cf_form1, col_cf_form2 = st.columns([3, 1])
-            new_dept_name = col_cf_form1.text_input("Nama Fakultas / Program Studi:", placeholder="Contoh: Manajemen Rumah Sakit & Layanan Kesehatan", key="reg_fac_name")
-            new_dept_icon = col_cf_form2.text_input("Simbol Emoji:", value="🏥", key="reg_fac_icon")
+            new_dept_name = col_cf_form1.text_input("Nama bidang ilmu", placeholder="Contoh: Manajemen Rumah Sakit & Layanan Kesehatan", key="reg_fac_name")
+            new_dept_icon = col_cf_form2.text_input("Ikon", value="🏥", key="reg_fac_icon")
 
             col_cf_meta1, col_cf_meta2 = st.columns(2)
-            new_dept_category = col_cf_meta1.selectbox("Kategori Bidang:", ["Multidisiplin & Terapan", "Kustom Peneliti", "Sains & Humaniora"], key="reg_fac_cat")
-            new_dept_short = col_cf_meta2.text_input("Deskripsi Singkat:", placeholder="Contoh: Mutu faskes, akreditasi RS, kepuasan pasien BPJS", key="reg_fac_short")
+            new_dept_category = col_cf_meta1.selectbox("Kategori", ["Multidisiplin & Terapan", "Kustom Peneliti", "Sains & Humaniora"], key="reg_fac_cat")
+            new_dept_short = col_cf_meta2.text_input("Deskripsi singkat", placeholder="Contoh: Mutu faskes, akreditasi RS, kepuasan pasien BPJS", key="reg_fac_short")
 
             new_dept_queries = st.text_area(
-                "Kata Kunci Panen Terkurasi (1 per baris atau pisahkan dengan koma):",
+                "Kata kunci pencarian (satu per baris)",
                 placeholder="hospital administration quality\nbpjs kesehatan patient satisfaction\nlean hospital management clinical governance\nelectronic medical record healthcare adoption",
                 key="reg_fac_queries",
                 height=110
             )
 
-            if st.button("💾 Daftarkan & Simpan Fakultas Ini", type="primary", key="btn_save_custom_fac", use_container_width=True):
+            if st.button("Simpan bidang ilmu", type="primary", key="btn_save_custom_fac", use_container_width=True):
                 if not new_dept_name.strip():
                     st.error("Nama Fakultas/Prodi wajib diisi.")
                 elif not new_dept_queries.strip():
@@ -1869,10 +2000,10 @@ elif menu == "⚡ Panen Paper Ilmiah":
                     st.success(f"Berhasil mendaftarkan fakultas baru: **{saved_fac.icon} {saved_fac.name}** dengan {len(raw_queries)} query terkurasi!")
                     st.rerun()
 
-        st.markdown("#### 📋 Katalog Fakultas Kustom Peneliti")
+        st.markdown("#### Bidang ilmu buatan tim")
         custom_list = [f for f in faculty_list if getattr(f, "is_custom", False)]
         if not custom_list:
-            st.info("Belum ada fakultas kustom yang didaftarkan. Gunakan formulir di atas untuk membuat fakultas/prodi baru sesuai bidang riset klien Anda.")
+            st.info("Belum ada. Isi formulir di atas untuk membuat bidang ilmu baru.")
         else:
             for cfac in custom_list:
                 cfac_papers = [p for p in all_papers if p.get("faculty") == cfac.id]
@@ -1885,38 +2016,33 @@ elif menu == "⚡ Panen Paper Ilmiah":
                         st.markdown(f"<span style='font-size:0.8rem; color:#64748B;'>Paper di Database: <b>{len(cfac_papers)} paper</b></span>", unsafe_allow_html=True)
 
                     with col_act:
-                        if st.button(f"📥 Panen Sekarang", key=f"btn_harvest_cf_{cfac.id}", use_container_width=True):
+                        if st.button("Cari & unduh", key=f"btn_harvest_cf_{cfac.id}", use_container_width=True):
                             run_live_harvest_process(
                                 lambda cb: _harvest.harvest_faculty(cfac.id, max_results_per_query=5, workers=4, delay=0.5, progress_cb=cb),
                                 auto_analyze=True
                             )
 
-                        if st.button(f"🗑️ Hapus Fakultas", key=f"btn_del_cf_{cfac.id}", use_container_width=True):
+                        if st.button("Hapus bidang", key=f"btn_del_cf_{cfac.id}", use_container_width=True):
                             _faculties.delete_custom_faculty(cfac.id)
-                            st.warning(f"Fakultas '{cfac.name}' telah dihapus.")
+                            st.warning(f"Bidang '{cfac.name}' dihapus.")
                             st.rerun()
 
     with tab_h4:
         with st.container(border=True):
-            st.markdown("### 📥 Solusi untuk Paper dari PhilPapers / Repositori Lokal")
-            st.caption(
-                "PhilPapers dan PhilArchive menerapkan proteksi bot Cloudflare Turnstile. "
-                "Gunakan dua metode praktis berikut untuk memasukkan paper ke Second Brain:"
-            )
+            st.caption("Pakai ini untuk paper yang tidak ketemu lewat pencarian: PDF yang Anda punya, atau paper yang Anda tahu DOI-nya.")
 
             col_m_up, col_m_doi = st.columns(2)
 
             with col_m_up:
-                st.markdown("#### 1. Unggah PDF Manual (Drag & Drop)")
-                st.write("Unduh PDF dari browser Anda, lalu seret file ke sini:")
-                uploaded_pdf = st.file_uploader("Pilih File PDF:", type=["pdf"], key="manual_pdf_upload")
-                manual_title = st.text_input("Judul Paper (Opsional):", placeholder="Jika kosong, memakai nama file", key="manual_title_input")
-                manual_fac = st.selectbox("Petakan ke Fakultas:", [f.id for f in faculty_list], format_func=lambda x: faculty_labels.get(x, x), key="manual_fac_select")
-                auto_an_upload = st.checkbox("Langsung Analisis Silogisme ke Bahasa Indonesia", value=True, key="manual_auto_an")
+                st.markdown("#### Unggah PDF")
+                uploaded_pdf = st.file_uploader("File PDF", type=["pdf"], key="manual_pdf_upload")
+                manual_title = st.text_input("Judul (opsional)", placeholder="Jika kosong, memakai nama file", key="manual_title_input")
+                manual_fac = st.selectbox("Simpan ke bidang", [f.id for f in faculty_list], format_func=lambda x: faculty_labels.get(x, x), key="manual_fac_select")
+                auto_an_upload = st.checkbox("Langsung analisis", value=True, key="manual_auto_an")
 
-                if st.button("📥 Impor & Proses PDF Ini", type="primary", key="btn_import_pdf", use_container_width=True):
+                if st.button("Unggah", type="primary", key="btn_import_pdf", use_container_width=True):
                     if not uploaded_pdf:
-                        st.error("Silakan pilih file PDF terlebih dahulu.")
+                        st.error("Pilih file PDF dulu.")
                     else:
                         with st.spinner("Menyimpan PDF dan mengekstrak teks..."):
                             res = _harvest.import_local_pdf(
@@ -1928,85 +2054,74 @@ elif menu == "⚡ Panen Paper Ilmiah":
                             st.success(f"Berhasil mengimpor: {res['title']}!")
 
                         if auto_an_upload:
-                            with st.spinner("Menganalisis silogisme paper dengan AI..."):
-                                an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id")
-                                st.success(f"Analisis selesai: {an_stats.get('ok', 0)} paper berhasil dianalisis.")
+                            with st.spinner("Menganalisis paper ini..."):
+                                _analyze.analyze_single_paper(res["file"], model=config.LLM_MODEL, lang="id")
+                                st.success("Analisis selesai.")
 
                         db.sync_all()
                         st.rerun()
 
             with col_m_doi:
-                st.markdown("#### 2. Impor Lewat Nomor DOI")
-                st.write("Entri PhilPapers biasanya memiliki DOI. Tempelkan nomor DOI untuk mencari naskah Open Access legal:")
-                input_doi = st.text_input("Nomor DOI / Link DOI:", placeholder="contoh: 10.1007/s11153-021-09800-4", key="manual_doi_input")
-                doi_fac = st.selectbox("Petakan ke Fakultas (DOI):", [f.id for f in faculty_list], format_func=lambda x: faculty_labels.get(x, x), key="doi_fac_select")
-                auto_an_doi = st.checkbox("Langsung Analisis Silogisme (DOI)", value=True, key="doi_auto_an")
+                st.markdown("#### Dari DOI")
+                input_doi = st.text_input("DOI atau link DOI", placeholder="contoh: 10.1007/s11153-021-09800-4", key="manual_doi_input")
+                doi_fac = st.selectbox("Simpan ke bidang", [f.id for f in faculty_list], format_func=lambda x: faculty_labels.get(x, x), key="doi_fac_select")
+                auto_an_doi = st.checkbox("Langsung analisis", value=True, key="doi_auto_an")
+                st.caption("Hanya berhasil kalau paper punya versi terbuka (open access).")
 
-                if st.button("🔍 Cari & Unduh Naskah Open Access", type="primary", key="btn_import_doi", use_container_width=True):
+                if st.button("Cari & unduh", type="primary", key="btn_import_doi", use_container_width=True):
                     if not input_doi.strip():
-                        st.error("Silakan masukkan nomor DOI.")
+                        st.error("Isi DOI dulu.")
                     else:
-                        with st.spinner("Menghubungi resolver Unpaywall & OpenAlex..."):
+                        with st.spinner("Mencari versi terbuka paper ini..."):
                             doi_res = _harvest.import_by_doi(doi=input_doi, faculty=doi_fac)
                             if "error" in doi_res:
                                 st.error(doi_res["error"])
                             else:
                                 st.success(f"Berhasil mengunduh: {doi_res['title']}!")
                                 if auto_an_doi:
-                                    with st.spinner("Menganalisis silogisme paper..."):
-                                        an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id")
-                                        st.success(f"Analisis selesai: {an_stats.get('ok', 0)} paper berhasil dianalisis.")
+                                    with st.spinner("Menganalisis paper ini..."):
+                                        _analyze.analyze_single_paper(doi_res["file"], model=config.LLM_MODEL, lang="id")
+                                        st.success("Analisis selesai.")
                                 db.sync_all()
                                 st.rerun()
 
     with tab_h5:
-        st.markdown("### 🧠 Studio Bedah Naskah Mandiri (Analyze Studio)")
-        st.caption(
-            "Pembedahan mendalam naskah ilmiah lokal (*Deep Scan v3*) dengan model kecerdasan buatan. "
-            "Fitur ini memungkinkan Anda membedah antrean naskah yang belum sempat dianalisis (misal: hasil unduhan baru, "
-            "unggahan PDF manual, atau panen tanpa auto-analisis), serta melakukan bedah ulang (*re-scan*) naskah tertentu kapan saja."
-        )
+        st.caption("Analisis paper yang belum dianalisis, atau ulangi analisis paper tertentu.")
 
         unanalyzed_all = [p for p in all_papers if not p.get("thesis")]
         analyzed_all = [p for p in all_papers if p.get("thesis")]
 
-        col_st1, col_st2, col_st3 = st.columns(3)
-        col_st1.metric("📚 Total Korpus", len(all_papers), border=True)
-        col_st2.metric("✅ Selesai Dibedah", len(analyzed_all), border=True)
-        col_st3.metric("⚠️ Belum Dianalisis", len(unanalyzed_all), border=True)
-
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        st.progress(len(analyzed_all) / len(all_papers) if all_papers else 0.0,
+                    text=f"{len(analyzed_all)} dari {len(all_papers)} paper sudah dianalisis")
 
         tab_sub1, tab_sub2 = st.tabs([
-            f"⚠️ Antrean Belum Dianalisis ({len(unanalyzed_all)})",
-            "🔄 Bedah Ulang Paper Tertentu (On-Demand Re-Scan)"
+            f"Belum dianalisis ({len(unanalyzed_all)})",
+            "Analisis ulang"
         ])
 
         with tab_sub1:
             if not unanalyzed_all:
-                st.success("🎉 **Luar biasa! Seluruh naskah dalam korpus lokal Anda sudah selesai dibedah oleh AI secara lengkap.**")
-                st.caption("Jika Anda ingin memperbarui pembacaan naskah dengan prompt v3 terbaru (metodologi riset & bab pembahasan), silakan buka tab '🔄 Bedah Ulang Paper Tertentu'.")
+                st.success("Semua paper sudah dianalisis.")
             else:
                 with st.container(border=True):
-                    st.markdown(f"#### ⚡ Eksekusi Pembedahan Massal ({len(unanalyzed_all)} Naskah)")
-                    st.caption("Sistem akan membaca teks naskah utuh (10–15 halaman), lalu mengekstrak metodologi, temuan bab pembahasan, rekonstruksi silogisme, serta kutipan bernomor halaman asli.")
+                    st.caption("AI membaca naskah utuh lalu mengekstrak tesis, metodologi, temuan, dan kutipan dengan nomor halaman. Sekitar 1 menit per paper.")
 
                     col_opt1, col_opt2, col_opt3 = st.columns([2, 1, 1])
-                    studio_model = col_opt1.selectbox("Model LLM:", [config.LLM_MODEL, "gemini-3-8-flash", "gemini-2.5-flash"], index=0, key="studio_model_opt")
-                    studio_workers = col_opt2.slider("Concurrency:", min_value=1, max_value=6, value=4, key="studio_workers_opt")
-                    studio_lang = col_opt3.selectbox("Bahasa Analisis:", ["id", "en"], format_func=lambda x: "🇮🇩 Bahasa Indonesia" if x == "id" else "🇬🇧 English", key="studio_lang_opt")
+                    studio_model = col_opt1.selectbox("Model AI", [config.LLM_MODEL, "gemini-3-8-flash", "gemini-2.5-flash"], index=0, key="studio_model_opt")
+                    studio_workers = col_opt2.slider("Paper sekaligus", min_value=1, max_value=6, value=4, key="studio_workers_opt")
+                    studio_lang = col_opt3.selectbox("Bahasa hasil", ["id", "en"], format_func=lambda x: "🇮🇩 Bahasa Indonesia" if x == "id" else "🇬🇧 English", key="studio_lang_opt")
 
                     # Multi-select options
                     unanalyzed_dict = {p.get("file"): f"{p.get('title') or p.get('file')} ({p.get('year', 'n.d.')})" for p in unanalyzed_all}
                     chosen_targets = st.multiselect(
-                        "Pilih Naskah Tertentu (Biarkan kosong untuk membedah SEMUA antrean):",
+                        "Pilih paper (kosongkan untuk semua)",
                         options=list(unanalyzed_dict.keys()),
                         format_func=lambda x: unanalyzed_dict.get(x, x),
                         key="studio_chosen_targets"
                     )
 
                     target_files = chosen_targets if chosen_targets else list(unanalyzed_dict.keys())
-                    btn_text = f"🚀 Jalankan Pembedahan AI untuk {len(target_files)} Paper" if chosen_targets else f"⚡ Bedah Semua {len(unanalyzed_all)} Paper yang Belum Dianalisis"
+                    btn_text = f"Analisis {len(target_files)} paper terpilih" if chosen_targets else f"Analisis semua ({len(unanalyzed_all)})"
 
                     if st.button(btn_text, type="primary", key="btn_run_studio_batch", use_container_width=True):
                         run_live_analyze_process(
@@ -2017,7 +2132,7 @@ elif menu == "⚡ Panen Paper Ilmiah":
                         )
                         st.rerun()
 
-                st.markdown("##### 📋 Daftar Rincian Naskah Belum Dianalisis:")
+                st.markdown("##### Daftar paper")
                 for u_idx, up in enumerate(unanalyzed_all, 1):
                     with st.container(border=True):
                         col_ui1, col_ui2 = st.columns([3, 1])
@@ -2026,10 +2141,10 @@ elif menu == "⚡ Panen Paper Ilmiah":
                         u_fname = u_fac.name if u_fac else (up.get("faculty") or "Umum")
                         with col_ui1:
                             st.markdown(f"**{u_idx}. {up.get('title') or up.get('file')}**")
-                            st.caption(f"{u_icon} {u_fname} | 📅 {up.get('year', 'n.d.')} | Berkas: `{up.get('file')}`")
+                            st.caption(f"{u_icon} {u_fname} · {up.get('year', 'n.d.')}")
                         with col_ui2:
-                            if st.button("🧠 Bedah Naskah Ini", key=f"btn_single_studio_{u_idx}_{up.get('file')}", use_container_width=True):
-                                with st.spinner(f"Sedang membedah '{up.get('title', '')[:30]}...' dengan {studio_model}..."):
+                            if st.button("Analisis", key=f"btn_single_studio_{u_idx}_{up.get('file')}", use_container_width=True):
+                                with st.spinner(f"Menganalisis '{(up.get('title') or '')[:30]}...'"):
                                     try:
                                         _analyze.analyze_single_paper(up.get("file"), model=studio_model, lang=studio_lang)
                                         db.sync_all()
@@ -2040,12 +2155,11 @@ elif menu == "⚡ Panen Paper Ilmiah":
 
         with tab_sub2:
             with st.container(border=True):
-                st.markdown("#### 🔄 Bedah Ulang Paper Tertentu (On-Demand Deep Scan)")
-                st.caption("Pilih paper mana saja di seluruh korpus untuk dianalisis ulang dengan prompt v3 terbaru (metodologi riset & kutipan dari bab pembahasan).")
+                st.caption("Pilih paper untuk dianalisis ulang, misalnya kalau hasil sebelumnya kurang lengkap.")
 
-                all_file_map = {p.get("file"): f"[{'✅ Dibedah' if p.get('thesis') else '⚠️ Belum'}] {p.get('title') or p.get('file')} ({p.get('year', 'n.d.')})" for p in all_papers}
+                all_file_map = {p.get("file"): f"[{'✅' if p.get('thesis') else '⚪'}] {p.get('title') or p.get('file')} ({p.get('year', 'n.d.')})" for p in all_papers}
                 chosen_file = st.selectbox(
-                    "Pilih Paper dari Seluruh Korpus:",
+                    "Paper",
                     options=list(all_file_map.keys()),
                     format_func=lambda x: all_file_map.get(x, x),
                     key="studio_single_chosen"
@@ -2055,15 +2169,15 @@ elif menu == "⚡ Panen Paper Ilmiah":
                     target_rec = next((p for p in all_papers if p.get("file") == chosen_file), None)
                     if target_rec:
                         if target_rec.get("thesis"):
-                            st.info(f"🎯 **Tesis Saat Ini:** {target_rec.get('thesis')}")
+                            st.info(f"**Tesis saat ini:** {target_rec.get('thesis')}")
                         else:
-                            st.warning("⚠️ Status: Paper ini saat ini belum memiliki hasil bedah analisis.")
+                            st.caption("Paper ini belum dianalisis.")
 
                         col_re1, col_re2 = st.columns(2)
                         re_model = col_re1.selectbox("Model LLM:", [config.LLM_MODEL, "gemini-3-8-flash", "gemini-2.5-flash"], key="re_model_single")
                         re_lang = col_re2.selectbox("Bahasa Analisis:", ["id", "en"], format_func=lambda x: "🇮🇩 Bahasa Indonesia" if x == "id" else "🇬🇧 English", key="re_lang_single")
 
-                        if st.button("🚀 Jalankan Pembedahan Ulang Sekarang", type="primary", key="btn_exec_single_re", use_container_width=True):
+                        if st.button("Analisis ulang", type="primary", key="btn_exec_single_re", use_container_width=True):
                             with st.spinner(f"Menganalisis naskah '{chosen_file}' dengan {re_model}..."):
                                 try:
                                     _analyze.analyze_single_paper(chosen_file, model=re_model, lang=re_lang, force=True)
@@ -2155,56 +2269,53 @@ elif menu == "🕸️ Diagram Argumen":
 # -------------------------------------------------------------
 elif menu == "📑 Laporan Sintesis":
     render_hero(
-        title="Laporan Sintesis & Celah Riset (State of the Art & Novelty)",
-        subtitle="Hasilkan tinjauan pustaka komparatif (*Literature Review*) komprehensif dan deteksi kesenjangan ilmiah (*Research Gap*) untuk proposal riset baru.",
+        title="Laporan Sintesis",
+        subtitle="Tinjauan pustaka dari seluruh koleksi, serta celah riset dan usulan topik baru.",
         icon="📑",
-        badges=[
-            {"icon": "📖", "text": "Literature Review", "class": "hero-badge-primary"},
-            {"icon": "🔍", "text": "Research Gap Finder", "class": "hero-badge-accent"},
-            {"icon": "💎", "text": "Novelty Generator", "class": "hero-badge-model"}
-        ]
     )
 
     tab_synth1, tab_synth2 = st.tabs([
-        "📑 Tinjauan Pustaka Komparatif (Literature Review)",
-        "🔍 Pendeteksi Celah Riset & Kebaruan (Research Gap & Novelty Finder)"
+        "📑 Tinjauan pustaka",
+        "🔍 Celah riset & kebaruan"
     ])
 
     with tab_synth1:
         with st.container(border=True):
-            col_s1, col_s2 = st.columns([1, 2])
-            lang_choice = col_s1.selectbox("Bahasa Laporan:", ["id", "en"], format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English")
+            col_s1, col_s2 = st.columns([1, 1])
+            lang_choice = col_s1.selectbox("Bahasa", ["id", "en"], format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English")
             
-            gen_synth = col_s2.button("✨ Buat Laporan Sintesis Baru dengan DeepSeek", use_container_width=True)
+            col_s2.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            gen_synth = col_s2.button("Buat tinjauan pustaka baru", type="primary", use_container_width=True)
 
         if gen_synth:
-            with st.spinner("DeepSeek sedang menyusun laporan sintesis lintas korpus..."):
+            with st.spinner("Menyusun tinjauan pustaka dari seluruh koleksi. Bisa beberapa menit..."):
                 res = _synthesize.synthesize(model=config.LLM_MODEL, lang=lang_choice)
-                st.success(f"Laporan berhasil dibuat!")
+                st.success("Laporan selesai.")
 
-        st.markdown("### 📂 Laporan Tinjauan Pustaka yang Tersedia:")
+        st.markdown("#### Laporan tersimpan")
         reports = sorted(list(config.SYNTH_DIR.glob("*.md")), reverse=True)
         if not reports:
-            st.info("Belum ada laporan sintesis.")
+            st.info("Belum ada laporan. Klik **Buat tinjauan pustaka baru**.")
         else:
             with st.container(border=True):
-                selected_rep = st.selectbox("Pilih Laporan untuk Dibaca:", [r.name for r in reports])
+                selected_rep = st.selectbox("Pilih laporan", [r.name for r in reports])
                 rep_file = config.SYNTH_DIR / selected_rep
-                st.markdown(rep_file.read_text(encoding="utf-8"))
+                with st.container(height=600):
+                    st.markdown(rep_file.read_text(encoding="utf-8"))
+            render_client_delivery(rep_file, key=f"synth_{rep_file.stem}")
 
     with tab_synth2:
         with st.container(border=True):
-            st.markdown("### 🔍 Deteksi Kesenjangan Riset & Peluang Kebaruan Ilmiah")
-            st.caption("AI akan membedah seluruh korpus untuk menemukan perdebatan yang masih buntu, titik buta metodologis, dan merumuskan 3 usulan proposal riset dengan nilai kebaruan (novelty) tinggi.")
+            st.caption("AI membaca seluruh koleksi, lalu mencari perdebatan yang belum selesai, kelemahan metodologi, dan menyusun 3 usulan topik riset baru.")
 
             col_gap1, col_gap2 = st.columns([2, 1])
-            gap_focus = col_gap1.text_input("Sudut Pandang / Fokus Khusus (Opsional):", placeholder="contoh: Komparasi kausalitas Al-Ghazali dengan interpretasi kuantum Bohm...")
-            gap_model = col_gap2.selectbox("Model Konsultan AI:", ["deepseek-v4-pro", "gemini-3-8-flash"], format_func=lambda x: "🧠 DeepSeek V4 Pro" if "deepseek" in x else "⚡ Gemini 3.8 Flash")
+            gap_focus = col_gap1.text_input("Fokus (opsional)", placeholder="contoh: dampak terhadap UMKM di daerah")
+            gap_model = col_gap2.selectbox("Kecepatan", ["deepseek-v4-pro", "gemini-3-8-flash"], format_func=lambda x: "Mendalam" if "deepseek" in x else "Cepat")
 
-            btn_find_gap = st.button("🚀 Analisis Celah Riset & Rancang Proposal Baru", type="primary", use_container_width=True)
+            btn_find_gap = st.button("Cari celah riset", type="primary", use_container_width=True)
 
         if btn_find_gap:
-            with st.spinner("Konsultan Riset AI sedang mengaudit korpus, memetakan titik buntu dialektika, dan merumuskan usulan proposal kebaruan..."):
+            with st.spinner("Membaca koleksi dan mencari celah riset. Bisa beberapa menit..."):
                 gap_report = _gap_finder.find_research_gaps(
                     faculty_id=selected_faculty_id,
                     custom_focus=gap_focus,
@@ -2219,42 +2330,42 @@ elif menu == "📑 Laporan Sintesis":
             saved_paths = st.session_state.get("saved_gap_paths", {})
 
             with st.container(border=True):
-                st.markdown(f"## 🏛️ Domain: **{rep.get('faculty_domain')}**")
-                st.info(f"**Ringkasan Eksekutif Riset:**\n\n{rep.get('executive_summary', '')}")
+                st.markdown(f"#### Bidang: {rep.get('faculty_domain')}")
+                st.info(f"**Ringkasan:**\n\n{rep.get('executive_summary', '')}")
 
                 col_gp1, col_gp2 = st.columns(2)
                 with col_gp1:
-                    st.markdown("#### ✅ Konsensus yang Mapan:")
+                    st.markdown("**Yang sudah disepakati**")
                     for c in rep.get("established_consensus", []):
                         st.markdown(f"- {c}")
                 with col_gp2:
-                    st.markdown("#### 👁️ Titik Buta Metodologis (Blindspots):")
+                    st.markdown("**Kelemahan metodologi**")
                     for b in rep.get("methodological_blindspots", []):
-                        st.markdown(f"- 🔍 {b}")
+                        st.markdown(f"- {b}")
 
                 st.markdown("---")
-                st.markdown("### ⚔️ Perdebatan Terbuka yang Belum Tuntas (Unresolved Tensions):")
+                st.markdown("#### Perdebatan yang belum selesai")
                 for idx_ut, ut in enumerate(rep.get("unresolved_tensions", []), 1):
-                    with st.expander(f"⚡ {idx_ut}. {ut.get('issue', 'Isu Perdebatan')}", expanded=True):
-                        st.write(f"**Kubu Tesis/Teisme:** {ut.get('thesis_side')}")
-                        st.write(f"**Kubu Antitesis/Kritik:** {ut.get('antithesis_side')}")
-                        st.warning(f"⚠️ **Mengapa Belum Tuntas:** {ut.get('why_stuck')}")
+                    with st.expander(f"{idx_ut}. {ut.get('issue', 'Isu perdebatan')}", expanded=False):
+                        st.write(f"**Pihak yang mendukung:** {ut.get('thesis_side')}")
+                        st.write(f"**Pihak yang mengkritik:** {ut.get('antithesis_side')}")
+                        st.warning(f"**Mengapa belum selesai:** {ut.get('why_stuck')}")
 
                 st.markdown("---")
-                st.markdown("### 🎯 Usulan Topik Proposal Riset Baru (High-Novelty Proposals):")
+                st.markdown("#### Usulan topik riset baru")
                 for idx_p, prop in enumerate(rep.get("novel_research_proposals", []), 1):
                     with st.container(border=True):
-                        st.markdown(f"#### 💎 Usulan {idx_p}: {prop.get('title')}")
+                        st.markdown(f"**Usulan {idx_p}: {prop.get('title')}**")
                         col_pr1, col_pr2 = st.columns([1, 1])
-                        col_pr1.markdown(f"**Jenjang Target:** `{prop.get('target_level', 'Tesis S2/S3')}`")
-                        col_pr2.markdown(f"**Kerangka Teori:** `{prop.get('theoretical_framework', '-')}`")
+                        col_pr1.caption(f"Jenjang: {prop.get('target_level', 'Tesis S2/S3')}")
+                        col_pr2.caption(f"Kerangka teori: {prop.get('theoretical_framework', '-')}")
                         
-                        st.write(f"**Kesenjangan yang Dijawab:** {prop.get('gap_addressed')}")
-                        st.success(f"**Tesis / Hipotesis Kerja:** {prop.get('proposed_hypothesis')}")
-                        st.info(f"**Nilai Kebaruan (Novelty):** {prop.get('expected_novelty')}")
+                        st.write(f"**Celah yang dijawab:** {prop.get('gap_addressed')}")
+                        st.write(f"**Hipotesis:** {prop.get('proposed_hypothesis')}")
+                        st.write(f"**Kebaruan:** {prop.get('expected_novelty')}")
                         
                         if prop.get("research_questions"):
-                            st.markdown("**Rumusan Masalah Utama:**")
+                            st.markdown("**Rumusan masalah:**")
                             for q in prop["research_questions"]:
                                 st.markdown(f"- {q}")
 
@@ -2262,14 +2373,14 @@ elif menu == "📑 Laporan Sintesis":
                     col_g_dl1, col_g_dl2 = st.columns(2)
                     with col_g_dl1:
                         st.download_button(
-                            "📄 Unduh Laporan Celah Riset (.md)",
+                            "Unduh laporan celah riset (.md)",
                             data=saved_paths["markdown_content"],
                             file_name=saved_paths["md_path"].name,
                             mime="text/markdown",
                             use_container_width=True
                         )
                     with col_g_dl2:
-                        st.success(f"Tersimpan di Vault Obsidian: `{saved_paths['obsidian_path'].name}`")
+                        st.caption(f"Tersimpan sebagai `{saved_paths['md_path'].name}`")
 
 
 # -------------------------------------------------------------

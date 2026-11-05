@@ -256,13 +256,14 @@ def format_article_html(article_dict: dict) -> str:
     """
     try:
         from markdown_it import MarkdownIt
-        md_parser = MarkdownIt("commonmark", {"html": True})
+        md_parser = MarkdownIt("commonmark", {"html": False})  # AI text must not inject raw HTML
         html_body = md_parser.render(article_dict.get("content_md", ""))
     except Exception:
         import html
         html_body = f"<pre>{html.escape(article_dict.get('content_md', ''))}</pre>"
     
-    title = article_dict.get("title", "Artikel CosmoLab University")
+    import html as _html
+    title = _html.escape(article_dict.get("title", "Artikel CosmoLab University"))
     style_name = article_dict.get("style_name", "Esai Ilmiah")
     reading_time = article_dict.get("reading_time_min", 5)
     created_at = article_dict.get("created_at", "")

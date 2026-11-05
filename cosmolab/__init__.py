@@ -8,3 +8,8 @@ if sys.platform == "win32":
         pass
 
 __version__ = "0.1.0"
+
+# Log every AI call's token usage to the active project (see cosmolab/usage.py).
+from . import usage as _usage  # noqa: E402
+
+_usage.install()

@@ -452,8 +452,12 @@ CORE_FACULTIES: Dict[str, Faculty] = {
     ),
 }
 
-# Dynamic storage pointer
-CUSTOM_FACULTIES_FILE = config.ROOT / "custom_faculties.json"
+# Dynamic storage pointer. None = follow the active project (config.ROOT).
+CUSTOM_FACULTIES_FILE = None
+
+
+def _custom_faculties_file() -> Path:
+    return CUSTOM_FACULTIES_FILE or (config.ROOT / "custom_faculties.json")
 
 
 def _sanitize_slug(text: str) -> str:
@@ -464,10 +468,10 @@ def _sanitize_slug(text: str) -> str:
 
 def load_custom_faculties() -> Dict[str, Faculty]:
     """Load user-defined custom faculties from data/custom_faculties.json."""
-    if not CUSTOM_FACULTIES_FILE.exists():
+    if not _custom_faculties_file().exists():
         return {}
     try:
-        data = json.loads(CUSTOM_FACULTIES_FILE.read_text(encoding="utf-8"))
+        data = json.loads(_custom_faculties_file().read_text(encoding="utf-8"))
         result = {}
         for item in data:
             fac = Faculty(
@@ -529,8 +533,8 @@ def save_custom_faculty(
 
     # Save to disk
     serialized = [asdict(f) for f in customs.values()]
-    CUSTOM_FACULTIES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CUSTOM_FACULTIES_FILE.write_text(json.dumps(serialized, indent=2, ensure_ascii=False), encoding="utf-8")
+    _custom_faculties_file().parent.mkdir(parents=True, exist_ok=True)
+    _custom_faculties_file().write_text(json.dumps(serialized, indent=2, ensure_ascii=False), encoding="utf-8")
     
     # Keep global dict synchronized
     _sync_global_faculties()
@@ -543,7 +547,7 @@ def delete_custom_faculty(faculty_id: str) -> bool:
     if faculty_id in customs:
         del customs[faculty_id]
         serialized = [asdict(f) for f in customs.values()]
-        CUSTOM_FACULTIES_FILE.write_text(json.dumps(serialized, indent=2, ensure_ascii=False), encoding="utf-8")
+        _custom_faculties_file().write_text(json.dumps(serialized, indent=2, ensure_ascii=False), encoding="utf-8")
         _sync_global_faculties()
         return True
     return False

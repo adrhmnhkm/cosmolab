@@ -6,6 +6,8 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -25,8 +27,72 @@ from . import inspector as _inspector
 from . import retrieval as _retrieval
 from . import config
 
-app = typer.Typer(help="cosmolab - personal research pipeline for academic papers")
+app = typer.Typer(help="cosmolab - multidisciplinary research assistant")
 console = Console(force_terminal=True, legacy_windows=False)
+project_app = typer.Typer(help="Kelola proyek klien (satu folder data per proyek)")
+app.add_typer(project_app, name="project")
+
+
+@app.callback()
+def _main(
+    project: str = typer.Option(
+        None, "--project", "-P",
+        envvar="COSMOLAB_PROJECT",
+        help="Proyek klien yang dipakai. Tanpa opsi ini, data utama (folder data/) yang dipakai.",
+    ),
+):
+    """cosmolab - multidisciplinary research assistant."""
+    try:
+        config.use_project(project)
+    except (ValueError, FileNotFoundError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+
+@project_app.command("new")
+def project_new(
+    name: str = typer.Argument(..., help="Nama proyek, misalnya 2026-11-klien-a"),
+    client: str = typer.Option("", "--client", "-c", help="Nama klien"),
+    description: str = typer.Option("", "--description", "-d", help="Ringkasan pekerjaan"),
+):
+    """Buat proyek klien baru dengan folder data sendiri."""
+    try:
+        path = config.create_project(name, client=client, description=description)
+    except (ValueError, FileExistsError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Proyek dibuat:[/green] {path}")
+    console.print(f"[dim]Pakai dengan: cosmolab -P {path.name} harvest \"kata kunci\"  atau  cosmolab -P {path.name} ui[/dim]")
+
+
+@project_app.command("list")
+def project_list():
+    """Tampilkan semua proyek klien."""
+    projects = config.list_projects()
+    if not projects:
+        console.print("[yellow]Belum ada proyek. Buat dengan: cosmolab project new <nama>[/yellow]")
+        return
+    table = Table(title="Proyek Klien", box=ROUNDED)
+    table.add_column("Nama", style="cyan")
+    table.add_column("Klien")
+    table.add_column("Dibuat", style="dim")
+    table.add_column("Paper", justify="right")
+    for p in projects:
+        n_pdf = len(list((Path(p["path"]) / "pdf").glob("*.pdf")))
+        table.add_row(p["name"], p.get("client", ""), str(p.get("created", ""))[:10], str(n_pdf))
+    console.print(table)
+
+
+@project_app.command("info")
+def project_show():
+    """Tampilkan proyek yang sedang aktif dan lokasi datanya."""
+    info = config.project_info()
+    console.print(f"Proyek aktif: [cyan]{config.PROJECT or '(data utama)'}[/cyan]")
+    if info.get("client"):
+        console.print(f"Klien: {info['client']}")
+    if info.get("description"):
+        console.print(f"Ringkasan: {info['description']}")
+    console.print(f"Folder data: {config.ROOT}")
 
 
 def _print_stats_table(stats: dict, title: str = "Statistics"):
@@ -221,15 +287,68 @@ def graph(paper: str):
 
 
 @app.command()
-def ui(port: int = typer.Option(8501, "--port", "-p", help="Port to run web dashboard")):
+def ui(
+    port: int = typer.Option(8501, "--port", "-p", help="Port to run web dashboard"),
+    team: bool = typer.Option(
+        False, "--team",
+        help="Buka untuk anggota tim lewat jaringan (Tailscale). Wajib ada COSMOLAB_TEAM_PASSWORD di .env.",
+    ),
+    host: str = typer.Option(None, "--host", help="Alamat yang dibuka untuk --team (default: IP Tailscale)"),
+):
     """Launch interactive local Web Dashboard (Streamlit)."""
     import subprocess
     import sys
     from pathlib import Path
+    import os
     web_script = Path(__file__).parent / "web.py"
+    env = os.environ.copy()
+    # The dashboard runs in its own process, so hand it the active project.
+    if config.PROJECT:
+        env["COSMOLAB_PROJECT"] = config.PROJECT
+    else:
+        env.pop("COSMOLAB_PROJECT", None)
+
+    args = [sys.executable, "-m", "streamlit", "run", str(web_script), "--server.port", str(port)]
+    address = "localhost"
+    if team:
+        if len(config.TEAM_PASSWORD) < 10:
+            console.print(
+                "[red]Mode tim butuh password minimal 10 karakter.[/red] Isi COSMOLAB_TEAM_PASSWORD di .env, "
+                "lalu jalankan lagi."
+            )
+            raise typer.Exit(1)
+        address = host or _tailscale_ip()
+        if not address:
+            console.print(
+                "[red]IP Tailscale tidak ditemukan.[/red] Pasang dan login Tailscale dulu (lihat PANDUAN_TIM.md), "
+                "atau tentukan alamat sendiri dengan --host."
+            )
+            raise typer.Exit(1)
+        env["COSMOLAB_TEAM_MODE"] = "1"
+        args += ["--server.address", address, "--server.headless", "true"]
+    else:
+        env.pop("COSMOLAB_TEAM_MODE", None)
+        args += ["--server.address", "localhost"]
+
+    label = config.PROJECT or "data utama (tanpa proyek)"
     console.print(f"[bold cyan]Launching Cosmolab Web Dashboard on port {port}...[/bold cyan]")
-    console.print(f"[dim]URL: http://localhost:{port}[/dim]")
-    subprocess.run([sys.executable, "-m", "streamlit", "run", str(web_script), "--server.port", str(port)])
+    console.print(f"[dim]Proyek: {label}  |  URL: http://{address}:{port}[/dim]")
+    if team:
+        console.print("[dim]Mode tim aktif: anggota tim membuka alamat di atas dan memasukkan password tim.[/dim]")
+    subprocess.run(args, env=env)
+
+
+def _tailscale_ip() -> str:
+    """IPv4 address of this machine on the Tailscale network, or '' if unavailable."""
+    import shutil
+    import subprocess
+    exe = shutil.which("tailscale") or r"C:\Program Files\Tailscale\tailscale.exe"
+    try:
+        out = subprocess.run([exe, "ip", "-4"], capture_output=True, text=True, timeout=10)
+    except Exception:
+        return ""
+    ip = out.stdout.strip().splitlines()[0] if out.returncode == 0 and out.stdout.strip() else ""
+    return ip if ip.startswith("100.") else ""
 
 
 @app.command()
@@ -351,6 +470,131 @@ def doi(
 ):
     """Alias for 'cosmolab inspect'."""
     inspect(doi=doi, model=model, save=True)
+
+
+
+def _print_verification(report):
+    from . import verify as _verify
+    table = Table(title="Pemeriksaan Sitasi", box=ROUNDED, show_lines=True)
+    table.add_column("#", justify="right")
+    table.add_column("Rujukan", max_width=60)
+    table.add_column("Status")
+    table.add_column("Catatan", max_width=50)
+    for i, r in enumerate(report.references, 1):
+        color = "green" if r.status in (_verify.OK_CORPUS, _verify.OK_CROSSREF) else "yellow"
+        table.add_row(str(i), r.raw[:200], f"[{color}]{_verify.LABELS[r.status]}[/{color}]", r.note)
+    for c in report.citations:
+        if c.status != _verify.CITE_OK:
+            table.add_row("teks", c.text, f"[yellow]{_verify.LABELS[c.status]}[/yellow]", c.note)
+    console.print(table)
+    if report.ok:
+        console.print("[bold green]LULUS: semua sitasi terverifikasi.[/bold green]")
+    else:
+        console.print(f"[bold yellow]PERLU DICEK: {len(report.blocking)} temuan.[/bold yellow]")
+
+
+@app.command()
+def verify(
+    file: str = typer.Argument(..., help="File Markdown (artikel, sintesis, laporan) yang mau diperiksa"),
+    offline: bool = typer.Option(False, "--offline", help="Hanya cek ke koleksi proyek, tanpa Crossref"),
+):
+    """Periksa daftar rujukan dan kutipan di teks sebelum dikirim ke klien."""
+    from . import verify as _verify
+    from . import deliverables as _deliv
+    try:
+        path = _deliv.resolve_source(file)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    report = _verify.verify_file(path, online=not offline)
+    _print_verification(report)
+    console.print(f"[dim]Laporan internal: {_verify.save_report(report)}[/dim]")
+    if not report.ok:
+        raise typer.Exit(2)
+
+
+@app.command()
+def deliver(
+    file: str = typer.Argument(..., help="File Markdown hasil kerja yang mau dikirim ke klien"),
+    reviewer: str = typer.Option(..., "--reviewer", "-r", help="Nama peneliti yang memeriksa dokumen"),
+    fmt: str = typer.Option("both", "--format", "-f", help="docx, pdf, atau both"),
+    title: str = typer.Option(None, "--title", "-t", help="Judul dokumen (default: judul H1 di file)"),
+    offline: bool = typer.Option(False, "--offline", help="Hanya cek sitasi ke koleksi proyek, tanpa Crossref"),
+    manual_checked: bool = typer.Option(
+        False, "--sudah-cek-manual",
+        help="Saya sudah memeriksa manual sitasi yang tidak bisa diverifikasi otomatis",
+    ),
+):
+    """Buat dokumen Word/PDF berkop firma untuk klien, setelah sitasi diperiksa."""
+    from . import deliverables as _deliv
+    formats = {"both": ("docx", "pdf"), "docx": ("docx",), "pdf": ("pdf",)}.get(fmt.lower())
+    if not formats:
+        console.print("[red]--format harus docx, pdf, atau both[/red]")
+        raise typer.Exit(1)
+    try:
+        path = _deliv.resolve_source(file)
+        result = _deliv.deliver(path, reviewer=reviewer, formats=formats, title=title,
+                                online=not offline, allow_unverified=manual_checked)
+    except _deliv.DeliveryBlocked as e:
+        _print_verification(e.report)
+        console.print(
+            "[red]Dokumen belum dibuat.[/red] Perbaiki sitasi yang ditandai, atau periksa manual lalu "
+            "jalankan ulang dengan [bold]--sudah-cek-manual[/bold]."
+        )
+        raise typer.Exit(2)
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    _print_verification(result["report"])
+    for f in result["files"]:
+        console.print(f"[green]Dibuat:[/green] {f}")
+    console.print(f"[dim]Laporan sitasi internal (jangan dikirim ke klien): {result['qa_report']}[/dim]")
+
+
+
+@app.command()
+def usage(
+    all_projects: bool = typer.Option(False, "--all", "-a", help="Ringkasan semua proyek, bukan hanya proyek aktif"),
+    month: str = typer.Option(None, "--month", "-m", help="Bulan, format YYYY-MM (default: semua waktu)"),
+    by: str = typer.Option("feature", "--by", help="Kelompokkan per: feature, model, atau month"),
+):
+    """Tampilkan pemakaian token AI dan perkiraan biaya per proyek."""
+    from . import usage as _usage
+    if not _usage.pricing():
+        console.print("[yellow]Harga model belum diisi (COSMOLAB_PRICING di .env). Biaya tidak dihitung.[/yellow]")
+
+    def _table(title, groups, key_label):
+        table = Table(title=title, box=ROUNDED)
+        table.add_column(key_label, style="cyan")
+        table.add_column("Panggilan", justify="right")
+        table.add_column("Token input", justify="right")
+        table.add_column("Token output", justify="right")
+        table.add_column("Perkiraan biaya", justify="right", style="green")
+        for g in groups:
+            biaya = _usage.format_money(g["cost"]) + (" *" if g["unpriced"] else "")
+            table.add_row(str(g["key"]), str(g["calls"]), f"{g['prompt_tokens']:,}", f"{g['completion_tokens']:,}", biaya)
+        console.print(table)
+
+    period = f" ({month})" if month else ""
+    if all_projects:
+        rows = []
+        for label, root in _usage.all_roots():
+            for r in _usage.load(root, month):
+                r["project"] = label
+                rows.append(r)
+        if not rows:
+            console.print("[yellow]Belum ada pemakaian AI yang tercatat.[/yellow]")
+            return
+        _table(f"Pemakaian AI semua proyek{period}", _usage.summarize(rows, by="project"), "Proyek")
+    else:
+        rows = _usage.load(config.ROOT, month)
+        label = config.PROJECT or "data utama"
+        if not rows:
+            console.print(f"[yellow]Belum ada pemakaian AI yang tercatat untuk {label}.[/yellow]")
+            return
+        key_label = {"feature": "Fitur", "model": "Model", "month": "Bulan"}.get(by, by)
+        _table(f"Pemakaian AI: {label}{period}", _usage.summarize(rows, by=by), key_label)
+    console.print("[dim]* sebagian panggilan memakai model yang belum punya harga di COSMOLAB_PRICING.[/dim]")
 
 
 if __name__ == "__main__":

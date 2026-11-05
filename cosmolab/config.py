@@ -1,4 +1,7 @@
+import json
 import os
+import re
+from datetime import datetime
 from pathlib import Path
 from dotenv import dotenv_values
 
@@ -6,15 +9,112 @@ from dotenv import dotenv_values
 PROJECT_ROOT = Path(__file__).parent.parent
 env_config = dotenv_values(PROJECT_ROOT / ".env")
 
-ROOT = Path(env_config.get("COSMOLAB_ROOT") or os.environ.get("COSMOLAB_ROOT", "data"))
-PDF_DIR = ROOT / "pdf"
-TEXT_DIR = ROOT / "text"
-ANALYSIS_DIR = ROOT / "analysis"
-SYNTH_DIR = ROOT / "synthesis"
-META_FILE = ROOT / "metadata.jsonl"
-DONE_FILE = ROOT / "downloaded.json"
-DB_FILE = ROOT / "cosmolab.db"
-OBSIDIAN_DIR = ROOT / "obsidian"
+# Client projects: each one keeps its own papers, database and outputs under
+# projects/<name>/. With no project selected, the legacy data folder is used.
+PROJECTS_DIR = PROJECT_ROOT / "projects"
+PROJECT_META_FILE = "project.json"
+_PROJECT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def _default_root() -> Path:
+    raw = env_config.get("COSMOLAB_ROOT") or os.environ.get("COSMOLAB_ROOT") or "data"
+    path = Path(raw)
+    # Resolve against the repo, not the current directory, so the launcher and
+    # the CLI always find the same folder.
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def validate_project_name(name: str) -> str:
+    """Return the normalized project name, or raise ValueError if it is unsafe."""
+    norm = (name or "").strip().lower()
+    if not _PROJECT_NAME_RE.match(norm):
+        raise ValueError(
+            "Nama proyek hanya boleh huruf kecil, angka, '-' dan '_' (maks. 64 karakter), "
+            "dan harus diawali huruf atau angka. Contoh: 2026-11-klien-a"
+        )
+    return norm
+
+
+def _set_root(root: Path):
+    global ROOT, PDF_DIR, TEXT_DIR, ANALYSIS_DIR, SYNTH_DIR, META_FILE, DONE_FILE, DB_FILE, OBSIDIAN_DIR
+    ROOT = root
+    PDF_DIR = ROOT / "pdf"
+    TEXT_DIR = ROOT / "text"
+    ANALYSIS_DIR = ROOT / "analysis"
+    SYNTH_DIR = ROOT / "synthesis"
+    META_FILE = ROOT / "metadata.jsonl"
+    DONE_FILE = ROOT / "downloaded.json"
+    DB_FILE = ROOT / "cosmolab.db"
+    OBSIDIAN_DIR = ROOT / "obsidian"
+
+
+def project_dir(name: str) -> Path:
+    return PROJECTS_DIR / validate_project_name(name)
+
+
+def use_project(name: str | None):
+    """Point every data path at a client project (None = the legacy data folder).
+
+    The project must already exist; create it with create_project().
+    """
+    global PROJECT
+    if not name:
+        PROJECT = None
+        _set_root(_default_root())
+        return
+    path = project_dir(name)
+    if not (path / PROJECT_META_FILE).exists():
+        raise FileNotFoundError(
+            f"Proyek '{name}' belum ada. Buat dulu dengan: cosmolab project new {name}"
+        )
+    PROJECT = path.name
+    _set_root(path)
+
+
+def create_project(name: str, client: str = "", description: str = "") -> Path:
+    path = project_dir(name)
+    meta_path = path / PROJECT_META_FILE
+    if meta_path.exists():
+        raise FileExistsError(f"Proyek '{path.name}' sudah ada.")
+    path.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "name": path.name,
+        "client": client,
+        "description": description,
+        "created": datetime.now().isoformat(timespec="seconds"),
+    }
+    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def list_projects() -> list[dict]:
+    projects = []
+    if PROJECTS_DIR.exists():
+        for meta_path in sorted(PROJECTS_DIR.glob(f"*/{PROJECT_META_FILE}")):
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                meta = {}
+            meta["name"] = meta_path.parent.name
+            meta["path"] = str(meta_path.parent)
+            projects.append(meta)
+    return projects
+
+
+def project_info(name: str | None = None) -> dict:
+    """Metadata of a project (default: the active one). Empty dict for the legacy folder."""
+    name = name or PROJECT
+    if not name:
+        return {}
+    meta_path = project_dir(name) / PROJECT_META_FILE
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"name": name}
+
+
+PROJECT = None
+use_project(os.environ.get("COSMOLAB_PROJECT") or env_config.get("COSMOLAB_PROJECT") or None)
 
 EMAIL = env_config.get("COSMOLAB_EMAIL") or os.environ.get("COSMOLAB_EMAIL", "you@example.com")
 HEADERS = {
@@ -57,3 +157,19 @@ NINEROUTER_MODEL = LLM_MODEL
 def ensure_dirs():
     for d in (PDF_DIR, TEXT_DIR, ANALYSIS_DIR, SYNTH_DIR, OBSIDIAN_DIR):
         d.mkdir(parents=True, exist_ok=True)
+
+
+# Firm branding used on client deliverables (Word/PDF)
+def _env(key: str, default: str = "") -> str:
+    return env_config.get(key) or os.environ.get(key) or default
+
+
+FIRM_NAME = _env("COSMOLAB_FIRM_NAME", "CosmoLab Research")
+FIRM_TAGLINE = _env("COSMOLAB_FIRM_TAGLINE", "Layanan Riset Multidisipliner")
+FIRM_ADDRESS = _env("COSMOLAB_FIRM_ADDRESS")
+FIRM_CONTACT = _env("COSMOLAB_FIRM_CONTACT")
+_logo = _env("COSMOLAB_FIRM_LOGO")
+FIRM_LOGO = (Path(_logo) if Path(_logo).is_absolute() else PROJECT_ROOT / _logo) if _logo else None
+
+# Team access: password asked by the dashboard when started with `cosmolab ui --team`.
+TEAM_PASSWORD = _env("COSMOLAB_TEAM_PASSWORD")

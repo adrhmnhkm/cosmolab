@@ -10,6 +10,9 @@ build/
 # Environment variables & secrets
 .env
 
+# Virtual environment (made by "Pasang CosmoLab.bat")
+.venv/
+
 # Data & local storage (keep sample structure if desired)
 data/*.db
 data/logs/
@@ -21,3 +24,6 @@ data/analysis/*.error.txt
 .vscode/
 .idea/
 *.swp
+
+# Client projects: confidential data, never commit
+projects/
