@@ -39,6 +39,12 @@ def expand_academic_query(query: str, client: OpenAI = None, model: str = None) 
     """
     model = model or config.LLM_MODEL
     try:
+        from . import llmcache
+
+        ckey = llmcache.key("expand", model, query)
+        cached = llmcache.get(ckey)
+        if cached:
+            return list(cached)
         if not client:
             client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
 
@@ -60,7 +66,9 @@ Return ONLY a valid JSON list of strings, for example: ["temporal origin", "kala
         if m:
             terms = json.loads(m.group(0))
             if isinstance(terms, list) and terms:
-                return [str(t).strip() for t in terms if str(t).strip()]
+                out = [str(t).strip() for t in terms if str(t).strip()]
+                llmcache.put(ckey, out)
+                return out
     except Exception:
         pass
 
@@ -208,3 +216,157 @@ Return ONLY a valid JSON list of integers representing the chosen candidate IDs 
         console.print(f"[dim yellow]Notice: Re-ranking fallback to hybrid order ({e})[/dim yellow]")
 
     return candidates[:top_k]
+
+
+def _snippet(text: str, query_words: list[str], max_length: int) -> str:
+    """Cut a passage down to max_length around the sentence that matches the query best."""
+    if len(text) <= max_length:
+        return text
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.strip()) > 8]
+    if not sentences:
+        return text[:max_length - 3] + "..."
+    scored = []
+    for i, s in enumerate(sentences):
+        low = s.lower()
+        scored.append((sum(1 for w in query_words if w in low), -i, i))
+    _, _, best = max(scored)
+    window = [sentences[best]]
+    length = len(sentences[best])
+    if best + 1 < len(sentences) and length + len(sentences[best + 1]) + 1 <= max_length:
+        window.append(sentences[best + 1])
+        length += len(sentences[best + 1]) + 1
+    if best - 1 >= 0 and length + len(sentences[best - 1]) + 1 <= max_length:
+        window.insert(0, sentences[best - 1])
+    out = " ".join(window)
+    return out if len(out) <= max_length else out[:max_length - 3] + "..."
+
+
+def find_grounded_passages(
+    file_name: str,
+    query: str,
+    top_k: int = 2,
+    max_length: int = 400,
+    extra_terms: str = "",
+    rerank: bool = False,
+    model: str = None,
+) -> list[dict]:
+    """Find verbatim passages with real PDF page numbers for a query.
+
+    rerank=True lets the LLM reorder the best 12 candidates by meaning
+    (one extra LLM call). It helps most when the query and the paper are in
+    different languages.
+
+    Ranking comes from cosmolab.passages: BM25 over paragraphs, fused with
+    embedding similarity when an embedding model is configured.
+    """
+    from . import extract, passages
+
+    pages = extract.get_paper_pages(file_name)
+    if not pages:
+        return []
+
+    expanded = []
+    q_lower = query.lower()
+    for key, terms in DOMAIN_CONCEPT_MAP.items():
+        if re.search(r"\b" + re.escape(key) + r"\b", q_lower):
+            expanded.extend(terms[:2])
+    extra = " ".join([extra_terms] + expanded).strip()
+
+    hits = passages.search(file_name, query, top_k=max(top_k * 3, 12 if rerank else 0), extra_terms=extra)
+    if rerank:
+        hits = passages.rerank(query, hits, model=model)
+    words = passages.tokenize(query)
+
+    results, seen = [], set()
+    for h in hits:
+        verbatim = _snippet(h["text"], words, max_length)
+        sig = verbatim[:80].lower()
+        if sig in seen:
+            continue
+        seen.add(sig)
+        results.append({
+            "file": file_name,
+            "page": h["page"],
+            "page_label": f"Halaman {h['page']}",
+            "verbatim": verbatim,
+            "score": h["score"],
+            "bm25": h["bm25"],
+            "dense": h["dense"],
+        })
+        if len(results) >= top_k:
+            break
+
+    # Nothing matched: fall back to the opening of the paper (usually the abstract).
+    if not results:
+        first_page = pages[0]
+        first_para = next((p for p in first_page.get("paragraphs", []) if len(p.strip()) > 60),
+                          first_page.get("text", "")[:300])
+        results.append({
+            "file": file_name,
+            "page": first_page["page"],
+            "page_label": f"Halaman {first_page['page']}",
+            "verbatim": " ".join(first_para.split())[:max_length],
+            "score": 1.0,
+            "bm25": 0.0,
+            "dense": None,
+            "fallback": True,
+        })
+
+    return results
+
+
+def grounded_passages_batch(
+    files: list[str],
+    question: str,
+    top_k: int = 2,
+    max_length: int = 400,
+    rerank: bool | None = None,
+    model: str = None,
+) -> dict[str, list[dict]]:
+    """Passages for several papers at once: one query expansion, papers searched in parallel.
+
+    Returns {file: passages}. A paper that fails gets an empty list.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    files = [f for f in dict.fromkeys(files) if f]
+    if not files:
+        return {}
+    rerank = config.RERANK_PASSAGES if rerank is None else rerank
+    extra = ""
+    if rerank:
+        try:
+            extra = " ".join(expand_academic_query(question, model=model))
+        except Exception:
+            extra = ""
+
+    def one(f):
+        try:
+            return f, find_grounded_passages(f, question, top_k=top_k, max_length=max_length,
+                                             extra_terms=extra, rerank=rerank, model=model)
+        except Exception:
+            return f, []
+
+    with ThreadPoolExecutor(max_workers=min(6, len(files))) as pool:
+        return dict(pool.map(one, files))
+
+
+def get_grounded_passages_for_papers(
+    papers: list[dict],
+    query: str,
+    passages_per_paper: int = 2,
+) -> list[dict]:
+    """Retrieve grounded verbatim passages across multiple candidate papers."""
+    results = []
+    for paper in papers:
+        f = paper.get("file")
+        if not f:
+            continue
+        passages = find_grounded_passages(f, query, top_k=passages_per_paper)
+        for psg in passages:
+            item = dict(psg)
+            item["paper_title"] = paper.get("title") or f
+            item["year"] = paper.get("year") or "n.d."
+            results.append(item)
+    return results
+

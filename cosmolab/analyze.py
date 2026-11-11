@@ -338,6 +338,14 @@ def analyze_all(model: str = None, concurrency: int = 4, lang: str = "id", force
                 "total_tokens": analysis_meta.get("total_tokens"),
             }
             write_json(out, result)
+            try:
+                from . import audit
+
+                audit.log("analisis", file=rec["file"], model=model, lang=lang,
+                          prompt_version=audit.prompt_version(PROMPTS.get(lang, PROMPT_ID)),
+                          tokens=analysis_meta.get("total_tokens"))
+            except Exception:
+                pass
             elapsed_str = f" ({analysis_meta.get('elapsed_seconds', '?')}s, {analysis_meta.get('total_tokens', '?')} tok)"
             console.print(f"[green]OK  Analyzed: {stem}{elapsed_str}[/green]")
             with lock:

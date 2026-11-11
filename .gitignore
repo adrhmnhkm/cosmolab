@@ -13,12 +13,8 @@ build/
 # Virtual environment (made by "Pasang CosmoLab.bat")
 .venv/
 
-# Data & local storage (keep sample structure if desired)
-data/*.db
-data/logs/
-data/pdf/
-data/text/
-data/analysis/*.error.txt
+# Local research data: papers, database, caches, usage logs
+data/
 
 # Editor / IDE
 .vscode/
@@ -27,3 +23,6 @@ data/analysis/*.error.txt
 
 # Client projects: confidential data, never commit
 projects/
+
+# Local Claude Code settings
+.claude/settings.local.json

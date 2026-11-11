@@ -5,6 +5,7 @@ from rich.console import Console
 from . import config
 from . import faculties as _faculties
 from . import authors as _authors
+from . import dois as _dois
 from .storage import read_meta
 
 console = Console(force_terminal=True, legacy_windows=False)
@@ -92,6 +93,16 @@ def init_db(con: sqlite3.Connection | None = None) -> None:
         con.close()
 
 
+def _corrected(stem: str, analysis: dict) -> dict:
+    """Analysis with the researcher's corrections applied (the analysis file itself stays as the AI wrote it)."""
+    try:
+        from . import corrections
+
+        return corrections.apply(stem, analysis)
+    except Exception:
+        return analysis
+
+
 def _meta_authors(meta: list[dict]) -> dict:
     """Last non-empty author list per file across all metadata records."""
     out = {}
@@ -106,6 +117,34 @@ def _set_authors(con, file_name: str, meta_names, store: dict) -> None:
     names, source = _authors.pick(file_name, meta_names, store)
     con.execute("UPDATE papers SET authors = ?, authors_source = ? WHERE file = ?",
                 (json.dumps(names, ensure_ascii=False), source, file_name))
+
+
+def _meta_dois(meta: list[dict]) -> dict:
+    """Last non-empty DOI per file in metadata.jsonl."""
+    out = {}
+    for rec in meta:
+        doi = _dois.clean_doi(rec.get("doi"))
+        if rec.get("file") and doi:
+            out[rec["file"]] = doi
+    return out
+
+
+def _set_doi(con, file_name: str, meta_doi, store: dict) -> None:
+    doi, _ = _dois.pick(file_name, meta_doi, store)
+    con.execute("UPDATE papers SET doi = ? WHERE file = ?", (doi, file_name))
+    row = con.execute("SELECT url, arxiv_id FROM papers WHERE file = ?", (file_name,)).fetchone()
+    if row and not row[1]:
+        aid = _dois.arxiv_id(row[0]) if "arxiv" in str(row[0] or "").lower() else ""
+        if not aid and doi.lower().startswith(_dois.ARXIV_DOI_PREFIX.lower()):
+            aid = doi[len(_dois.ARXIV_DOI_PREFIX):]
+        if aid:
+            con.execute("UPDATE papers SET arxiv_id = ? WHERE file = ?", (aid, file_name))
+
+
+def set_doi(file_name: str, doi: str) -> None:
+    """Save a DOI checked by a researcher. It is never overwritten by lookups."""
+    _dois.save_entry(file_name, doi, _dois.MANUAL, force=True)
+    sync_one(file_name)
 
 
 def set_authors(file_name: str, names: list[str]) -> None:
@@ -124,6 +163,8 @@ def sync_all() -> dict:
     stats = {"papers_synced": 0, "analyses_synced": 0}
     author_store = _authors.load()
     meta_authors = _meta_authors(meta)
+    doi_store = _dois.load()
+    meta_dois = _meta_dois(meta)
 
     with con:
         for rec in meta:
@@ -180,6 +221,7 @@ def sync_all() -> dict:
                 faculty
             ))
             _set_authors(con, file_name, meta_authors.get(file_name), author_store)
+            _set_doi(con, file_name, meta_dois.get(file_name), doi_store)
             stats["papers_synced"] += 1
 
             # Analysis sync if exists
@@ -194,6 +236,7 @@ def sync_all() -> dict:
             if analysis_path.exists():
                 try:
                     analysis_data = json.loads(analysis_path.read_text(encoding="utf-8"))
+                    analysis_data = _corrected(stem, analysis_data)
                     thesis = analysis_data.get("thesis")
                     argument_type = analysis_data.get("argument_type")
                     conclusion = analysis_data.get("conclusion")
@@ -315,6 +358,7 @@ def sync_one(file_name: str) -> dict:
             abstract, full_text, faculty
         ))
         _set_authors(con, file_key, _meta_authors(meta).get(file_key), _authors.load())
+        _set_doi(con, file_key, _meta_dois(meta).get(file_key), _dois.load())
         stats["papers_synced"] = 1
 
         # Analysis sync if exists
@@ -329,6 +373,7 @@ def sync_one(file_name: str) -> dict:
         if analysis_path.exists():
             try:
                 analysis_data = json.loads(analysis_path.read_text(encoding="utf-8"))
+                analysis_data = _corrected(stem, analysis_data)
                 thesis = analysis_data.get("thesis")
                 argument_type = analysis_data.get("argument_type")
                 conclusion = analysis_data.get("conclusion")
@@ -529,7 +574,7 @@ def get_paper_knowledge_summary(file_name: str) -> dict | None:
     con = get_connection()
     cur = con.execute("""
         SELECT 
-            p.file, p.title, p.year, p.doi,
+            p.file, p.title, p.year, p.doi, p.authors,
             a.thesis, a.argument_type, a.conclusion, a.supports_or_critiques,
             a.key_objection, a.key_defense, a.premises_json, a.quotes_json
         FROM papers p

@@ -27,6 +27,8 @@ ATURAN KETAT:
 - Gunakan BAHASA INDONESIA akademis yang lugas, elegan, dan berbobot ilmiah.
 - Pertahankan istilah teknis baku bidang terkait (istilah Arab klasik, hukum, ekonomi, medis, sains, dll.) dan jelaskan singkat pada kemunculan pertama.
 - Berpijak pada literatur yang ada dalam korpus, dan bila korpus terbatas, katakan terus terang lalu lengkapi dengan penalaran akademik yang objektif.
+- Sitasi memakai nama belakang penulis dan tahun, misalnya `[Popescu & Rohrlich (1997)]`. Bila penulis tidak diketahui, pakai judul singkat dan tahun. JANGAN menulis "Paper 1" atau nomor urut korpus sebagai sitasi.
+- Setiap kalimat yang diberi sitasi harus benar-benar dinyatakan oleh paper itu. Penilaianmu sendiri jangan diberi sitasi.
 """
 
 
@@ -149,6 +151,8 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
 
     # Step 3: Build compact structured knowledge context (~1,200 - 2,000 tokens)
     context_blocks = []
+    all_grounded_citations = []
+    found = retrieval.grounded_passages_batch([p.get("file") for p in referenced_papers], question, top_k=2, model=model)
     for idx, p in enumerate(referenced_papers, 1):
         year = p.get("year") or "n.d."
         title = p.get("title") or "Untitled"
@@ -156,6 +160,12 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
         arg_t = p.get("argument_type") or "other"
         
         block = f"### [Paper {idx}] {title} ({year})\n"
+        try:
+            names = json.loads(p.get("authors") or "[]")
+        except Exception:
+            names = []
+        if names:
+            block += f"- Penulis: {', '.join(names[:4])}{' dkk.' if len(names) > 4 else ''}\n"
         block += f"- Tipe Argumen: {arg_t} | Sikap: {stance}\n"
         if p.get("thesis"):
             block += f"- Tesis: {p.get('thesis')}\n"
@@ -169,7 +179,28 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
             block += f"- Tanggapan: {p.get('key_defense')}\n"
         if p.get("quotes"):
             quotes_str = " | ".join(f"\"{q.get('text', '')}\" (Hal. {q.get('page_hint', 'N/A')})" for q in p.get("quotes")[:2])
-            block += f"- Kutipan: {quotes_str}\n"
+            block += f"- Kutipan Ringkasan: {quotes_str}\n"
+
+        # P1: Attach exact page-grounded passages
+        f = p.get("file")
+        if f:
+            try:
+                passages = found.get(f) or []
+                for psg in passages:
+                    all_grounded_citations.append({
+                        "paper_title": title,
+                        "year": year,
+                        "file": f,
+                        "page": psg["page"],
+                        "page_label": psg["page_label"],
+                        "verbatim": psg["verbatim"]
+                    })
+                if passages:
+                    passages_str = " | ".join(f"\"{psg['verbatim']}\" ({psg['page_label']})" for psg in passages)
+                    block += f"- Bukti Verbatim Terverifikasi: {passages_str}\n"
+            except Exception:
+                pass
+
         context_blocks.append(block)
 
     full_context = "\n\n".join(context_blocks)
@@ -235,8 +266,19 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
         except Exception as fallback_err:
             answer = f"Gagal menghasilkan sintesis agen: {e} | Fallback err: {fallback_err}"
 
+    try:
+        from . import audit
+
+        audit.log("tanya", mode="agen", question=question, model=model,
+                  prompt_version=audit.prompt_version(AGENTIC_SYSTEM_PROMPT),
+                  papers=[p.get("file") for p in referenced_papers],
+                  passages=[f"{g['paper_title'][:60]} | {g['page_label']}" for g in all_grounded_citations])
+    except Exception:
+        pass
+
     return {
         "answer": answer,
         "thought_steps": thought_steps,
         "referenced_papers": referenced_papers,
+        "grounded_citations": all_grounded_citations,
     }

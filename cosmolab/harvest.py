@@ -10,6 +10,7 @@ from rich.console import Console
 from . import config
 from . import faculties as _faculties
 from . import authors as _authors
+from . import dois as _dois
 from .utils import fire_cb as _fire_cb
 from .storage import safe_name, load_done, save_done, append_meta, read_meta
 
@@ -67,12 +68,16 @@ def _search_arxiv(query: str, max_results: int):
                     pdf_link = link.get("href")
             if not pdf_link:
                 continue
+            entry_id = entry.find("id", ns).text if entry.find("id", ns) is not None else ""
+            aid = _dois.arxiv_id(entry_id) or _dois.arxiv_id(pdf_link)
             works.append({
                 "id": pdf_link,
+                # Journal DOI when the authors listed one, otherwise the DOI arXiv gives every preprint
+                "doi": _dois.arxiv_journal_doi(entry) or _dois.arxiv_doi(aid),
                 "title": title.replace("\n", " ").strip(),
                 "pdf_url": pdf_link,
                 "abstract": summary,
-                "arxiv_id": entry.find("id", ns).text if entry.find("id", ns) is not None else "",
+                "arxiv_id": aid,
                 "authors": _authors.clean_names(a.findtext("name", default="", namespaces=ns) for a in entry.findall("author", ns)),
                 "published": entry.find("published", ns).text if entry.find("published", ns) is not None else "",
                 "publication_year": entry.find("published", ns).text[:4] if entry.find("published", ns) is not None else "",
@@ -494,11 +499,10 @@ def _extract_arxiv_id(work: dict) -> str | None:
     """Extract arXiv ID from work metadata (handles both arXiv and OpenAlex)."""
     # Direct arXiv source
     if work.get("source") == "arxiv":
-        arxiv_id = work.get("arxiv_id", "")
+        # Normalize: "1412.5701v1" -> "1412.5701", "quant-ph/0701019v1" -> "quant-ph/0701019"
+        arxiv_id = _dois.arxiv_id(work.get("arxiv_id", "")) or _dois.arxiv_id(work.get("pdf_url", ""))
         if arxiv_id:
-            # Normalize: extract just the ID (e.g., "1412.5701v1" -> "1412.5701")
-            match = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", arxiv_id)
-            return match.group(1) if match else None
+            return arxiv_id
     
     # OpenAlex may have arXiv in URL or doi
     url = work.get("id", "") or work.get("pdf_url", "")

@@ -29,6 +29,13 @@ from cosmolab import inspector as _inspector
 from cosmolab import retrieval as _retrieval
 from cosmolab import verify as _verify
 from cosmolab import deliverables as _deliverables
+from cosmolab import snowball as _snowball
+from cosmolab import entail as _entail
+from cosmolab import analysis_check as _acheck
+from cosmolab import corrections as _corrections
+from cosmolab import metadata as _metadata
+from cosmolab import evaluate as _evaluate
+from cosmolab import audit as _audit
 
 # Live hot-reloading of submodules inside Streamlit session
 try:
@@ -49,6 +56,13 @@ try:
     importlib.reload(_inspector)
     importlib.reload(_verify)
     importlib.reload(_deliverables)
+    importlib.reload(_retrieval)
+    importlib.reload(_entail)
+    importlib.reload(_audit)
+    importlib.reload(_corrections)
+    importlib.reload(_acheck)
+    importlib.reload(_metadata)
+    importlib.reload(_evaluate)
 except Exception:
     pass
 
@@ -747,6 +761,63 @@ st.markdown("""
     .paper-card-title { color: var(--cl-ink); }
     .paper-card-meta { color: var(--cl-muted); }
     .paper-card-thesis { border-left-color: var(--cl-gold); }
+
+    /* Paper analysis detail: one column, roomy sections */
+    .an-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 4px 0 18px 0; }
+    .an-fact.wide { grid-column: 1 / -1; }
+    .an-fact { background: #FFFFFF; border: 1px solid #D3DEDC; border-radius: 12px; padding: 10px 14px; min-width: 0; }
+    .an-fact-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cl-muted); margin-bottom: 4px; }
+    .an-fact-value { font-size: 0.92rem; color: var(--cl-ink); line-height: 1.45; overflow-wrap: anywhere; }
+    .an-section { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cl-green);
+        margin: 20px 0 8px 0; }
+    .an-section-note { font-size: 0.82rem; color: var(--cl-muted); margin: -4px 0 8px 0; }
+    .an-conclusion { background: #FFFFFF; border: 1px solid #D3DEDC; border-left: none; border-radius: 12px; padding: 12px 16px;
+        font-size: 0.95rem; line-height: 1.6; color: var(--cl-ink); }
+    .an-list { margin: 0; padding-left: 0; list-style: none; counter-reset: an; }
+    .an-list li { counter-increment: an; position: relative; background: #FFFFFF; border: 1px solid #E1E9E7; border-radius: 10px;
+        padding: 9px 14px 9px 46px; margin-bottom: 6px; font-size: 0.92rem; line-height: 1.55; color: var(--cl-ink); }
+    .an-list li::before { content: attr(data-label); position: absolute; left: 12px; top: 9px; font-size: 0.78rem; font-weight: 700;
+        color: var(--cl-green); background: #E4EDEC; border-radius: 999px; min-width: 26px; text-align: center; padding: 1px 4px; }
+    .an-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+    .an-box { border-radius: 12px; padding: 12px 16px; font-size: 0.92rem; line-height: 1.55; color: var(--cl-ink); }
+    .an-box b { display: block; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+    .an-box.critique { background: #FBF3E2; border: 1px solid #EBD9AE; }
+    .an-box.critique b { color: #8A6512; }
+    .an-box.defense { background: #E9F2EF; border: 1px solid #C9DBD6; }
+    .an-box.defense b { color: var(--cl-green); }
+    .an-quote { border-left: 3px solid var(--cl-gold); padding: 4px 0 4px 14px; margin: 0 0 12px 0; }
+    .an-quote-text { font-style: italic; font-size: 0.92rem; line-height: 1.55; color: var(--cl-ink); }
+    .an-quote-src { font-size: 0.78rem; color: var(--cl-muted); margin-top: 4px; }
+    /* Colored indicator pills */
+    .cl-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px 0; }
+    .cl-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+        font-size: 0.76rem; font-weight: 600; line-height: 1.4; border: 1px solid transparent; white-space: nowrap; }
+    .cl-badge-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .cl-badge.good  { background: #E3F1EA; color: #1F6B4F; border-color: #BFDCCD; }
+    .cl-badge.bad   { background: #FBE9E7; color: #9B2C2C; border-color: #F1C7C1; }
+    .cl-badge.warn  { background: #FBF3E2; color: #8A6512; border-color: #EBD9AE; }
+    .cl-badge.info  { background: #E6EEF6; color: #2B5A84; border-color: #C6D7E8; }
+    .cl-badge.teal  { background: #DDEDEA; color: #24544E; border-color: #B7D3CE; }
+    .cl-badge.mix   { background: #EFE9F6; color: #5B3E8A; border-color: #D8CBEA; }
+    .cl-badge.muted { background: #EEF1F0; color: #56625F; border-color: #D9E0DE; }
+    .an-fact-value .cl-badge { white-space: normal; }
+    .cl-claim-sum { background: var(--cl-card, #fff); border: 1px solid rgba(0,0,0,.08); border-radius: 12px; padding: 12px 16px; margin: 10px 0 6px; }
+    .cl-claim-head { font-weight: 700; color: var(--cl-ink); font-size: .95rem; }
+    .cl-claim-line { color: var(--cl-ink); margin: 2px 0 8px; }
+    .cl-claim-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cl-claim { border-left: 4px solid #c9d2cf; padding: 8px 12px; margin: 0 0 12px; border-radius: 6px; background: rgba(0,0,0,.02); }
+    .cl-claim.good { border-left-color: #2f8f5b; }
+    .cl-claim.warn { border-left-color: #c98a12; }
+    .cl-claim.bad { border-left-color: #c0392b; }
+    .cl-claim-text { color: var(--cl-ink); margin: 6px 0 4px; line-height: 1.5; }
+    .cl-claim-src { color: var(--cl-muted); font-size: .82rem; }
+    .cl-claim-reason { color: var(--cl-ink); font-size: .88rem; margin-top: 4px; }
+    .cl-claim-ev { color: var(--cl-muted); font-size: .85rem; font-style: italic; margin-top: 6px; }
+    .cl-claim-page { font-style: normal; font-weight: 600; color: var(--cl-green); margin-right: 6px; }
+    .cl-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px 0;
+        font-size: 0.85rem; color: var(--cl-muted); }
+    .cl-legend > span:first-child { margin-right: 6px; }
+    .an-foot { font-size: 0.78rem; color: var(--cl-muted); margin-top: 18px; overflow-wrap: anywhere; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -956,9 +1027,10 @@ st.sidebar.markdown("<div class='nav-cluster-header'>2 · Baca & analisis</div>"
 render_nav_item("Koleksi paper", "Paper Explorer & Korpus", str(total_active), icon=":material/library_books:")
 render_nav_item("Cari kata di naskah", "Full-Text Search", icon=":material/search:")
 render_nav_item("Diagram argumen", "Diagram Argumen", icon=":material/account_tree:")
+render_nav_item("Periksa akurasi", "Pusat Akurasi", icon=":material/verified:")
 
 st.sidebar.markdown("<div class='nav-cluster-header'>3 · Tanya & tulis</div>", unsafe_allow_html=True)
-render_nav_item("Tanya koleksi", "Tanya Korpus & Sintesis", icon=":material/forum:")
+render_nav_item("Tanya Korpus (RAG)", "Tanya Korpus & Sintesis", icon=":material/forum:")
 render_nav_item("Tulis artikel", "Studio Artikel Siap Baca", icon=":material/edit_note:")
 render_nav_item("Laporan sintesis", "Laporan Sintesis", icon=":material/summarize:")
 
@@ -987,6 +1059,104 @@ with st.sidebar.expander("Info teknis", expanded=False):
         if cnt:
             st.caption(f"{f.name}: {cnt}")
 
+
+def render_snowball_tab():
+    """Citation snowballing: papers cited by, or citing, the collection."""
+    papers = db.get_all_papers_with_analyses()
+    with st.container(border=True):
+        st.caption(
+            "Cari paper penting lewat jejak sitasi koleksi: rujukan yang dikutip paper koleksi (biasanya karya induk), "
+            "dan paper baru yang mengutip koleksi. Data dari Semantic Scholar, cadangan OpenAlex."
+        )
+        if not papers:
+            st.info("Koleksi masih kosong. Cari atau unggah paper dulu.")
+            return
+        labels = {p["file"]: f"{p.get('title') or p['file']} ({p.get('year') or 'n.d.'})" for p in papers}
+        col_s1, col_s2 = st.columns([3, 2])
+        with col_s1:
+            picked = st.multiselect("Paper koleksi yang ditelusuri", list(labels), format_func=lambda f: labels[f],
+                                    placeholder="Kosong = semua paper koleksi", key="sb_seeds")
+        with col_s2:
+            arah = st.radio("Arah", ["Keduanya", "Rujukan paper koleksi", "Paper yang mengutip koleksi"],
+                            key="sb_arah")
+        seeds = [p for p in papers if p["file"] in picked] if picked else papers
+        directions = {"Keduanya": (_snowball.BACKWARD, _snowball.FORWARD),
+                      "Rujukan paper koleksi": (_snowball.BACKWARD,),
+                      "Paper yang mengutip koleksi": (_snowball.FORWARD,)}[arah]
+        n_steps = len(seeds) * len(directions)
+        secs = round(n_steps * 1.6)
+        eta = f"{max(secs, 5)} detik" if secs < 60 else f"{round(secs / 60)} menit"
+        st.caption(f"{len(seeds)} paper, {n_steps} penelusuran, sekitar {eta}.")
+        if st.button("Telusuri sitasi", type="primary", width="stretch", key="btn_snowball"):
+            bar = st.progress(0.0, text="Mulai menelusuri...")
+
+            def _prog(i, n, seed, direction, count, src):
+                bar.progress(i / n, text=f"{i}/{n} · {_snowball.DIRECTION_LABELS[direction]} · "
+                                         f"{(seed.get('title') or '')[:50]} · {count} paper")
+
+            res = _snowball.snowball(seeds, papers, directions=directions, progress=_prog)
+            bar.empty()
+            st.session_state["sb_result"] = res
+
+    res = st.session_state.get("sb_result")
+    if not res:
+        return
+    cands = res["candidates"]
+    if not cands:
+        st.info("Tidak ada kandidat baru. Semua paper yang terhubung sudah ada di koleksi.")
+        return
+
+    import pandas as pd
+
+    st.markdown(f"##### {len(cands)} kandidat baru")
+    st.caption("Diurutkan dari yang terhubung ke paling banyak paper koleksi, lalu jumlah sitasinya. "
+               "Centang paper yang mau diunduh.")
+    rows = [{
+        "Pilih": False,
+        "Judul": c["title"],
+        "Tahun": c["year"],
+        "Terhubung ke": c["link_count"],
+        "Sitasi": c["citations"],
+        "Arah": ", ".join(_snowball.DIRECTION_LABELS[d] for d in c["directions"]),
+        "Versi terbuka": "PDF tersedia" if c["pdf_url"] else ("Cek lewat DOI" if c["doi"] else "Tidak ada"),
+        "DOI": c["doi"],
+    } for c in cands[:200]]
+    edited = st.data_editor(
+        pd.DataFrame(rows), hide_index=True, width="stretch", height=440, key="sb_table",
+        disabled=["Judul", "Tahun", "Terhubung ke", "Sitasi", "Arah", "Versi terbuka", "DOI"],
+        column_config={
+            "Pilih": st.column_config.CheckboxColumn(width="small"),
+            "Judul": st.column_config.TextColumn(width="large"),
+            "Terhubung ke": st.column_config.NumberColumn(help="Jumlah paper koleksi yang terhubung", format="%d paper"),
+        },
+    )
+    chosen = [cands[i] for i in edited.index[edited["Pilih"]].tolist()]
+    col_u1, col_u2, col_u3 = st.columns([3, 2, 3])
+    with col_u1:
+        sb_fac = st.selectbox("Simpan ke bidang", ["auto"] + [f.id for f in faculty_list],
+                              format_func=lambda x: "Deteksi otomatis" if x == "auto" else faculty_labels.get(x, x),
+                              key="sb_fac")
+    with col_u2:
+        sb_an = st.checkbox("Langsung analisis", value=False, key="sb_auto_an")
+    with col_u3:
+        go = st.button(f"Unduh terpilih ({len(chosen)})", type="primary", disabled=not chosen,
+                       width="stretch", key="btn_sb_import")
+    if go:
+        done, failed = [], []
+        with st.spinner("Mengunduh paper terpilih..."):
+            for c in chosen:
+                r = _snowball.import_candidate(c, faculty=None if sb_fac == "auto" else sb_fac)
+                (done if r.get("ok") else failed).append((c, r))
+        if sb_an and done:
+            with st.spinner(f"Menganalisis {len(done)} paper..."):
+                _analyze.analyze_all(model=config.LLM_MODEL, lang="id", force=True, files=[r["file"] for _, r in done])
+        db.sync_all()
+        if done:
+            st.success(f"{len(done)} paper masuk koleksi: " + "; ".join(r["title"][:60] for _, r in done))
+        for c, r in failed:
+            st.warning(f"Gagal: {c['title'][:70]}. {r.get('error', '')}")
+        st.session_state["sb_result"] = None
+
 # Friendly Labels & Classes
 STANCE_LABELS = {
     "supports": "Mendukung",
@@ -1000,8 +1170,530 @@ TYPE_LABELS = {
     "first-cause": "Sebab Pertama (Aquinas)",
     "fine-tuning": "Penyetelan Sempurna (Fine-Tuning)",
     "mixed": "Campuran",
+    "empiris_kuantitatif": "Empiris kuantitatif",
+    "kualitatif_studi_kasus": "Kualitatif / studi kasus",
+    "yuridis_normatif": "Yuridis normatif",
+    "kajian_literatur": "Kajian literatur",
+    "filosofis_rasional": "Filosofis rasional",
+    "konseptual_teoretis": "Konseptual teoretis",
+    "komparatif": "Komparatif",
     "other": "Lainnya",
 }
+
+# Argument types that are reasoning chains, so premises are shown as P1, P2, ...
+ARGUMENT_TYPES = {"kalam", "contingency", "first-cause", "fine-tuning", "filosofis_rasional"}
+
+
+def _is_argument_paper(p: dict) -> bool:
+    """Philosophy/theology papers and reasoning-type analyses get a formal premise view."""
+    if (p.get("argument_type") or "") in ARGUMENT_TYPES:
+        return True
+    fac = _faculties.get_faculty(p.get("faculty") or "ilahiyyat")
+    return bool(fac and fac.category == "Filosofis & Teologis")
+
+
+STANCE_TONES = {"supports": "good", "critiques": "bad", "mixed": "mix", "neutral": "muted"}
+EMPIRICAL_TYPES = {"empiris_kuantitatif", "kualitatif_studi_kasus", "komparatif"}
+REASONING_TYPES = ARGUMENT_TYPES | {"konseptual_teoretis", "mixed"}
+
+
+def _type_tone(arg_t: str) -> str:
+    if arg_t in EMPIRICAL_TYPES:
+        return "info"
+    if arg_t in REASONING_TYPES:
+        return "teal"
+    return "muted"
+
+
+def _badge(text: str, tone: str = "muted", icon: str = "") -> str:
+    """Small colored pill. Tones: good, bad, mix, warn, info, teal, muted."""
+    dot = f"<span class='cl-badge-dot'>{icon}</span>" if icon else "<span class='cl-badge-dot'></span>"
+    return f"<span class='cl-badge {tone}'>{dot}{_e(text)}</span>"
+
+
+CLAIM_TONES = {
+    _entail.SUPPORTED: "good",
+    _entail.PARTIAL: "warn",
+    _entail.UNSUPPORTED: "bad",
+    _entail.NO_SOURCE: "bad",
+    _entail.UNCHECKED: "muted",
+}
+CLAIM_ORDER = [_entail.UNSUPPORTED, _entail.NO_SOURCE, _entail.PARTIAL, _entail.UNCHECKED, _entail.SUPPORTED]
+
+
+def run_claim_check(answer: str, numbered: list[dict] | None = None) -> dict | None:
+    try:
+        with st.spinner("Memeriksa setiap klaim terhadap isi paper..."):
+            return _entail.check_answer(answer, model=config.LLM_MODEL, numbered=numbered)
+    except Exception as e:
+        st.warning(f"Pemeriksaan klaim gagal: {e}")
+        return None
+
+
+def render_claim_report(report: dict | None):
+    """Show which cited sentences the sources back, and which need checking."""
+    if not report:
+        return
+    total = report.get("total", 0)
+    if not total:
+        st.caption("Pemeriksaan klaim: jawaban ini tidak memuat kalimat bersitasi, jadi tidak ada yang bisa dicek.")
+        return
+    summary = report.get("summary", {})
+    badges = " ".join(
+        _badge(f"{summary[v]} {_entail.VERDICT_LABELS[v].lower()}", CLAIM_TONES[v])
+        for v in CLAIM_ORDER if summary.get(v)
+    )
+    flagged = _entail.needs_attention(report)
+    head = (f"{flagged} dari {total} klaim perlu dicek sebelum dikutip." if flagged
+            else f"Semua {total} klaim bersitasi didukung isi paper.")
+    st.markdown(
+        f"<div class='cl-claim-sum'><div class='cl-claim-head'>Pemeriksaan klaim</div>"
+        f"<div class='cl-claim-line'>{_e(head)}</div><div class='cl-claim-badges'>{badges}</div></div>",
+        unsafe_allow_html=True,
+    )
+    if report.get("skipped"):
+        st.caption(f"{report['skipped']} klaim terakhir tidak dicek karena batas jumlah klaim.")
+    rows = sorted(report.get("claims", []), key=lambda c: (CLAIM_ORDER.index(c["verdict"]), c["id"]))
+    with st.expander("Hasil cek per klaim", expanded=bool(flagged)):
+        for c in rows:
+            ev = [c["evidence"][i] for i in c.get("evidence_used", []) if i < len(c.get("evidence", []))]
+            ev_html = "".join(
+                f"<div class='cl-claim-ev'><span class='cl-claim-page'>{_e(e.get('page_label', ''))}</span>"
+                f"&ldquo;{_e(e.get('text', '')[:400])}&rdquo;</div>"
+                for e in ev[:2]
+            )
+            srcs = "; ".join(f"{x.get('title')} ({x.get('year') or 'n.d.'})" for x in c.get("papers", [])) \
+                or "; ".join(c.get("citations", []))
+            st.markdown(
+                f"<div class='cl-claim {CLAIM_TONES[c['verdict']]}'>"
+                f"<div>{_badge(_entail.VERDICT_LABELS[c['verdict']], CLAIM_TONES[c['verdict']])}</div>"
+                f"<div class='cl-claim-text'>{_e(c['text'])}</div>"
+                f"<div class='cl-claim-src'>Sumber: {_e(srcs)}</div>"
+                + (f"<div class='cl-claim-reason'>{_e(c['reason'])}</div>" if c.get("reason") else "")
+                + ev_html + "</div>",
+                unsafe_allow_html=True,
+            )
+
+
+REVIEW_TONES = {"benar": "good", "salah": "bad", "diedit": "info"}
+
+
+def _meta_store() -> dict:
+    if "_meta_store" not in st.session_state:
+        st.session_state["_meta_store"] = _metadata.load_store()
+    return st.session_state["_meta_store"]
+
+
+def _statement_label(field: str, index) -> str:
+    label = _acheck.FIELD_LABELS.get(field, field)
+    return f"{label} {index + 1}" if index is not None else label
+
+
+def render_analysis_review(p: dict, key: str):
+    """Check one analysis against the PDF text, and let the researcher mark or edit each statement."""
+    f = p.get("file")
+    if not f:
+        return
+    analysis = _acheck.load_analysis(f)
+    if not analysis:
+        return
+    report = _acheck.load_check(f)
+    reviews = _corrections.load(f)
+    head = st.columns([4, 1])
+    with head[0]:
+        if report:
+            sc = _acheck.score(report)
+            st.caption(
+                f"Dicek {sc['time'][:16].replace('T', ' ')}: {sc['supported']} dari {sc['statements']} pernyataan "
+                f"didukung teks paper, {sc['quotes_found']} dari {sc['quotes']} kutipan ada di PDF."
+            )
+        else:
+            st.caption("Belum dicek. AI membandingkan setiap pernyataan analisis dengan teks PDF, sekitar 1 menit.")
+    with head[1]:
+        if st.button("Cek ulang" if report else "Cek ke PDF", key=f"acheck_{key}", width="stretch"):
+            with st.spinner("Membandingkan analisis dengan teks PDF..."):
+                try:
+                    report = _acheck.check_paper(f, model=config.LLM_MODEL)
+                except Exception as e:
+                    st.error(f"Cek gagal: {e}")
+
+    by_key = {_corrections.key_of(r["field"], r["index"]): r for r in (report or {}).get("statements", [])}
+    for n, s in enumerate(_acheck.statements(analysis)):
+        k = _corrections.key_of(s["field"], s["index"])
+        r = by_key.get(k)
+        if r and r.get("text") != s["text"]:
+            r = None  # the check was made on an older analysis
+        rev = reviews.get(k)
+        stale = bool(rev) and _corrections.is_stale(rev, analysis, k)
+        badges = []
+        if r:
+            badges.append(_badge(_entail.VERDICT_LABELS[r["verdict"]], CLAIM_TONES[r["verdict"]]))
+        if rev and not stale:
+            badges.append(_badge(_corrections.LABELS[rev["status"]], REVIEW_TONES[rev["status"]]))
+        if stale:
+            badges.append(_badge("Koreksi lama, analisis sudah berubah", "warn"))
+        shown = rev["value"] if rev and rev["status"] == _corrections.EDITED and not stale else s["text"]
+        tone = REVIEW_TONES.get(rev["status"]) if rev and not stale else (CLAIM_TONES[r["verdict"]] if r else "muted")
+        ev_html = ""
+        if r and r.get("evidence"):
+            e = r["evidence"][0]
+            ev_html = (f"<div class='cl-claim-ev'><span class='cl-claim-page'>{_e(e.get('page_label', ''))}</span>"
+                       f"&ldquo;{_e(e.get('text', '')[:360])}&rdquo;</div>")
+        struck = " style='text-decoration:line-through;opacity:.6'" if rev and rev["status"] == _corrections.WRONG and not stale else ""
+        st.markdown(
+            f"<div class='cl-claim {tone}'><div>{''.join(badges)}</div>"
+            f"<div class='cl-claim-src'>{_e(_statement_label(s['field'], s['index']))}</div>"
+            f"<div class='cl-claim-text'{struck}>{_e(shown)}</div>"
+            + (f"<div class='cl-claim-reason'>{_e(r['reason'])}</div>" if r and r.get("reason") else "")
+            + (f"<div class='cl-claim-reason'>Catatan peneliti: {_e(rev['note'])}</div>" if rev and rev.get("note") else "")
+            + ev_html + "</div>",
+            unsafe_allow_html=True,
+        )
+        with st.popover("Koreksi", width="content", key=f"rv_p_{key}_{n}"):
+            choice = st.radio("Penilaian peneliti", ["Benar", "Salah", "Edit"], horizontal=True, key=f"rv_c_{key}_{n}")
+            new_text = None
+            if choice == "Edit":
+                new_text = st.text_area("Teks yang benar", value=shown, key=f"rv_t_{key}_{n}")
+            note = st.text_input("Catatan (opsional)", key=f"rv_n_{key}_{n}")
+            b1, b2 = st.columns(2)
+            if b1.button("Simpan", key=f"rv_s_{key}_{n}", type="primary", width="stretch"):
+                status = {"Benar": _corrections.CORRECT, "Salah": _corrections.WRONG, "Edit": _corrections.EDITED}[choice]
+                try:
+                    _corrections.set_review(f, s["field"], s["index"], status, value=new_text, note=note,
+                                            by=st.session_state.get("team_user", ""), analysis=analysis)
+                    db.sync_one(f)
+                    st.rerun()
+                except ValueError as err:
+                    st.error(str(err))
+            if rev and b2.button("Hapus koreksi", key=f"rv_d_{key}_{n}", width="stretch"):
+                _corrections.clear_review(f, s["field"], s["index"])
+                db.sync_one(f)
+                st.rerun()
+
+    quotes = (report or {}).get("quotes") or []
+    if quotes:
+        st.markdown("**Kutipan di analisis**")
+        tones = {_acheck.QUOTE_FOUND: "good", _acheck.QUOTE_CLOSE: "warn", _acheck.QUOTE_MISSING: "bad"}
+        for q in quotes:
+            extra = ""
+            if q.get("page"):
+                extra = f" Ditemukan di halaman PDF {q['page']}."
+                if q.get("page_ok") is False:
+                    extra += f" Nomor halaman di analisis ({_e(q.get('page_hint') or '-')}) beda, mungkin memakai nomor cetak jurnal."
+            st.markdown(
+                f"<div class='cl-claim {tones[q['status']]}'><div>{_badge(_acheck.QUOTE_LABELS[q['status']], tones[q['status']])}</div>"
+                f"<div class='cl-claim-text'>&ldquo;{_e((q.get('text') or '')[:400])}&rdquo;</div>"
+                f"<div class='cl-claim-reason'>{_e(extra.strip())}</div></div>",
+                unsafe_allow_html=True,
+            )
+
+
+def render_accuracy_page():
+    render_hero(
+        title="Periksa Akurasi",
+        subtitle="Cek analisis ke isi PDF, cek metadata dan retraksi, ukur akurasi sistem, dan simpan jejak setiap langkah AI.",
+        icon="",
+    )
+    tab_an, tab_meta, tab_eval, tab_log = st.tabs(["Cek analisis", "Metadata & retraksi", "Uji akurasi", "Log audit"])
+    papers = db.get_all_papers_with_analyses()
+    analyzed = [p for p in papers if p.get("thesis")]
+
+    with tab_an:
+        st.caption("Setiap pernyataan analisis AI (tesis, premis, temuan, kesimpulan) dibandingkan dengan teks PDF. "
+                   "Kutipan dicari di PDF tanpa AI. Hasil dan koreksi per paper bisa dibuka di Koleksi paper, bagian detail analisis.")
+        rows = []
+        for p in analyzed:
+            sc = _acheck.score(_acheck.load_check(p["file"]))
+            cs = _corrections.summary(p["file"])
+            rows.append({
+                "Paper": f"{p.get('title') or p['file']} ({p.get('year') or 'n.d.'})",
+                "Dicek": (sc.get("time") or "")[:10] if sc.get("checked") else "belum",
+                "Didukung": f"{sc['supported']}/{sc['statements']}" if sc.get("checked") else "",
+                "Perlu dicek": str(sc.get("flagged", "")) if sc.get("checked") else "",
+                "Kutipan ada di PDF": f"{sc['quotes_found']}/{sc['quotes']}" if sc.get("checked") else "",
+                "Koreksi peneliti": str(cs["total"] or ""),
+                "_file": p["file"],
+            })
+        unchecked = [r["_file"] for r in rows if r["Dicek"] == "belum"]
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            pick = st.multiselect("Paper yang dicek", options=[r["_file"] for r in rows], default=unchecked[:5],
+                                  format_func=lambda f: next(r["Paper"] for r in rows if r["_file"] == f)[:90],
+                                  key="acc_pick")
+        with c2:
+            st.write("")
+            go = st.button(f"Cek {len(pick)} paper", type="primary", width="stretch", disabled=not pick, key="acc_go")
+        if go:
+            bar = st.progress(0.0, text="Mulai...")
+            _acheck.check_many(pick, model=config.LLM_MODEL,
+                               progress_cb=lambda d, n, f: bar.progress(d / n, text=f"{d}/{n} selesai"))
+            st.rerun()
+        render_table([{k: v for k, v in r.items() if k != "_file"} for r in rows])
+
+    with tab_meta:
+        st.caption("Judul, tahun, dan penulis tiap paper dicocokkan ke Crossref atau DataCite lewat DOI. "
+                   "Paper yang ditarik (retracted), ditarik penulis, atau diberi peringatan editor ditandai.")
+        store = _meta_store()
+        if st.button("Cek semua paper sekarang", type="primary", key="meta_go"):
+            bar = st.progress(0.0, text="Mulai...")
+            store = _metadata.check_all(progress_cb=lambda d, n, t: bar.progress(d / n, text=f"{d}/{n}: {t[:60]}"))
+            st.session_state["_meta_store"] = store
+        if store:
+            bad = _metadata.flagged(store)
+            if bad:
+                st.error("Paper ini ditarik atau bermasalah. Jangan dikutip sebagai bukti tanpa membaca pemberitahuannya: "
+                         + "; ".join(f"{r.get('title')} ({', '.join(n['label'] for n in r['notices'] if n.get('serious'))})" for r in bad))
+            counts = {}
+            for r in store.values():
+                counts[r["status"]] = counts.get(r["status"], 0) + 1
+            tones = {_metadata.OK: "good", _metadata.DIFF: "warn", _metadata.NOT_FOUND: "warn",
+                     _metadata.INVALID: "bad", _metadata.NO_DOI: "muted", _metadata.ERROR: "muted"}
+            st.markdown("<div class='cl-badges'>" + "".join(
+                _badge(f"{n} {_metadata.STATUS_LABELS[s].lower()}", tones.get(s, "muted")) for s, n in counts.items()
+            ) + "</div>", unsafe_allow_html=True)
+            render_table([{
+                "Paper": r.get("title"),
+                "DOI": r.get("doi") or "",
+                "Status": _metadata.STATUS_LABELS.get(r["status"], r["status"]),
+                "Beda": "; ".join(f"{d['field']}: kita {d['ours']}, sumber {d['crossref']}" for d in r.get("diffs", [])),
+                "Pemberitahuan": "; ".join(n["label"] for n in r.get("notices", [])),
+                "Dicek": (r.get("time") or "")[:10],
+            } for r in sorted(store.values(), key=lambda r: (r["status"] == _metadata.OK, r.get("title") or ""))])
+        else:
+            st.info("Belum pernah dicek.")
+        st.markdown("**Ekspor daftar pustaka**")
+        st.caption("Memakai data Crossref bila sudah cocok. Entri yang belum terverifikasi atau bermasalah diberi catatan.")
+        d1, d2 = st.columns(2)
+        d1.download_button("Unduh BibTeX (.bib)", _metadata.to_bibtex(papers, store), "references.bib", "text/plain", width="stretch")
+        d2.download_button("Unduh RIS (Zotero, Mendeley)", _metadata.to_ris(papers, store), "references.ris",
+                           "application/x-research-info-systems", width="stretch")
+
+    with tab_eval:
+        st.caption("Set uji berisi pertanyaan dan klaim dari koleksi sendiri, beserta halaman dan jawaban yang benar. "
+                   "Dengan ini akurasi pencarian dan cek klaim bisa diukur, dan setiap perubahan bisa dibandingkan.")
+        gold = _evaluate.load_gold()
+        reviewed = sum(1 for g in gold if g.get("reviewed"))
+        st.markdown(f"Set uji: **{len(gold)} soal**, {reviewed} sudah diperiksa peneliti.")
+        g1, g2 = st.columns([1, 3])
+        n_new = g1.number_input("Paper baru", min_value=1, max_value=30, value=5, key="ev_n")
+        g2.write("")
+        if g2.button("Buat draf soal dengan AI", key="ev_draft"):
+            bar = st.progress(0.0, text="Mulai...")
+            new = _evaluate.draft_gold(n_papers=int(n_new), model=config.LLM_MODEL,
+                                       progress_cb=lambda d, n, t: bar.progress(d / n, text=f"{d}/{n}: {t[:60]}"))
+            st.success(f"{len(new)} soal baru ditambahkan. Periksa dulu sebelum dipakai sebagai patokan.")
+            gold = _evaluate.load_gold()
+        if gold:
+            st.caption("Centang Diperiksa untuk soal yang sudah benar. Ubah teks atau jawaban bila perlu, lalu simpan.")
+            table = [{
+                "id": g["id"],
+                "Jenis": "Pencarian" if g["kind"] == "retrieval" else "Klaim",
+                "Soal": g.get("question") or g.get("claim"),
+                "Jawaban benar": f"halaman {', '.join(map(str, g.get('pages') or []))}" if g["kind"] == "retrieval"
+                else g.get("expected"),
+                "Paper": (g.get("title") or g.get("file"))[:60],
+                "Diperiksa": bool(g.get("reviewed")),
+                "Hapus": False,
+            } for g in gold]
+            edited = st.data_editor(
+                table, key="ev_editor", width="stretch", hide_index=True,
+                disabled=["id", "Jenis", "Paper", "Jawaban benar"],
+                column_config={"Soal": st.column_config.TextColumn(width="large")},
+            )
+            with st.expander("Kutipan sumber tiap soal"):
+                for g in gold[:60]:
+                    st.markdown(f"**{g['id']}** (hal. {g.get('page')}): {_e((g.get('passage') or '')[:500])}")
+            if st.button("Simpan perubahan", key="ev_save"):
+                by_id = {g["id"]: g for g in gold}
+                out = []
+                for row in edited:
+                    g = by_id[row["id"]]
+                    if row["Hapus"]:
+                        continue
+                    g["reviewed"] = bool(row["Diperiksa"])
+                    g["question" if g["kind"] == "retrieval" else "claim"] = row["Soal"]
+                    out.append(g)
+                _evaluate.save_gold(out)
+                st.success("Tersimpan.")
+                st.rerun()
+
+            r1, r2, r3 = st.columns([1, 1, 2])
+            only_rev = r1.checkbox("Hanya soal yang diperiksa", value=reviewed > 0, key="ev_rev")
+            k = r2.number_input("k (halaman teratas)", min_value=1, max_value=10, value=3, key="ev_k")
+            r3.write("")
+            if r3.button("Jalankan uji", type="primary", key="ev_run"):
+                with st.spinner("Menjalankan uji, sekitar 15-20 detik per soal..."):
+                    st.session_state["ev_last"] = _evaluate.run(k=int(k), reviewed_only=only_rev, model=config.LLM_MODEL)
+        last = st.session_state.get("ev_last")
+        if last:
+            m1, m2, m3, m4 = st.columns(4)
+            pct = lambda x: "-" if x is None else f"{x * 100:.0f}%"
+            m1.metric(f"Halaman benar di {last['settings']['k']} teratas", pct(last["retrieval"]["recall_at_k"]))
+            m2.metric("Akurasi cek klaim", pct(last["claims"]["accuracy"]))
+            m3.metric("Klaim salah yang tertangkap", pct(last["claims"]["false_caught"]))
+            m4.metric("Klaim benar yang lolos", pct(last["claims"]["true_passed"]))
+            wrong = [r for r in last["claims"]["rows"] if not r["ok"]]
+            if wrong:
+                with st.expander(f"{len(wrong)} klaim dinilai keliru oleh pemeriksa"):
+                    render_table([{"id": r["id"], "Seharusnya": r["expected"], "Hasil": r["got"], "Alasan": r["reason"]} for r in wrong])
+        hist = _evaluate.history()
+        if hist:
+            st.markdown("**Riwayat uji**")
+            pct = lambda x: "" if x is None else f"{x * 100:.0f}%"
+            render_table([{"Waktu": h["time"].replace("T", " ")[:16], "k": str(h["k"]), "Halaman benar": pct(h["recall_at_k"]),
+                           "MRR": "" if h["mrr"] is None else f"{h['mrr']:.2f}", "Akurasi klaim": pct(h["claim_accuracy"]),
+                           "Salah tertangkap": pct(h["false_caught"]), "Benar lolos": pct(h["true_passed"]),
+                           "Embedding": h.get("embed_model") or "-"} for h in hist])
+
+    with tab_log:
+        rows = _audit.read()
+        st.caption("Setiap langkah AI dicatat: waktu, model, versi prompt, dan masukannya. Lampirkan log ini di bagian metode.")
+        st.markdown("**Teks untuk bagian metode**")
+        st.code(_audit.methods_text(rows), language="text", wrap_lines=True)
+        if rows:
+            l1, l2 = st.columns(2)
+            l1.download_button("Unduh log (CSV)", _audit.to_csv(rows), "cosmolab_audit.csv", "text/csv", width="stretch")
+            l2.download_button("Unduh log (JSONL)", "\n".join(json.dumps(r, ensure_ascii=False) for r in reversed(rows)),
+                               "cosmolab_audit.jsonl", "application/json", width="stretch")
+            render_table([{
+                "Waktu": r.get("time", "").replace("T", " "),
+                "Langkah": _audit.EVENT_LABELS.get(r.get("event"), r.get("event")),
+                "Model": r.get("model") or "",
+                "Paper / pertanyaan": r.get("question") or r.get("file") or "",
+                "Ringkasan": json.dumps(r.get("summary"), ensure_ascii=False) if r.get("summary") else (r.get("status") or ""),
+                "Oleh": r.get("user") or "",
+            } for r in rows[:300]])
+        else:
+            st.info("Belum ada aktivitas yang tercatat.")
+
+
+def paper_badges(p: dict) -> str:
+    """Status, stance, study type, and warnings that need the researcher's attention."""
+    out = []
+    analyzed = bool(p.get("thesis"))
+    out.append(_badge("Sudah dianalisis", "muted") if analyzed else _badge("Belum dianalisis", "warn"))
+    if analyzed:
+        stn = p.get("supports_or_critiques") or "neutral"
+        out.append(_badge(STANCE_LABELS.get(stn, stn), STANCE_TONES.get(stn, "muted")))
+        arg_t = p.get("argument_type") or ""
+        if arg_t and arg_t not in ("other", "unclassified"):
+            out.append(_badge(TYPE_LABELS.get(arg_t, arg_t), _type_tone(arg_t)))
+    meta = _meta_store().get(p.get("file") or "") or {}
+    serious = [n["label"] for n in meta.get("notices", []) if n.get("serious")]
+    if serious:
+        out.append(_badge(serious[0], "bad"))
+    elif meta.get("status") == _metadata.INVALID:
+        out.append(_badge("DOI tidak terdaftar", "bad"))
+    elif meta.get("status") == _metadata.DIFF:
+        out.append(_badge("Metadata beda dengan Crossref", "warn"))
+    if analyzed:
+        sc = _acheck.score(_acheck.load_check(p.get("file") or ""))
+        if sc.get("checked"):
+            tone = "good" if not sc["flagged"] else "warn"
+            out.append(_badge(f"Cek PDF: {sc['supported']}/{sc['statements']} didukung", tone))
+    if not _authors.as_list(p.get("authors")):
+        out.append(_badge("Penulis belum diketahui", "warn"))
+    elif p.get("authors_source") == "pdf_ai":
+        out.append(_badge("Penulis dibaca AI, mohon dicek", "warn"))
+    try:
+        age = datetime.now().year - int(str(p.get("year") or "")[:4])
+        if age > 10:
+            out.append(_badge(f"Terbit {age} tahun lalu", "muted"))
+    except ValueError:
+        pass
+    return "<div class='cl-badges'>" + "".join(out) + "</div>"
+
+
+def _numbered_list(items: list, prefix: str = "") -> str:
+    rows = "".join(f"<li data-label='{prefix}{i}'>{_e(str(x))}</li>" for i, x in enumerate(items, 1) if str(x).strip())
+    return f"<ol class='an-list'>{rows}</ol>"
+
+
+def render_analysis_detail(p: dict):
+    """Analysis of one paper, laid out by paper kind: argument papers show premises,
+    empirical papers show method and findings."""
+    try:
+        raw = json.loads(p.get("raw_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        raw = {}
+    try:
+        premises = json.loads(p.get("premises_json") or "[]") or []
+    except (TypeError, json.JSONDecodeError):
+        premises = []
+    try:
+        quotes = json.loads(p.get("quotes_json") or "[]") or []
+    except (TypeError, json.JSONDecodeError):
+        quotes = []
+    method = raw.get("research_method")
+    findings = [f for f in (raw.get("key_findings") or []) if isinstance(f, str) and f.strip()]
+    is_arg = _is_argument_paper(p)
+    arg_t = p.get("argument_type") or ""
+
+    if not (p.get("thesis") or premises or findings):
+        st.caption("Paper ini belum dianalisis. Tekan tombol Analisis di atas untuk mengisi bagian ini.")
+        st.markdown(f"<div class='an-foot'>Sumber data: {_e(p.get('source') or 'web')} · File: {_e(p.get('file') or '')}</div>",
+                    unsafe_allow_html=True)
+        return
+
+    facts = []
+    if method:
+        facts.append(("Metode riset", method))
+    if arg_t and arg_t != "other":
+        facts.append(("Jenis kajian", _badge(TYPE_LABELS.get(arg_t, arg_t), _type_tone(arg_t))))
+    stn = p.get("supports_or_critiques") or "neutral"
+    facts.append(("Sikap terhadap topik", _badge(STANCE_LABELS.get(stn, "Netral"), STANCE_TONES.get(stn, "muted"))))
+    if p.get("doi"):
+        facts.append(("DOI", p["doi"]))
+    else:
+        facts.append(("DOI", _badge("Tidak ada DOI, cek sumber sebelum dikutip", "warn")))
+    st.markdown(
+        "<div class='an-facts'>" + "".join(
+            f"<div class='an-fact{' wide' if k == 'Metode riset' else ''}'><div class='an-fact-label'>{_e(k)}</div>"
+            f"<div class='an-fact-value'>{v if str(v).startswith('<span') else _e(str(v))}</div></div>"
+            for k, v in facts) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if is_arg and premises:
+        st.markdown("<div class='an-section'>Rekonstruksi premis</div>"
+                    "<div class='an-section-note'>Langkah penalaran penulis menuju kesimpulan.</div>"
+                    + _numbered_list(premises, "P"), unsafe_allow_html=True)
+        if findings:
+            st.markdown("<div class='an-section'>Temuan utama</div>" + _numbered_list(findings), unsafe_allow_html=True)
+    elif findings:
+        st.markdown("<div class='an-section'>Temuan utama</div>"
+                    "<div class='an-section-note'>Dari bagian hasil dan pembahasan.</div>"
+                    + _numbered_list(findings), unsafe_allow_html=True)
+    elif premises:
+        st.markdown("<div class='an-section'>Alur argumen</div>" + _numbered_list(premises), unsafe_allow_html=True)
+
+    if p.get("conclusion"):
+        st.markdown(f"<div class='an-section'>Kesimpulan</div><div class='an-conclusion'>{_e(p['conclusion'])}</div>",
+                    unsafe_allow_html=True)
+
+    boxes = []
+    if p.get("key_objection"):
+        label = "Keberatan terkuat" if is_arg else "Kritik atau keterbatasan"
+        boxes.append(f"<div class='an-box critique'><b>{label}</b>{_e(p['key_objection'])}</div>")
+    if p.get("key_defense"):
+        boxes.append(f"<div class='an-box defense'><b>Tanggapan penulis</b>{_e(p['key_defense'])}</div>")
+    if boxes:
+        st.markdown("<div class='an-section'>Kritik dan tanggapan</div><div class='an-pair'>" + "".join(boxes) + "</div>",
+                    unsafe_allow_html=True)
+
+    if quotes:
+        q_html = []
+        for q in quotes:
+            if not isinstance(q, dict) or not q.get("text"):
+                continue
+            hint = q.get("page_hint") or ""
+            src = f"<div class='an-quote-src'>{_e(hint)}</div>" if hint else ""
+            q_html.append(f"<div class='an-quote'><div class='an-quote-text'>&ldquo;{_e(q['text'])}&rdquo;</div>{src}</div>")
+        if q_html:
+            st.markdown("<div class='an-section'>Kutipan kunci</div>" + "".join(q_html), unsafe_allow_html=True)
+
+    st.markdown(f"<div class='an-foot'>Sumber data: {_e(p.get('source') or 'web')} · File: {_e(p.get('file') or '')}</div>",
+                unsafe_allow_html=True)
 
 
 # -------------------------------------------------------------
@@ -1079,7 +1771,12 @@ if menu == "Paper Explorer & Korpus":
                     st.success(f"{_stats['found']} dari {_stats['checked']} paper sekarang punya nama penulis.")
                     st.rerun()
 
-            st.caption(f"Menampilkan {len(filtered)} dari {len(papers)} paper")
+            st.markdown(
+                f"<div class='cl-legend'><span>Menampilkan {len(filtered)} dari {len(papers)} paper.</span>"
+                + _badge("Mendukung", "good") + _badge("Mengkritik", "bad") + _badge("Campuran", "mix") + _badge("Kajian empiris", "info")
+                + _badge("Kajian argumen", "teal") + _badge("Perlu dicek", "warn") + "</div>",
+                unsafe_allow_html=True,
+            )
 
             for idx, p in enumerate(filtered, start=1):
                 title = p.get("title") or "Untitled"
@@ -1096,14 +1793,13 @@ if menu == "Paper Explorer & Korpus":
                 type_str = TYPE_LABELS.get(arg_t, arg_t)
 
                 p_authors = _authors.as_list(p.get("authors"))
-                meta_bits = ([_authors.display(p_authors)] if p_authors else ["Penulis belum diketahui"]) + [str(year), fac_name, stance_str]
-                if arg_t not in ("unclassified", "other"):
-                    meta_bits.append(type_str)
+                meta_bits = ([_authors.display(p_authors)] if p_authors else []) + [str(year), fac_name]
 
                 with st.container(border=True):
                     st.markdown(
                         f"<div class='paper-card-title'>{idx}. {_e(title)}</div>"
-                        f"<div class='paper-card-meta'>{_e(' · '.join(meta_bits))}</div>",
+                        f"<div class='paper-card-meta'>{_e(' · '.join(meta_bits))}</div>"
+                        + paper_badges(p),
                         unsafe_allow_html=True,
                     )
 
@@ -1113,9 +1809,7 @@ if menu == "Paper Explorer & Korpus":
                     col_a1, col_a2, col_a3 = st.columns([3, 2, 2])
                     with col_a1:
                         if not p.get("thesis"):
-                            st.caption("Belum dianalisis. AI membaca naskah utuh, sekitar 1 menit per paper.")
-                        else:
-                            st.caption("Sudah dianalisis")
+                            st.caption("AI membaca naskah utuh, sekitar 1 menit per paper.")
                     with col_a2:
                         if not p.get("thesis"):
                             if st.button("Analisis", key=f"btn_an_single_{idx}_{p.get('file')}", type="primary", use_container_width=True):
@@ -1133,64 +1827,9 @@ if menu == "Paper Explorer & Korpus":
 
                     # Logic expander
                     with st.expander("Lihat detail analisis", expanded=False):
-                        col_det1, col_det2 = st.columns(2)
-                        with col_det1:
-                            st.markdown("**Metadata Sumber:**")
-                            st.write(f"- Sumber Data: `{source}`")
-                            st.write(f"- DOI: `{p.get('doi') or 'N/A'}`")
-                            st.write(f"- File Lokal: `{p.get('file')}`")
-                        with col_det2:
-                            if p.get("conclusion"):
-                                st.markdown("**Kesimpulan Logis:**")
-                                st.code(p.get("conclusion"), language="text")
-
-                        # Research Method & Key Findings (if available)
-                        try:
-                            raw_an = json.loads(p.get("raw_json") or "{}")
-                            res_m = raw_an.get("research_method")
-                            if res_m:
-                                st.markdown(f"<div style='background:#F1F5F9; border-left:3px solid #2563EB; padding:6px 12px; border-radius:4px; font-size:0.85rem; margin-bottom:10px;'><b>Metodologi Riset:</b> {_e(res_m)}</div>", unsafe_allow_html=True)
-                            
-                            key_finds = raw_an.get("key_findings")
-                            if key_finds and isinstance(key_finds, list):
-                                st.markdown("##### Temuan Inti (Hasil & Pembahasan):")
-                                for kf in key_finds:
-                                    st.markdown(f"- {kf}")
-                        except Exception:
-                            pass
-
-                        # Premises
-                        if p.get("premises_json"):
-                            try:
-                                premises = json.loads(p["premises_json"])
-                                if premises:
-                                    st.markdown("##### Rekonstruksi Premis Formal:")
-                                    for p_num, prem in enumerate(premises, 1):
-                                        st.markdown(f"<div class='premise-block'><b>P{p_num}:</b> {_e(prem)}</div>", unsafe_allow_html=True)
-                            except Exception:
-                                pass
-
-                        # Objection & Defense side by side
-                        col_o1, col_o2 = st.columns(2)
-                        if p.get("key_objection"):
-                            with col_o1:
-                                st.warning(f"**Objeksi Terkuat Lawan:**\n\n{p.get('key_objection')}")
-                        if p.get("key_defense"):
-                            with col_o2:
-                                st.success(f"**Pertahanan / Tanggapan Penulis:**\n\n{p.get('key_defense')}")
-
-                        # Quotes
-                        if p.get("quotes_json"):
-                            try:
-                                quotes = json.loads(p["quotes_json"])
-                                if quotes:
-                                    st.markdown("##### Kutipan Kunci dari Seluruh Isi Naskah:")
-                                    for q in quotes:
-                                        p_hint = q.get("page_hint", "N/A")
-                                        hint_label = p_hint if any(w in p_hint.lower() for w in ["halaman", "hlm", "bab", "abstrak", "abstract"]) else f"Halaman / Bagian: {p_hint}"
-                                        st.markdown(f"> *\"{_e(q.get('text', ''))}\"*\n>\n> — <span style='font-size:0.8rem; color:#475569;'><b>{_e(hint_label)}</b></span>", unsafe_allow_html=True)
-                            except Exception:
-                                pass
+                        render_analysis_detail(p)
+                        if p.get("thesis") and st.toggle("Cek ke PDF & koreksi peneliti", key=f"rv_on_{idx}_{p.get('file')}"):
+                            render_analysis_review(p, f"{idx}_{p.get('file')}")
 
                         # Citations
                         apa_ref = _citations.format_apa(p)
@@ -1544,7 +2183,7 @@ elif menu == "Arena Sparring Nalar":
 elif menu == "Tanya Korpus & Sintesis":
     active_fac_name = faculty_labels.get(selected_faculty_id, "Universal")
     render_hero(
-        title="Tanya Koleksi",
+        title="Tanya Korpus & Sintesis",
         subtitle=f"Ajukan pertanyaan riset. AI menjawab hanya dari paper di koleksi (bidang: <b>{active_fac_name}</b>) dan menyebutkan rujukannya.",
         icon="",
     )
@@ -1608,6 +2247,11 @@ elif menu == "Tanya Korpus & Sintesis":
             horizontal=True
         )
 
+        check_claims = st.checkbox(
+            "Periksa setiap klaim terhadap isi paper", value=True,
+            help="Setiap kalimat yang menyebut sumber dicek: apakah isi paper itu benar-benar mendukungnya. Menambah sekitar 10–30 detik.",
+        )
+
         ask_btn = st.button("Tanyakan", type="primary", use_container_width=True)
 
     if ask_btn:
@@ -1618,9 +2262,11 @@ elif menu == "Tanya Korpus & Sintesis":
                 with st.spinner("Membaca paper dan membandingkan pendapat. Biasanya 30–90 detik..."):
                     try:
                         res = _ask_agent.ask_agentic(question=user_q, model=config.LLM_MODEL, top_k=k_val)
+                        st.session_state.pop("classic_answer", None)
                         st.session_state["agentic_answer"] = {
                             "q": user_q,
-                            "res": res
+                            "res": res,
+                            "claims": run_claim_check(res.get("answer", ""), res.get("referenced_papers")) if check_claims else None,
                         }
                     except Exception as e:
                         st.error(f"Gagal memproses pertanyaan: {e}")
@@ -1628,9 +2274,11 @@ elif menu == "Tanya Korpus & Sintesis":
                 with st.spinner("Membaca paper. Biasanya 10–30 detik..."):
                     try:
                         answer = _ask.ask(question=user_q, model=config.LLM_MODEL, top_k=k_val)
+                        st.session_state.pop("agentic_answer", None)
                         st.session_state["classic_answer"] = {
                             "q": user_q,
-                            "answer": answer
+                            "answer": answer,
+                            "claims": run_claim_check(answer) if check_claims else None,
                         }
                     except Exception as e:
                         st.error(f"Gagal memproses pertanyaan: {e}")
@@ -1646,6 +2294,8 @@ elif menu == "Tanya Korpus & Sintesis":
         with st.chat_message("assistant", avatar=":material/balance:"):
             st.markdown(res.get("answer", ""))
 
+        render_claim_report(ans_data.get("claims"))
+
         ref_papers = res.get("referenced_papers", [])
         if ref_papers:
             with st.expander(f"Paper yang dipakai ({len(ref_papers)})", expanded=False):
@@ -1653,6 +2303,23 @@ elif menu == "Tanya Korpus & Sintesis":
                     st.markdown(f"- **[{p.get('year', 'n.d.')}] {p.get('title')}** | Sikap: `{p.get('supports_or_critiques')}`")
                     if p.get("thesis"):
                         st.caption(f"  *Tesis:* {p.get('thesis')}")
+
+        grounded_cits = res.get("grounded_citations", [])
+        if grounded_cits:
+            with st.expander(f"Bukti Verbatim dan Halaman PDF Terverifikasi ({len(grounded_cits)})", expanded=True):
+                st.caption("Kutipan langsung dari naskah PDF asli yang diverifikasi oleh sistem Page-Aware Grounding:")
+                for gc in grounded_cits:
+                    st.markdown(
+                        f'''<div style="background-color: rgba(28, 100, 242, 0.05); border-left: 4px solid #1c64f2; padding: 8px 12px; border-radius: 6px; margin-bottom: 8px;">
+                            <div style="font-size: 0.85rem; font-weight: 600; color: #1c64f2; margin-bottom: 3px;">
+                                📄 {html.escape(gc.get('paper_title', ''))} ({gc.get('year', '')}) &mdash; <span style="background: #e1effe; color: #1e429f; padding: 1px 6px; border-radius: 4px;">{gc.get('page_label', '')}</span>
+                            </div>
+                            <div style="font-size: 0.88rem; font-style: italic; color: #374151;">
+                                &ldquo;{html.escape(gc.get('verbatim', ''))}&rdquo;
+                            </div>
+                        </div>''',
+                        unsafe_allow_html=True
+                    )
 
         if st.button("Simpan jawaban ke catatan Obsidian", key="btn_save_agent_obsidian"):
             saved_path = export.export_agent_synthesis_to_obsidian(ans_data["q"], res.get("answer", ""), ref_papers)
@@ -1662,6 +2329,7 @@ elif menu == "Tanya Korpus & Sintesis":
         ans_data = st.session_state["classic_answer"]
         with st.chat_message("assistant", avatar=":material/description:"):
             st.markdown(ans_data["answer"])
+        render_claim_report(ans_data.get("claims"))
 
 
 # -------------------------------------------------------------
@@ -2182,8 +2850,9 @@ elif menu == "Panen Paper Ilmiah":
         except Exception as e:
             status_box.error(f"Terjadi kesalahan: {e}")
 
-    tab_h2, tab_h1, tab_h4, tab_h5, tab_h3 = st.tabs([
+    tab_h2, tab_h6, tab_h1, tab_h4, tab_h5, tab_h3 = st.tabs([
         "Cari topik",
+        "Telusuri sitasi",
         "Per bidang ilmu",
         "Unggah PDF / DOI",
         "Analisis paper",
@@ -2349,6 +3018,9 @@ elif menu == "Panen Paper Ilmiah":
                             _faculties.delete_custom_faculty(cfac.id)
                             st.warning(f"Bidang '{cfac.name}' dihapus.")
                             st.rerun()
+
+    with tab_h6:
+        render_snowball_tab()
 
     with tab_h4:
         with st.container(border=True):
@@ -2554,6 +3226,15 @@ elif menu == "Full-Text Search":
                         st.warning(f"**Objeksi Kunci:** {r.get('key_objection')}")
                     if r.get("snippet"):
                         st.markdown(f"**Kutipan Teks:** ...*{r.get('snippet')}*...")
+                    if r.get("file"):
+                        try:
+                            passages = _retrieval.find_grounded_passages(r["file"], search_query, top_k=1)
+                            if passages:
+                                psg = passages[0]
+                                psg_text = html.escape(psg['verbatim'])
+                                st.caption(f"📍 **{psg['page_label']}**: *\"{psg_text}\"*")
+                        except Exception:
+                            pass
 
 
 # -------------------------------------------------------------
@@ -2709,6 +3390,9 @@ elif menu == "Laporan Sintesis":
 # -------------------------------------------------------------
 # Module 10: Ekspor Data & Flashcards
 # -------------------------------------------------------------
+elif menu == "Pusat Akurasi":
+    render_accuracy_page()
+
 elif menu == "Ekspor Data & Flashcards":
     render_hero(
         title="Ekspor Data & Kartu Active Recall",

@@ -173,3 +173,22 @@ FIRM_LOGO = (Path(_logo) if Path(_logo).is_absolute() else PROJECT_ROOT / _logo)
 
 # Team access: password asked by the dashboard when started with `cosmolab ui --team`.
 TEAM_PASSWORD = _env("COSMOLAB_TEAM_PASSWORD")
+
+# Dense passage search (optional). Leave EMBED_MODEL empty to use keyword (BM25) search only.
+# Remote: any OpenAI-compatible /embeddings model, e.g. EMBED_MODEL=bge-m3.
+# Local: EMBED_MODEL=local:<fastembed model>, needs `pip install fastembed`.
+EMBED_MODEL = _env("EMBED_MODEL")
+EMBED_BASE_URL = _env("EMBED_BASE_URL") or LLM_BASE_URL
+EMBED_API_KEY = _env("EMBED_API_KEY") or LLM_API_KEY
+
+# Let the LLM reorder passage candidates by meaning in Tanya Korpus (one extra call per paper,
+# run in parallel). Set COSMOLAB_RERANK_PASSAGES=0 to turn it off.
+RERANK_PASSAGES = _env("COSMOLAB_RERANK_PASSAGES", "1").strip().lower() not in ("0", "false", "no", "off")
+
+# Cache of small LLM calls (query expansion, passage rerank) in <root>/cache/llm.json.
+# Set COSMOLAB_LLM_CACHE=0 to turn it off.
+LLM_CACHE = _env("COSMOLAB_LLM_CACHE", "1").strip().lower() not in ("0", "false", "no", "off")
+
+# Skip the LLM rerank when BM25 and embeddings agree on one clear winner.
+# Set COSMOLAB_RERANK_ALWAYS=1 to rerank every time.
+RERANK_ALWAYS = _env("COSMOLAB_RERANK_ALWAYS", "0").strip().lower() in ("1", "true", "yes", "on")

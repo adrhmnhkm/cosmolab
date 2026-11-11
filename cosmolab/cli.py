@@ -239,7 +239,8 @@ def ask(
     model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
     top_k: int = typer.Option(6, "--top-k", "-k", help="Number of relevant papers to retrieve"),
     agentic: bool = typer.Option(True, "--agentic/--classic", help="Use Agentic Second Brain reasoning instead of Naive RAG"),
-    save_obsidian: bool = typer.Option(False, "--save-obsidian", "-s", help="Save synthesis to Obsidian Vault")
+    save_obsidian: bool = typer.Option(False, "--save-obsidian", "-s", help="Save synthesis to Obsidian Vault"),
+    check: bool = typer.Option(True, "--cek/--no-cek", help="Check every cited claim against the cited papers"),
 ):
     """Ask research questions across your paper corpus using Agentic Second Brain or Classic RAG."""
     from rich.markdown import Markdown
@@ -248,11 +249,69 @@ def ask(
         console.print("[bold cyan]Querying Corpus with Agentic Second Brain...[/bold cyan]")
         res = ask_agent.ask_agentic(question=question, model=model, top_k=top_k)
         console.print(Panel(Markdown(res["answer"]), title="[bold green]Agentic Dialectical Synthesis[/bold green]", border_style="green"))
+        citations = res.get("grounded_citations", [])
+        if citations:
+            from rich.table import Table
+            tbl = Table(title="Bukti Verbatim & Nomor Halaman PDF Terverifikasi", border_style="cyan", show_lines=True)
+            tbl.add_column("Paper dan Tahun", style="bold white", width=32)
+            tbl.add_column("Halaman", style="yellow", justify="center", width=12)
+            tbl.add_column("Kutipan Verbatim Asli", style="italic green")
+            for c in citations[:6]:
+                tbl.add_row(f"{c['paper_title']} ({c['year']})", c["page_label"], f'"{c["verbatim"]}"')
+            console.print(tbl)
         if save_obsidian:
             path = _export.export_agent_synthesis_to_obsidian(question, res["answer"], res["referenced_papers"])
             console.print(f"[bold cyan]Saved to Obsidian:[/bold cyan] {path}")
+        answer, numbered = res["answer"], res.get("referenced_papers")
     else:
-        _ask.ask(question=question, model=model, top_k=top_k)
+        answer, numbered = _ask.ask(question=question, model=model, top_k=top_k), None
+    if check:
+        _print_claim_report(answer, model, numbered)
+
+
+CLAIM_STYLES = {"didukung": "green", "sebagian": "yellow", "tidak_didukung": "red", "sumber_tidak_ada": "red", "belum_dicek": "dim"}
+
+
+def _print_claim_report(text: str, model: str = None, numbered: list[dict] | None = None):
+    from rich.table import Table
+    from . import entail
+
+    console.print("[cyan]CEK KLAIM[/cyan] [dim]Mencocokkan setiap kalimat bersitasi dengan isi paper...[/dim]")
+    report = entail.check_answer(text, model=model, numbered=numbered)
+    if not report["total"]:
+        console.print("[dim]Tidak ada kalimat bersitasi untuk dicek.[/dim]")
+        return report
+    tbl = Table(title="Pemeriksaan klaim", border_style="cyan", show_lines=True)
+    tbl.add_column("Status", width=16)
+    tbl.add_column("Klaim")
+    tbl.add_column("Alasan", style="dim")
+    for c in report["claims"]:
+        style = CLAIM_STYLES.get(c["verdict"], "white")
+        tbl.add_row(f"[{style}]{entail.VERDICT_LABELS[c['verdict']]}[/{style}]", c["text"], c["reason"])
+    console.print(tbl)
+    flagged = entail.needs_attention(report)
+    color = "red" if flagged else "green"
+    console.print(f"[{color}]{flagged} dari {report['total']} klaim perlu dicek sebelum dikutip.[/{color}]")
+    return report
+
+
+@app.command("cek-klaim")
+def check_claims(
+    path: str = typer.Argument(..., help="Markdown or text file to check, e.g. a draft article"),
+    model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+):
+    """Check every cited sentence in a draft against the papers it cites."""
+    from pathlib import Path
+
+    f = Path(path)
+    if not f.exists():
+        console.print(f"[red]File tidak ditemukan:[/red] {f}")
+        raise typer.Exit(1)
+    from . import entail
+
+    report = _print_claim_report(f.read_text(encoding="utf-8"), model)
+    if entail.needs_attention(report):
+        raise typer.Exit(2)  # non-zero so scripts can stop on unsupported claims
 
 
 @app.command()
@@ -576,6 +635,109 @@ def authors(
     )
 
 
+@app.command("dois")
+def fill_dois(
+    refresh: bool = typer.Option(False, "--refresh", help="Cari ulang juga paper yang sudah punya DOI (kecuali isian manual)."),
+    file: str = typer.Option(None, "--file", help="Nama file paper, dipakai bersama --set."),
+    set_doi: str = typer.Option(None, "--set", help="Pasang DOI yang sudah dicek manual untuk --file."),
+):
+    """Lengkapi DOI paper lewat arXiv dan Crossref. DOI yang sudah ada tidak ditimpa."""
+    from . import dois as _dois
+    from . import db
+
+    if set_doi or file:
+        if not (set_doi and file):
+            console.print("[red]Pakai --file dan --set bersamaan.[/red]")
+            raise typer.Exit(1)
+        if not _dois.clean_doi(set_doi):
+            console.print(f"[red]DOI tidak valid:[/red] {set_doi}")
+            raise typer.Exit(1)
+        db.set_doi(file, set_doi)
+        console.print(f"[green]OK[/green]  {file}  {_dois.clean_doi(set_doi)}  [dim](manual)[/dim]")
+        return
+
+    def _show(file_name, found, src, candidates):
+        if found:
+            console.print(f"[green]OK[/green]  {file_name[:60]}  [dim]({src})[/dim]  {found}")
+        elif candidates:
+            console.print(f"[yellow]??[/yellow]  {file_name[:60]}  [dim]perlu dicek manual[/dim]")
+        else:
+            console.print(f"[yellow]--[/yellow]  {file_name[:60]}  [dim]tidak ditemukan[/dim]")
+
+    stats = _dois.fill_missing(refresh=refresh, progress=_show)
+    db.sync_all()
+    console.print()
+    console.print(
+        f"Dicek {stats['checked']} paper: {stats['found']} ketemu, {stats['not_found']} tidak ketemu. "
+        f"Sumber: {stats['sources'] or '-'}"
+    )
+    if stats["candidates"]:
+        console.print()
+        console.print("[bold]Kandidat yang perlu dicek manual[/bold] (judul mirip, tapi tahun beda atau kemiripan < 95%):")
+        for file_name, cands in stats["candidates"].items():
+            console.print(f"  {file_name}")
+            for c in cands:
+                console.print(f"    {c['doi']}  [dim]{c['similarity']:.0%} · {c['year'] or '?'} · {c['journal'][:40]}[/dim]")
+                console.print(f"    [dim]{c['title'][:90]}[/dim]")
+        console.print()
+        console.print('Pasang setelah dicek: cosmolab dois --file "<nama file>" --set <doi>')
+
+
+@app.command()
+def snowball(
+    arah: str = typer.Option("both", "--arah", help="backward (rujukan paper koleksi), forward (paper yang mengutip), atau both"),
+    file: list[str] = typer.Option(None, "--file", help="Paper koleksi yang ditelusuri (boleh diulang). Kosong = semua."),
+    top: int = typer.Option(20, "--top", help="Jumlah kandidat teratas yang ditampilkan"),
+    unduh: int = typer.Option(0, "--unduh", help="Unduh N kandidat teratas yang punya versi terbuka"),
+):
+    """Telusuri sitasi (snowballing): cari paper penting yang dirujuk atau mengutip koleksi."""
+    from . import snowball as _snowball
+
+    directions = {"both": (_snowball.BACKWARD, _snowball.FORWARD), "backward": (_snowball.BACKWARD,),
+                  "forward": (_snowball.FORWARD,)}.get(arah)
+    if not directions:
+        console.print("[red]--arah harus backward, forward, atau both.[/red]")
+        raise typer.Exit(1)
+    corpus = _db.get_all_papers_with_analyses()
+    seeds = [p for p in corpus if not file or p["file"] in file or Path(p["file"]).stem in file]
+    if not seeds:
+        console.print("[red]Tidak ada paper koleksi yang cocok.[/red]")
+        raise typer.Exit(1)
+
+    def _show(i, n, seed, direction, count, src):
+        console.print(f"[dim]{i}/{n}[/dim]  {_snowball.DIRECTION_LABELS[direction]:16} {count:4} paper  "
+                      f"[dim]({src})[/dim]  {(seed.get('title') or '')[:55]}")
+
+    res = _snowball.snowball(seeds, corpus, directions=directions, progress=_show)
+    cands = res["candidates"]
+    console.print()
+    console.print(f"{len(cands)} kandidat baru dari {res['checked']} paper koleksi. Sumber: {res['sources']}")
+    table = Table(box=ROUNDED, show_lines=False)
+    table.add_column("#", justify="right")
+    table.add_column("Judul", max_width=58)
+    table.add_column("Tahun")
+    table.add_column("Terhubung", justify="right")
+    table.add_column("Sitasi", justify="right")
+    table.add_column("Arah")
+    table.add_column("PDF terbuka")
+    for i, c in enumerate(cands[:top], 1):
+        table.add_row(str(i), c["title"][:120], c["year"], str(c["link_count"]), str(c["citations"]),
+                      ", ".join(_snowball.DIRECTION_LABELS[d] for d in c["directions"]),
+                      "ya" if c["pdf_url"] else ("lewat DOI" if c["doi"] else "-"))
+    console.print(table)
+
+    if unduh:
+        picked = [c for c in cands if c["pdf_url"] or c["doi"]][:unduh]
+        for c in picked:
+            r = _snowball.import_candidate(c)
+            if r.get("ok"):
+                console.print(f"[green]OK[/green]  {r['title'][:70]}")
+            else:
+                console.print(f"[yellow]--[/yellow]  {c['title'][:70]}  [dim]{r.get('error', '')}[/dim]")
+        _db.sync_all()
+        console.print("Jalankan 'cosmolab analyze' untuk menganalisis paper baru.")
+
+
 @app.command()
 def usage(
     all_projects: bool = typer.Option(False, "--all", "-a", help="Ringkasan semua proyek, bukan hanya proyek aktif"),
@@ -619,6 +781,151 @@ def usage(
         key_label = {"feature": "Fitur", "model": "Model", "month": "Bulan"}.get(by, by)
         _table(f"Pemakaian AI: {label}{period}", _usage.summarize(rows, by=by), key_label)
     console.print("[dim]* sebagian panggilan memakai model yang belum punya harga di COSMOLAB_PRICING.[/dim]")
+
+
+@app.command("cek-analisis")
+def check_analysis(
+    paper: str = typer.Argument(None, help="Paper file name (or part of its title). Leave empty with --semua"),
+    all_papers: bool = typer.Option(False, "--semua", help="Check every analysed paper that has not been checked"),
+    model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+):
+    """Check a paper's AI analysis (thesis, premises, findings, quotes) against the PDF text."""
+    from rich.table import Table
+    from . import analysis_check, db, entail
+
+    papers = [p for p in db.get_all_papers_with_analyses() if p.get("thesis")]
+    if all_papers:
+        targets = [p for p in papers if not analysis_check.load_check(p["file"])]
+    elif paper:
+        q = paper.lower()
+        targets = [p for p in papers if q in p["file"].lower() or q in (p.get("title") or "").lower()][:1]
+    else:
+        console.print("[red]Sebutkan paper atau pakai --semua.[/red]")
+        raise typer.Exit(1)
+    if not targets:
+        console.print("[yellow]Tidak ada paper yang cocok atau semua sudah dicek.[/yellow]")
+        return
+
+    styles = {entail.SUPPORTED: "green", entail.PARTIAL: "yellow", entail.UNSUPPORTED: "red"}
+    for p in targets:
+        console.print(f"[cyan]CEK[/cyan] {p.get('title') or p['file']}")
+        try:
+            r = analysis_check.check_paper(p["file"], model=model)
+        except Exception as e:
+            console.print(f"[red]Gagal:[/red] {e}")
+            continue
+        if len(targets) == 1:
+            t = Table(show_lines=True)
+            t.add_column("Bagian", width=14)
+            t.add_column("Pernyataan")
+            t.add_column("Hasil", width=16)
+            t.add_column("Alasan")
+            for s in r["statements"]:
+                label = s["label"] + (f" {s['index'] + 1}" if s["index"] is not None else "")
+                st_ = styles.get(s["verdict"], "white")
+                t.add_row(label, s["text"], f"[{st_}]{entail.VERDICT_LABELS[s['verdict']]}[/{st_}]", s["reason"])
+            console.print(t)
+            for q in r["quotes"]:
+                console.print(f"  Kutipan: {analysis_check.QUOTE_LABELS[q['status']]}"
+                              + (f", halaman PDF {q['page']}" if q.get("page") else "") + f" - {q['text'][:90]}")
+        sc = analysis_check.score(r)
+        console.print(f"  {sc['supported']}/{sc['statements']} pernyataan didukung, "
+                      f"{sc['quotes_found']}/{sc['quotes']} kutipan ada di PDF.")
+
+
+@app.command("cek-metadata")
+def check_metadata():
+    """Check title, year and authors of every paper against Crossref/DataCite, and flag retractions."""
+    from rich.table import Table
+    from . import metadata
+
+    store = metadata.check_all(progress_cb=lambda d, n, t: console.print(f"[dim]{d}/{n} {t[:70]}[/dim]"))
+    t = Table(show_lines=False)
+    t.add_column("Paper")
+    t.add_column("Status")
+    t.add_column("Catatan")
+    for r in sorted(store.values(), key=lambda r: (r["status"] == metadata.OK, r.get("title") or "")):
+        if r["status"] == metadata.OK and not r.get("notices"):
+            continue
+        note = "; ".join([f"{d['field']}: {d['ours']} vs {d['crossref']}" for d in r.get("diffs", [])]
+                         + [n["label"] for n in r.get("notices", [])])
+        t.add_row((r.get("title") or "")[:70], metadata.STATUS_LABELS[r["status"]], note)
+    console.print(t)
+    ok = sum(1 for r in store.values() if r["status"] == metadata.OK)
+    console.print(f"{ok} dari {len(store)} paper cocok.")
+    bad = metadata.flagged(store)
+    if bad:
+        console.print(f"[bold red]{len(bad)} paper ditarik atau bermasalah:[/bold red] "
+                      + "; ".join(r.get("title") or r["file"] for r in bad))
+
+
+@app.command("pustaka")
+def bibliography(
+    format: str = typer.Option("bib", "--format", "-f", help="'bib' (BibTeX) or 'ris'"),
+    out: str = typer.Option(None, "--out", "-o", help="Output file"),
+):
+    """Export the reference list, built from verified metadata where available."""
+    from pathlib import Path
+    from . import db, metadata
+
+    papers = db.get_all_papers_with_analyses()
+    fmt = format.lower().strip()
+    text = metadata.to_ris(papers) if fmt == "ris" else metadata.to_bibtex(papers)
+    path = Path(out) if out else config.ROOT / ("references.ris" if fmt == "ris" else "references.bib")
+    path.write_text(text, encoding="utf-8")
+    console.print(f"[green]OK[/green] {len(papers)} entri ditulis ke {path}")
+
+
+@app.command("uji")
+def evaluation(
+    action: str = typer.Argument("jalan", help="'buat' to draft test items, 'jalan' to run them, 'riwayat' for past runs"),
+    n: int = typer.Option(10, "--n", help="Number of new papers to draft items from (buat)"),
+    k: int = typer.Option(3, "--k", help="How many top passages count as a hit (jalan)"),
+    reviewed: bool = typer.Option(False, "--diperiksa", help="Use only items a researcher has reviewed"),
+    rerank: bool = typer.Option(True, "--rerank/--no-rerank", help="Let the LLM reorder passages"),
+    model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+):
+    """Measure retrieval and claim-check accuracy on the evaluation set."""
+    from . import evaluate
+
+    pct = lambda x: "-" if x is None else f"{x * 100:.0f}%"
+    if action == "buat":
+        new = evaluate.draft_gold(n_papers=n, model=model,
+                                  progress_cb=lambda d, t, title: console.print(f"[dim]{d}/{t} {title[:70]}[/dim]"))
+        console.print(f"[green]{len(new)} soal baru[/green] di {evaluate.gold_path()}. "
+                      "Periksa dan set \"reviewed\": true pada soal yang benar.")
+        return
+    if action == "riwayat":
+        for h in evaluate.history():
+            console.print(f"{h['time']}  k={h['k']}  halaman benar {pct(h['recall_at_k'])}  "
+                          f"akurasi klaim {pct(h['claim_accuracy'])}  embedding {h.get('embed_model') or '-'}")
+        return
+    r = evaluate.run(k=k, rerank=rerank, reviewed_only=reviewed, model=model)
+    console.print(f"Pencarian: {r['retrieval']['n']} soal, halaman benar di {k} teratas {pct(r['retrieval']['recall_at_k'])}, "
+                  f"MRR {'-' if r['retrieval']['mrr'] is None else round(r['retrieval']['mrr'], 2)}")
+    c = r["claims"]
+    console.print(f"Cek klaim: {c['n']} soal, akurasi {pct(c['accuracy'])}, klaim salah tertangkap {pct(c['false_caught'])}, "
+                  f"klaim benar lolos {pct(c['true_passed'])}")
+
+
+@app.command("log")
+def audit_log(
+    limit: int = typer.Option(30, "--n", help="Entries to show"),
+    csv_out: str = typer.Option(None, "--csv", help="Write the whole log to this CSV file"),
+):
+    """Show the audit log of AI steps, or export it for a methods section."""
+    from pathlib import Path
+    from . import audit
+
+    rows = audit.read()
+    if csv_out:
+        Path(csv_out).write_text(audit.to_csv(rows), encoding="utf-8")
+        console.print(f"[green]OK[/green] {len(rows)} entri ditulis ke {csv_out}")
+    for r in rows[:limit]:
+        what = r.get("question") or r.get("file") or ""
+        console.print(f"{r['time']}  {audit.EVENT_LABELS.get(r['event'], r['event']):<22} {r.get('model') or '':<18} {what[:70]}")
+    console.print()
+    console.print(audit.methods_text(rows))
 
 
 if __name__ == "__main__":

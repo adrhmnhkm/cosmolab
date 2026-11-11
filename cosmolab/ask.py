@@ -21,16 +21,17 @@ SYSTEM_PROMPT = """You are CosmoLab, a rigorous multidisciplinary research assis
 
 Answer the user's question accurately using ONLY the provided corpus context.
 Guidelines:
-1. Cite papers inline by title and year, e.g. `[Title (Year)]`.
+1. Cite papers inline by title and year, e.g. `[Title (Year)]`. If exact page numbers are available in the context (e.g. Hal. X), cite the page as well: `[Title (Year), Hal. X]`.
 2. Present claims, evidence, methods, objections, and technical concepts precisely, using the standard terms of the relevant field.
 3. If multiple papers take conflicting positions, contrast their arguments.
-4. If the context does not contain enough evidence, explicitly state what is missing.
-5. Answer in the same language as the question (use formal Indonesian if asked in Indonesian, English if asked in English).
+4. When citing verbatim evidence, preserve the exact wording and indicate the page number.
+5. If the context does not contain enough evidence, explicitly state what is missing.
+6. Answer in the same language as the question (use formal Indonesian if asked in Indonesian, English if asked in English).
 """
 
 
 def ask(question: str, model: str = None, top_k: int = 5) -> str:
-    """Query the research corpus using advanced hybrid retrieval (FTS5 + Conceptual RRF) and LLM re-ranking."""
+    """Query the research corpus using advanced hybrid retrieval (FTS5 + Conceptual RRF), LLM re-ranking, and page-aware passage grounding."""
     config.ensure_dirs()
     model = model or config.NINEROUTER_MODEL
 
@@ -54,8 +55,10 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
         console.print("[red]FAIL  No papers found in database. Run `cosmolab harvest` and `cosmolab analyze` first.[/red]")
         return "No papers available in the corpus."
 
-    # Build context from retrieved papers
+    # Build context from retrieved papers, including grounded verbatim passages
     context_blocks = []
+    grounded_citations = []
+    found = retrieval.grounded_passages_batch([r.get("file") for r in results], question, top_k=2, model=model)
     for i, r in enumerate(results, start=1):
         block = f"### Paper {i}: {r.get('title')} ({r.get('year', 'n.d.')})\n"
         block += f"- File: {r.get('file')}\n"
@@ -79,6 +82,23 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
             block += f"- Key Defense: {r.get('key_defense')}\n"
         if r.get("snippet"):
             block += f"- Excerpt: {r.get('snippet')}\n"
+
+        # P1: Page-aware passage grounding
+        if r.get("file"):
+            try:
+                passages = found.get(r["file"]) or []
+                if passages:
+                    block += "- Bukti Verbatim Teks (Grounding):\n"
+                    for psg in passages:
+                        block += f"  * [{psg['page_label']}]: \"{psg['verbatim']}\"\n"
+                        grounded_citations.append({
+                            "title": r.get("title") or r["file"],
+                            "year": r.get("year", "n.d."),
+                            "page_label": psg["page_label"],
+                            "verbatim": psg["verbatim"]
+                        })
+            except Exception:
+                pass
 
         context_blocks.append(block)
 
@@ -107,6 +127,27 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
         console.print("[yellow]Tip: Check your API key, gateway status, or specify another model with --model.[/yellow]")
         return f"Error querying LLM: {e}"
 
+    try:
+        from . import audit
+
+        audit.log("tanya", mode="klasik", question=question, model=model,
+                  prompt_version=audit.prompt_version(SYSTEM_PROMPT),
+                  papers=[r.get("file") for r in results],
+                  passages=[f"{g['title'][:60]} | {g['page_label']}" for g in grounded_citations])
+    except Exception:
+        pass
+
     # Pretty display
     console.print(Panel(Markdown(answer), title=f"[bold green]Corpus Answer[/bold green] - [dim]{model}[/dim]", border_style="green"))
+
+    if grounded_citations:
+        from rich.table import Table
+        tbl = Table(title="📑 Bukti Verbatim & Nomor Halaman PDF Terverifikasi", border_style="cyan", show_lines=True)
+        tbl.add_column("Paper & Tahun", style="bold white", width=32)
+        tbl.add_column("Halaman", style="yellow", justify="center", width=12)
+        tbl.add_column("Kutipan Verbatim Asli", style="italic green")
+        for gc in grounded_citations[:6]:
+            tbl.add_row(f"{gc['title']} ({gc['year']})", gc["page_label"], f'"{gc["verbatim"]}"')
+        console.print(tbl)
+
     return answer
