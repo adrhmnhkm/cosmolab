@@ -13,7 +13,10 @@ console = Console(force_terminal=True, legacy_windows=False)
 
 def get_connection() -> sqlite3.Connection:
     config.ensure_dirs()
-    con = sqlite3.connect(config.DB_FILE)
+    # Team mode serves one project to several people at once. WAL lets readers
+    # work while someone writes; the timeout waits for a lock instead of failing.
+    con = sqlite3.connect(config.DB_FILE, timeout=30)
+    con.execute("PRAGMA journal_mode=WAL")
     con.row_factory = sqlite3.Row
     return con
 

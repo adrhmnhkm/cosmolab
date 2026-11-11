@@ -26,3 +26,6 @@ projects/
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Backups made by `cosmolab backup`
+backups/

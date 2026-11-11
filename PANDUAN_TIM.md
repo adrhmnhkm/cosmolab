@@ -27,7 +27,7 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
 
 - **Satu klien, satu proyek.** Paper, ringkasan, dan hasil tulisan klien A tidak akan tercampur dengan klien B.
 - **Nama proyek** hanya boleh huruf kecil, angka, `-` dan `_`. Contoh: `2026-11-bank-syariah-x`. Awali dengan tahun dan bulan supaya mudah diurutkan.
-- **Lokasi data**: semua isi proyek ada di folder `projects/<nama-proyek>/`. Folder ini tidak ikut ke Git. Cadangkan folder `projects/` secara rutin ke penyimpanan tim.
+- **Lokasi data**: semua isi proyek ada di folder `projects/<nama-proyek>/`. Folder ini tidak ikut ke Git. Cadangkan secara rutin dengan `cosmolab -P <nama-proyek> backup`, lalu salin file zip dari folder `backups/` ke penyimpanan tim.
 - **Hasil untuk klien** (artikel, matriks, laporan celah riset) tersimpan di dalam folder proyek itu: `articles/`, `matrices/`, `gaps/`, `synthesis/`.
 
 ## 4. Mengirim hasil ke klien

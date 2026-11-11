@@ -928,5 +928,22 @@ def audit_log(
     console.print(audit.methods_text(rows))
 
 
+@app.command("backup")
+def backup(
+    out: str = typer.Option(None, "--out", "-o", help="Folder tujuan. Default: backups/ di folder CosmoLab."),
+    tanpa_pdf: bool = typer.Option(False, "--tanpa-pdf", help="Jangan ikutkan PDF (zip jauh lebih kecil)."),
+    dengan_cache: bool = typer.Option(False, "--dengan-cache", help="Ikutkan cache AI (biasanya tidak perlu)."),
+):
+    """Cadangkan data proyek aktif (atau data/) ke satu file zip."""
+    from . import backup as _backup
+
+    try:
+        res = _backup.make_backup(Path(out) if out else None, include_pdf=not tanpa_pdf, include_cache=dengan_cache)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]OK[/green] {res['files']} file, {res['size'] / 1_048_576:.1f} MB: {res['path']}")
+
+
 if __name__ == "__main__":
     app()

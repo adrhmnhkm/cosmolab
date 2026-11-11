@@ -233,6 +233,7 @@ CosmoLab memakai folder `data/`. Lihat detail tiap perintah dengan `cosmolab <pe
 | `pustaka --format ris` | Daftar pustaka dari metadata terverifikasi |
 | `verify <file.md>` | Periksa sitasi terhadap korpus dan Crossref |
 | `deliver <file.md> --reviewer "..."` | Buat Word + PDF berkop firma |
+| `backup [--tanpa-pdf]` | Cadangkan data proyek ke `backups/<proyek>_<waktu>.zip` |
 | `ui [--team] [--port 8501]` | Buka dashboard Streamlit |
 | `usage --by feature` / `usage --all --month 2026-11` | Pemakaian token dan biaya |
 
