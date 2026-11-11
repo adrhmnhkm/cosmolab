@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 import tempfile
 from cosmolab import citations, matrix, gap_finder, db
+from _markers import needs_corpus
 
 
 class TestResearchSuite(unittest.TestCase):
@@ -23,6 +24,7 @@ class TestResearchSuite(unittest.TestCase):
         in_text = citations.format_in_text_apa(sample_paper)
         self.assertTrue(in_text.startswith("(") and in_text.endswith(")"))
 
+    @needs_corpus
     def test_ris_export(self):
         papers = db.get_all_papers_with_analyses()[:3]
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -33,6 +35,7 @@ class TestResearchSuite(unittest.TestCase):
             self.assertIn("TY  - JOUR", text)
             self.assertIn("ER  -", text)
 
+    @needs_corpus
     def test_matrix_builder_and_exports(self):
         mat = matrix.build_literature_matrix(faculty_id="all")
         self.assertIsInstance(mat, list)

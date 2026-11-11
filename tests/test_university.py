@@ -1,5 +1,6 @@
 import unittest
 from cosmolab import faculties, db, sparring, curriculum, harvest
+from _markers import needs_corpus
 
 
 class TestCosmoLabUniversity(unittest.TestCase):
@@ -86,6 +87,7 @@ class TestCosmoLabUniversity(unittest.TestCase):
         )
         self.assertEqual(fac_pendidikan, "pendidikan")
 
+    @needs_corpus
     def test_database_faculty_filtering(self):
         """Test retrieving papers filtered by faculty from SQLite."""
         papers = db.get_papers_by_faculty("ilahiyyat")

@@ -313,7 +313,7 @@ Panduan lengkap untuk admin dan anggota: [PANDUAN_TIM.md §5](PANDUAN_TIM.md#5-b
 ## Pengembangan
 
 ```bash
-.venv/Scripts/python -m pip install pytest
+.venv/Scripts/python -m pip install -e ".[dev]"
 ```
 
 ```bash
@@ -322,6 +322,10 @@ Panduan lengkap untuk admin dan anggota: [PANDUAN_TIM.md §5](PANDUAN_TIM.md#5-b
 
 Tes mencakup pipeline, retrieval, passage grounding, gatekeeper klaim, snowballing,
 DOI, penulis, deliverable, proyek, dan pencatatan biaya.
+
+- Tes yang butuh koleksi paper lokal dilewati kalau `data/` kosong, misalnya di CI.
+- Tes yang memanggil layanan luar hanya jalan dengan `COSMOLAB_NETWORK_TESTS=1`.
+- GitHub Actions ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) menjalankan tes di Python 3.10 dan 3.12 setiap push dan PR.
 
 ---
 

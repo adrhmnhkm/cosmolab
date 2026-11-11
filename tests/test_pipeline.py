@@ -5,6 +5,7 @@ from cosmolab.harvest import _normalize_title, _title_is_duplicate
 from cosmolab.analyze import _strip_references, _trim
 from cosmolab import db
 from cosmolab import export
+from _markers import needs_corpus
 
 
 class TestCosmolabPipeline(unittest.TestCase):
@@ -45,6 +46,7 @@ class TestCosmolabPipeline(unittest.TestCase):
         if results:
             self.assertIn("title", results[0])
 
+    @needs_corpus
     def test_bibtex_export(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             bib_file = Path(tmp_dir) / "test.bib"

@@ -4,6 +4,7 @@ from pathlib import Path
 from cosmolab import db
 from cosmolab import export
 from cosmolab.ask_agent import _detect_query_intent
+from _markers import needs_corpus, needs_network
 
 
 class TestAgenticSecondBrain(unittest.TestCase):
@@ -22,6 +23,7 @@ class TestAgenticSecondBrain(unittest.TestCase):
         intent_neutral = _detect_query_intent("Jelaskan konsep kosmologi ini")
         self.assertFalse(intent_neutral["needs_contrast"])
 
+    @needs_corpus
     def test_dialectical_db_queries(self):
         # Test dialectical pairs retrieval
         pairs = db.get_dialectical_pairs(argument_type="kalam")
@@ -49,6 +51,7 @@ class TestAgenticSecondBrain(unittest.TestCase):
         self.assertIn("Sintesis Riset Dialektis", content)
         path.unlink(missing_ok=True)
 
+    @needs_corpus
     def test_learning_roadmap(self):
         from cosmolab.curriculum import get_learning_roadmap
         levels = get_learning_roadmap()
@@ -58,6 +61,7 @@ class TestAgenticSecondBrain(unittest.TestCase):
             self.assertIn("title", lvl)
             self.assertIn("papers", lvl)
 
+    @needs_corpus
     def test_export_flashcards(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             fc_path = export.export_flashcards_to_obsidian(vault_dir=Path(tmp_dir))
@@ -72,6 +76,7 @@ class TestAgenticSecondBrain(unittest.TestCase):
             self.assertIn("topic", d)
             self.assertIn("dilemma", d)
 
+    @needs_network
     def test_unpaywall_resolver(self):
         from cosmolab.harvest import _resolve_unpaywall
         # Test with known open-access DOI
