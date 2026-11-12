@@ -928,6 +928,42 @@ def audit_log(
     console.print(audit.methods_text(rows))
 
 
+@app.command("review")
+def review_draft(
+    path: str = typer.Argument(..., help="Draf mahasiswa: .docx, .md, atau .txt"),
+    jenjang: str = typer.Option("s2", "--jenjang", "-j", help="s1 (skripsi), s2 (tesis), atau s3 (disertasi)"),
+    offline: bool = typer.Option(False, "--offline", help="Jangan cek daftar pustaka ke Crossref"),
+    reviewer: str = typer.Option(None, "--reviewer", "-r", help="Nama konsultan; kalau diisi, buat juga Word berkop firma"),
+    model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+):
+    """Review draf mahasiswa: komentar ala pembimbing per paragraf dan cek sitasi. Draf tidak ditulis ulang."""
+    from . import review as _review
+
+    if jenjang not in _review.LEVELS:
+        console.print("[red]--jenjang harus s1, s2, atau s3.[/red]")
+        raise typer.Exit(1)
+    try:
+        with Progress() as progress:
+            task = progress.add_task("[cyan]Mereview draf...", total=None)
+            report = _review.review_file(Path(path), level=jenjang, online=not offline, model=model)
+            progress.update(task, completed=1, description="[green]Review selesai")
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    paths = _review.save(report)
+    s = report["summary"]
+    sev = s["by_severity"]
+    console.print(f"{s['paragraphs']} paragraf, {s['comments']} komentar "
+                  f"({sev[_review.PENTING]} penting, {sev[_review.SARAN]} saran, {sev[_review.CATATAN]} catatan). "
+                  f"Sitasi: {s['references_flagged']} entri pustaka perlu dicek, "
+                  f"{s['citations_missing']} sitasi tidak ada di daftar pustaka.")
+    for i, p in enumerate(report["priorities"], 1):
+        console.print(f"  {i}. {p}")
+    console.print(f"[green]OK[/green] {paths['md']}")
+    if reviewer:
+        console.print(f"[green]OK[/green] {_review.export_docx(report, reviewer)}")
+
+
 @app.command("backup")
 def backup(
     out: str = typer.Option(None, "--out", "-o", help="Folder tujuan. Default: backups/ di folder CosmoLab."),

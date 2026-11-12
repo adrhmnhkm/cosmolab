@@ -95,6 +95,7 @@ def build_sidebar() -> AppContext:
 
     st.sidebar.markdown("<div class='nav-cluster-header'>3 · Tanya & tulis</div>", unsafe_allow_html=True)
     render_nav_item("Tanya Korpus (RAG)", "Tanya Korpus & Sintesis", icon=":material/forum:")
+    render_nav_item("Review draf mahasiswa", "Review Draf Mahasiswa", icon=":material/rate_review:")
     render_nav_item("Tulis artikel", "Studio Artikel Siap Baca", icon=":material/edit_note:")
     render_nav_item("Laporan sintesis", "Laporan Sintesis", icon=":material/summarize:")
 

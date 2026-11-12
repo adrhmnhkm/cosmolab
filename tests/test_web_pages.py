@@ -19,6 +19,7 @@ PAGES = [
     "Roadmap Belajar & Kurikulum",
     "Arena Sparring Nalar",
     "Tanya Korpus & Sintesis",
+    "Review Draf Mahasiswa",
     "Studio Artikel Siap Baca",
     "Bedah DOI Seketika",
     "Panen Paper Ilmiah",
@@ -39,6 +40,23 @@ class TestWebPages(unittest.TestCase):
                 at.run()
                 self.assertEqual([e.value for e in at.exception], [], page)
                 self.assertGreater(len(at.markdown), 0, page)
+
+    def test_review_page_runs_a_review(self):
+        from test_review import DRAFT, fake_chat
+
+        with mock.patch("importlib.reload", lambda m: m), mock.patch("cosmolab.review._default_chat", fake_chat):
+            at = AppTest.from_file(WEB, default_timeout=120)
+            at.session_state["active_nav_menu"] = "Review Draf Mahasiswa"
+            at.run()
+            at.text_area[0].input(DRAFT)
+            [t for t in at.toggle if t.label == "Cek sitasi ke Crossref"][0].set_value(False)
+            [b for b in at.button if b.label == "Review draf"][0].click()
+            at.run()
+        self.assertEqual([e.value for e in at.exception], [])
+        self.assertEqual([e.value for e in at.error], [])
+        text = " ".join(m.value for m in at.markdown)
+        self.assertIn("Bukti apa yang menunjukkan ini?", text)
+        self.assertTrue(any(b.label == "Unduh Markdown" for b in at.get("download_button")))
 
 
 if __name__ == "__main__":

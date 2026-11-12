@@ -30,7 +30,23 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
 - **Lokasi data**: semua isi proyek ada di folder `projects/<nama-proyek>/`. Folder ini tidak ikut ke Git. Cadangkan secara rutin dengan `cosmolab -P <nama-proyek> backup`, lalu salin file zip dari folder `backups/` ke penyimpanan tim.
 - **Hasil untuk klien** (artikel, matriks, laporan celah riset) tersimpan di dalam folder proyek itu: `articles/`, `matrices/`, `gaps/`, `synthesis/`.
 
-## 4. Mengirim hasil ke klien
+## 4. Mereview draf mahasiswa
+
+Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar seperti pembimbing, bukan menulis ulang draf.
+
+1. Buka **Review draf mahasiswa** di menu kiri.
+2. Unggah draf (.docx, .md, atau .txt), atau tempel teksnya. Ikutkan daftar pustaka supaya sitasi ikut diperiksa.
+3. Pilih jenjang (S1, S2, atau S3), lalu klik **Review draf**.
+4. Baca hasilnya:
+   - **Prioritas perbaikan**: hal terpenting untuk dikerjakan mahasiswa.
+   - **Komentar per paragraf**: masalah, alasannya, dan pertanyaan pemandu. Paragraf ditandai P1, P2, dan seterusnya dengan kutipan beberapa kata awal.
+   - **Pemeriksaan sitasi**: sitasi di teks yang tidak ada di daftar pustaka, dan entri pustaka yang tidak ditemukan.
+5. Periksa komentar AI sebelum dikirim. Komentar yang tidak tepat bisa dihapus atau diubah di file Word.
+6. Isi nama Anda sebagai konsultan pemeriksa, klik **Buat Word berkop firma**, lalu unduh filenya.
+
+Jangan menulis ulang bagian draf untuk mahasiswa. Perbaikan tetap dikerjakan mahasiswa sendiri.
+
+## 5. Mengirim hasil ke klien
 
 Klien hanya menerima file Word atau PDF berkop firma, bukan file Markdown atau HTML.
 
@@ -49,7 +65,7 @@ File klien tersimpan di `projects/<proyek>/deliverables/`. Laporan pemeriksaan s
 
 Kop firma (nama, tagline, alamat, kontak, logo) diatur di file `.env` oleh admin tim.
 
-## 5. Bekerja bersama lewat jaringan (Tailscale)
+## 6. Bekerja bersama lewat jaringan (Tailscale)
 
 CosmoLab tidak dibuka ke internet. Tim mengaksesnya lewat **Tailscale**, jaringan pribadi yang hanya bisa dimasuki akun yang diundang admin. Gratis untuk tim kecil.
 
@@ -80,7 +96,7 @@ CosmoLab tidak dibuka ke internet. Tim mengaksesnya lewat **Tailscale**, jaringa
 - Rekap per fitur untuk satu proyek: `cosmolab -P <proyek> usage`
 - Rekap semua proyek untuk bulan tertentu: `cosmolab usage --all --month 2026-11`
 
-## 6. Kalau ada masalah
+## 7. Kalau ada masalah
 
 | Pesan | Artinya | Yang dilakukan |
 | --- | --- | --- |

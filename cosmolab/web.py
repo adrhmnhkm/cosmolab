@@ -121,6 +121,7 @@ PAGES = {
     "Roadmap Belajar & Kurikulum": pages.roadmap,
     "Arena Sparring Nalar": pages.sparring,
     "Tanya Korpus & Sintesis": pages.ask,
+    "Review Draf Mahasiswa": pages.review,
     "Studio Artikel Siap Baca": pages.studio,
     "Bedah DOI Seketika": pages.doi,
     "Panen Paper Ilmiah": pages.harvest,

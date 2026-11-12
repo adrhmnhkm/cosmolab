@@ -31,6 +31,7 @@ EVENT_LABELS = {
     "cek_metadata": "Cek metadata",
     "harvest": "Cari paper",
     "telusuri_sitasi": "Telusuri sitasi",
+    "review_draf": "Review draf mahasiswa",
 }
 
 

@@ -70,6 +70,7 @@ terhadap teks paper aslinya** sebelum hasilnya sampai ke klien.
 ### 3 · Tanya & tulis
 - **Tanya korpus (Agentic RAG)** dengan sitasi sampai nomor halaman.
 - **Gatekeeper klaim**: setiap kalimat bersitasi dinilai *didukung*, *sebagian*, atau *tidak didukung*.
+- **Review draf mahasiswa** (S1–S3): komentar ala pembimbing dan pertanyaan pemandu per paragraf, plus cek sitasi. Draf tidak ditulis ulang.
 - **Studio artikel**: esai, tinjauan jurnal, atau monograf.
 - **Laporan sintesis**, matriks literatur, dan pencari celah riset.
 
@@ -217,6 +218,7 @@ CosmoLab memakai folder `data/`. Lihat detail tiap perintah dengan `cosmolab <pe
 
 | Perintah | Fungsi |
 | --- | --- |
+| `review <draf.docx> --jenjang s2 [--reviewer "..."]` | Review draf mahasiswa: komentar pembimbing + cek sitasi, opsional Word berkop |
 | `cek-klaim <file.md>` | Cek setiap kalimat bersitasi pada draf |
 | `cek-analisis [<paper>] [--semua]` | Bandingkan analisis AI dengan teks PDF |
 | `uji buat` / `uji jalan` / `uji riwayat` | Set evaluasi akurasi retrieval dan pemeriksa klaim |
@@ -279,7 +281,7 @@ Detail desain: [LAPORAN_FITUR_TERBARU.md](LAPORAN_FITUR_TERBARU.md).
 | Pengolahan | `extract`, `analyze`, `analysis_check`, `corrections`, `storage`, `db` |
 | Pencarian | `retrieval`, `passages`, `llmcache` |
 | Penalaran | `ask`, `ask_agent`, `entail`, `synthesize`, `gap_finder`, `matrix` |
-| Penulisan | `writer`, `citations`, `export` |
+| Penulisan | `writer`, `citations`, `export`, `review` |
 | Klien & tim | `verify`, `deliverables`, `usage`, `audit`, `config` |
 | Belajar | `faculties`, `curriculum`, `sparring` |
 | Antarmuka | `cli` (Typer + Rich), `web` (Streamlit entry), `ui/` (sidebar, komponen, `ui/pages/` satu modul per halaman) |
@@ -309,7 +311,7 @@ cosmolab -P 2026-11-klien-a ui --team --port 8501
 
 `--team` membuka dashboard di IP Tailscale mesin ini dan memasang layar password.
 Tanpa `--team`, dashboard hanya mendengar di `localhost`. Satu proyek, satu port.
-Panduan lengkap untuk admin dan anggota: [PANDUAN_TIM.md §5](PANDUAN_TIM.md#5-bekerja-bersama-lewat-jaringan-tailscale).
+Panduan lengkap untuk admin dan anggota: [PANDUAN_TIM.md §6](PANDUAN_TIM.md#6-bekerja-bersama-lewat-jaringan-tailscale).
 
 ## Pengembangan
 
