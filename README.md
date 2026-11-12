@@ -282,7 +282,7 @@ Detail desain: [LAPORAN_FITUR_TERBARU.md](LAPORAN_FITUR_TERBARU.md).
 | Penulisan | `writer`, `citations`, `export` |
 | Klien & tim | `verify`, `deliverables`, `usage`, `audit`, `config` |
 | Belajar | `faculties`, `curriculum`, `sparring` |
-| Antarmuka | `cli` (Typer + Rich), `web` (Streamlit) |
+| Antarmuka | `cli` (Typer + Rich), `web` (Streamlit entry), `ui/` (sidebar, komponen, `ui/pages/` satu modul per halaman) |
 
 ### Struktur data proyek
 
