@@ -70,7 +70,7 @@ terhadap teks paper aslinya** sebelum hasilnya sampai ke klien.
 ### 3 · Tanya & tulis
 - **Tanya korpus (Agentic RAG)** dengan sitasi sampai nomor halaman.
 - **Gatekeeper klaim**: setiap kalimat bersitasi dinilai *didukung*, *sebagian*, atau *tidak didukung*.
-- **Review draf mahasiswa** (S1–S3): komentar ala pembimbing dan pertanyaan pemandu per paragraf, plus cek sitasi. Draf tidak ditulis ulang.
+- **Review draf mahasiswa** (S1–S3): komentar ala pembimbing per paragraf, plus cek sitasi. Setiap komentar AI wajib mengutip kalimat draf (dicek otomatis) dan harus diterima, diedit, atau dibuang konsultan sebelum dikirim.
 - **Studio artikel**: esai, tinjauan jurnal, atau monograf.
 - **Laporan sintesis**, matriks literatur, dan pencari celah riset.
 
@@ -218,7 +218,7 @@ CosmoLab memakai folder `data/`. Lihat detail tiap perintah dengan `cosmolab <pe
 
 | Perintah | Fungsi |
 | --- | --- |
-| `review <draf.docx> --jenjang s2 [--reviewer "..."]` | Review draf mahasiswa: komentar pembimbing + cek sitasi, opsional Word berkop |
+| `review <draf.docx> --jenjang s2` | Review draf mahasiswa: komentar pembimbing + cek sitasi (putuskan komentar di dashboard) |
 | `cek-klaim <file.md>` | Cek setiap kalimat bersitasi pada draf |
 | `cek-analisis [<paper>] [--semua]` | Bandingkan analisis AI dengan teks PDF |
 | `uji buat` / `uji jalan` / `uji riwayat` | Set evaluasi akurasi retrieval dan pemeriksa klaim |

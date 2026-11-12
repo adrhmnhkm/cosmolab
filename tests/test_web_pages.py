@@ -12,6 +12,8 @@ from unittest import mock
 
 from streamlit.testing.v1 import AppTest
 
+from cosmolab import review
+
 WEB = str(Path(__file__).resolve().parent.parent / "cosmolab" / "web.py")
 
 PAGES = [
@@ -52,11 +54,43 @@ class TestWebPages(unittest.TestCase):
             [t for t in at.toggle if t.label == "Cek sitasi ke Crossref"][0].set_value(False)
             [b for b in at.button if b.label == "Review draf"][0].click()
             at.run()
+            self.assertEqual([e.value for e in at.exception], [])
+            self.assertEqual([e.value for e in at.error], [])
+            text = " ".join(m.value for m in at.markdown)
+            self.assertIn("Bukti apa yang menunjukkan ini?", text)
+
+            stem = at.session_state["review_current"]
+            k = lambda cid, part: f"rv_new_{stem}_{cid}_{part}"  # noqa: E731
+
+            # Word is refused while comments are undecided.
+            at.text_input(key=f"rv_new_{stem}_reviewer").input("Konsultan Uji")
+            at.button(key=f"rv_new_{stem}_docx_btn").click()
+            at.run()
+            self.assertIn("belum diputuskan", " ".join(w.value for w in at.warning))
+
+            # Accept the one comment whose quote matched, edit one, drop one.
+            at.button(key=f"rv_new_{stem}_bulk").click()
+            at.run()
+            self.assertEqual(at.radio(key=k("k3", "d")).value, review.ACCEPT)
+            at.radio(key=k("k1", "d")).set_value(review.EDIT)
+            at.run()
+            at.text_area(key=k("k1", "c")).input("Komentar hasil edit konsultan.")
+            at.run()
+            at.radio(key=k("k2", "d")).set_value(review.DROP)
+            at.run()
+
+            at.button(key=f"rv_new_{stem}_docx_btn").click()
+            at.run()
+
         self.assertEqual([e.value for e in at.exception], [])
-        self.assertEqual([e.value for e in at.error], [])
-        text = " ".join(m.value for m in at.markdown)
-        self.assertIn("Bukti apa yang menunjukkan ini?", text)
-        self.assertTrue(any(b.label == "Unduh Markdown" for b in at.get("download_button")))
+        self.assertEqual([w.value for w in at.warning if "komentar" in w.value], [])
+        self.assertTrue(any(b.label.startswith("Unduh Word") for b in at.get("download_button")))
+        saved = review.load(stem)
+        self.assertEqual(review.decision_counts(saved),
+                         {review.PENDING: 0, review.ACCEPT: 1, review.EDIT: 1, review.DROP: 1})
+        final = review.report_markdown(saved)
+        self.assertIn("Komentar hasil edit konsultan.", final)
+        self.assertNotIn("Kategori tak dikenal.", final)
 
 
 if __name__ == "__main__":

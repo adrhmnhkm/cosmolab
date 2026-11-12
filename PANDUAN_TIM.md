@@ -39,10 +39,15 @@ Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar sepert
 3. Pilih jenjang (S1, S2, atau S3), lalu klik **Review draf**.
 4. Baca hasilnya:
    - **Prioritas perbaikan**: hal terpenting untuk dikerjakan mahasiswa.
-   - **Komentar per paragraf**: masalah, alasannya, dan pertanyaan pemandu. Paragraf ditandai P1, P2, dan seterusnya dengan kutipan beberapa kata awal.
+   - **Komentar per paragraf**: masalah, alasannya, pertanyaan pemandu, dan bagian kalimat yang dikomentari. Paragraf ditandai P1, P2, dan seterusnya dengan kutipan beberapa kata awal.
    - **Pemeriksaan sitasi**: sitasi di teks yang tidak ada di daftar pustaka, dan entri pustaka yang tidak ditemukan.
-5. Periksa komentar AI sebelum dikirim. Komentar yang tidak tepat bisa dihapus atau diubah di file Word.
-6. Isi nama Anda sebagai konsultan pemeriksa, klik **Buat Word berkop firma**, lalu unduh filenya.
+5. Putuskan setiap komentar AI: **Terima**, **Edit** (ubah kata-katanya), atau **Buang**.
+   - Label **Kutipan cocok**: kalimat yang dikomentari AI memang ada di paragraf itu.
+   - Label **Kutipan tidak ditemukan, cek manual**: AI mengutip kalimat yang tidak ada di paragraf itu. Baca paragrafnya dulu. Kemungkinan besar komentarnya keliru.
+   - Tombol **Terima ... komentar yang kutipannya cocok** menerima sekaligus semua komentar berlabel kutipan cocok. Tetap baca sekilas sebelum menekannya.
+6. Setelah semua komentar diputuskan, isi nama Anda sebagai konsultan pemeriksa, klik **Buat Word berkop firma**, lalu unduh filenya. Dokumen hanya berisi komentar yang diterima atau diedit.
+
+Keputusan tersimpan otomatis. Review bisa dilanjutkan nanti dari tab **Review tersimpan**.
 
 Jangan menulis ulang bagian draf untuk mahasiswa. Perbaikan tetap dikerjakan mahasiswa sendiri.
 

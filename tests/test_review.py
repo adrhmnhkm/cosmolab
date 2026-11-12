@@ -28,15 +28,32 @@ def fake_chat(messages, model=None):
     assert "Rahman, A. (2019). Literasi" not in user  # reference list is not sent as a paragraph
     return json.dumps({
         "comments": [
-            {"paragraph": 2, "category": "argumen", "severity": "penting",
-             "comment": "Klaim 'selalu' dan 'pasti terbukti' terlalu mutlak.", "question": "Bukti apa yang menunjukkan ini?"},
-            {"paragraph": "P1", "category": "bukti", "severity": "saran", "comment": "Sebutkan temuan utamanya.", "question": ""},
-            {"paragraph": 99, "category": "argumen", "severity": "penting", "comment": "Paragraf tidak ada.", "question": ""},
-            {"paragraph": 1, "category": "aneh", "severity": "aneh", "comment": "Kategori tak dikenal.", "question": ""},
+            # exact quote, different case and punctuation: grounded
+            {"paragraph": 2, "quote": "Pembiayaan mikro SELALU meningkatkan kesejahteraan,", "category": "argumen",
+             "severity": "penting", "comment": "Klaim 'selalu' dan 'pasti terbukti' terlalu mutlak.",
+             "question": "Bukti apa yang menunjukkan ini?"},
+            # paraphrased quote: not grounded
+            {"paragraph": "P1", "quote": "literasi finansial memengaruhi UMKM", "category": "bukti", "severity": "saran",
+             "comment": "Sebutkan temuan utamanya.", "question": ""},
+            {"paragraph": 99, "quote": "x y z", "category": "argumen", "severity": "penting",
+             "comment": "Paragraf tidak ada.", "question": ""},
+            # quote from another paragraph: not grounded for P1
+            {"paragraph": 1, "quote": "hipotesis penelitian ini pasti terbukti", "category": "aneh", "severity": "aneh",
+             "comment": "Kategori tak dikenal.", "question": ""},
         ],
         "strengths": ["Topik relevan", "Topik relevan"],
         "priorities": ["Lunakkan klaim mutlak di P2"],
     })
+
+
+class TestQuoteCheck(unittest.TestCase):
+    def test_quote_found(self):
+        para = "Banyak ahli setuju bahwa pembiayaan mikro selalu meningkatkan kesejahteraan (Siregar, 2021)."
+        self.assertTrue(review.quote_found("pembiayaan Mikro selalu meningkatkan kesejahteraan", para))
+        self.assertTrue(review.quote_found("“ahli setuju bahwa”", para))
+        self.assertFalse(review.quote_found("pembiayaan mikro kadang meningkatkan kesejahteraan", para))
+        self.assertFalse(review.quote_found("ahli setuju", para))  # too short to prove anything
+        self.assertFalse(review.quote_found("", para))
 
 
 class TestReview(unittest.TestCase):
@@ -50,6 +67,9 @@ class TestReview(unittest.TestCase):
         config._set_root(self._old)
         self._tmp.cleanup()
 
+    def _review(self):
+        return review.review_text(DRAFT, title="Draf Uji", level="s1", online=False, chat=fake_chat)
+
     def test_paragraphs_skip_headings_short_lines_and_references(self):
         md = review.mark_reference_heading(DRAFT)
         self.assertIn("## DAFTAR PUSTAKA", md)
@@ -58,28 +78,83 @@ class TestReview(unittest.TestCase):
         self.assertEqual(paras[0]["section"], "Landasan Teori")
 
     def test_review_text(self):
-        r = review.review_text(DRAFT, title="Draf Uji", level="s1", online=False, chat=fake_chat)
+        r = self._review()
         self.assertEqual(len(r["comments"]), 3)  # paragraph 99 dropped
+        self.assertEqual([c["id"] for c in r["comments"]], ["k1", "k2", "k3"])
         self.assertEqual(r["comments"][0]["paragraph"], 1)
+        self.assertTrue(all(c["decision"] == review.PENDING for c in r["comments"]))
+        grounded = {c["comment"]: c["grounded"] for c in r["comments"]}
+        self.assertTrue(grounded["Klaim 'selalu' dan 'pasti terbukti' terlalu mutlak."])
+        self.assertFalse(grounded["Sebutkan temuan utamanya."])
+        self.assertFalse(grounded["Kategori tak dikenal."])
         odd = [c for c in r["comments"] if c["comment"] == "Kategori tak dikenal."][0]
         self.assertEqual((odd["category"], odd["severity"]), ("argumen", review.SARAN))
         self.assertEqual(r["strengths"], ["Topik relevan"])
         s = r["summary"]
+        self.assertEqual(s["ungrounded"], 2)
         self.assertEqual(s["by_severity"][review.PENTING], 1)
         self.assertEqual(s["citations_missing"], 1)  # Siregar (2021) is not in the list
         self.assertEqual(s["references"], 1)
 
-        md = review.report_markdown(r)
-        self.assertIn("Pertanyaan pemandu: Bukti apa yang menunjukkan ini?", md)
-        self.assertIn("Siregar, 2021", md)
-        # Only the opening words are quoted, never a whole paragraph.
-        self.assertNotIn("sehingga hipotesis penelitian ini pasti terbukti", md)
+        internal = review.report_markdown(r)
+        self.assertIn("Versi internal, belum final", internal)
+        self.assertIn("KUTIPAN TIDAK DITEMUKAN", internal)
+        self.assertIn("Pertanyaan pemandu: Bukti apa yang menunjukkan ini?", internal)
+        self.assertIn("Siregar, 2021", internal)
+        # Only the opening words and short quotes appear, never a whole paragraph.
+        self.assertNotIn("pasti terbukti (Siregar, 2021)", internal)
+
+    def test_decisions_control_what_the_student_sees(self):
+        r = self._review()
+        review.save(r)
+        stem = r["stem"]
+        with self.assertRaises(ValueError):
+            review.export_docx(r, "Konsultan Uji")  # nothing decided yet
+
+        self.assertEqual(review.accept_grounded(r), 1)
+        ungrounded = [c["id"] for c in r["comments"] if not c["grounded"]]
+        review.set_decision(r, ungrounded[0], review.EDIT, comment="Jelaskan temuan Rahman (2019).", question="Apa temuannya?")
+        self.assertFalse(review.is_ready(r))
+        review.set_decision(r, ungrounded[1], review.DROP)
+        self.assertTrue(review.is_ready(r))
+        with self.assertRaises(ValueError):
+            review.set_decision(r, ungrounded[0], review.EDIT, comment="  ")
+        with self.assertRaises(ValueError):
+            review.set_decision(r, ungrounded[0], "setuju")
+
+        final = review.report_markdown(r)
+        self.assertNotIn("Versi internal", final)
+        self.assertIn("Jelaskan temuan Rahman (2019).", final)
+        self.assertNotIn("Sebutkan temuan utamanya.", final)  # replaced by the edit
+        self.assertNotIn("Kategori tak dikenal.", final)  # dropped
+        self.assertNotIn("KUTIPAN", final)
+        self.assertIn("2 komentar", final)
 
         paths = review.save(r)
-        self.assertTrue(paths["md"].exists() and paths["json"].exists())
+        self.assertEqual(paths["json"].stem, stem)  # same files, not a new review
+        self.assertEqual(len(list(review.reviews_dir().glob("*.json"))), 1)
+        again = review.load(stem)
+        self.assertEqual(review.decision_counts(again),
+                         {review.PENDING: 0, review.ACCEPT: 1, review.EDIT: 1, review.DROP: 1})
         self.assertEqual(review.load_saved()[0]["report"]["title"], "Draf Uji")
 
-    def test_docx_input_and_export(self):
+        out = review.export_docx(again, "Konsultan Uji")
+        self.assertTrue(out.exists() and out.suffix == ".docx")
+        with self.assertRaises(ValueError):
+            review.export_docx(again, " ")
+
+    def test_old_saved_review_gets_defaults(self):
+        r = self._review()
+        for c in r["comments"]:
+            for k in ("id", "decision", "quote", "grounded"):
+                c.pop(k)
+        review.save(r)
+        loaded = review.load(r["stem"])
+        self.assertEqual(loaded["comments"][0]["id"], "k1")
+        self.assertEqual(loaded["comments"][0]["decision"], review.PENDING)
+        self.assertFalse(loaded["comments"][0]["grounded"])
+
+    def test_docx_input(self):
         from docx import Document
 
         doc = Document()
@@ -88,14 +163,9 @@ class TestReview(unittest.TestCase):
             doc.add_paragraph(block.strip())
         path = Path(self._tmp.name) / "draf.docx"
         doc.save(str(path))
-        md = review.read_draft(path)
-        self.assertIn("# Pendahuluan", md)
-
+        self.assertIn("# Pendahuluan", review.read_draft(path))
         r = review.review_file(path, online=False, chat=fake_chat)
-        out = review.export_docx(r, "Konsultan Uji")
-        self.assertTrue(out.exists() and out.suffix == ".docx")
-        with self.assertRaises(ValueError):
-            review.export_docx(r, " ")
+        self.assertEqual(r["title"], "draf")
 
     def test_empty_draft(self):
         with self.assertRaises(ValueError):
