@@ -541,6 +541,8 @@ def similarity_markdown(sim: dict | None, final: bool, report: dict | None = Non
         f"Dibandingkan dengan {src['korpus']} paper di koleksi proyek dan {src['dikutip']} abstrak sumber yang dikutip.",
         "", _similarity.CAVEAT, "",
     ]
+    if sim.get("weak"):
+        lines += [("> " + _similarity.weak_note_student(sim)) if final else ("> " + _similarity.weak_message(sim)), ""]
     from . import coverage
 
     cov = coverage.summary(report or {})

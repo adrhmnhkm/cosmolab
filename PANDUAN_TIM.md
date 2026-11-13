@@ -65,6 +65,8 @@ Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar sepert
      CosmoLab mengunduh yang legal dan terbuka. Sisanya (biasanya buku) tercantum di **Sumber yang perlu dikirim mahasiswa**:
      minta PDF atau foto halaman yang dikutip ke mahasiswa, lalu unggah di situ. Jangan memakai situs unduhan bajakan.
      Kalimat yang mengutip sumber yang tidak tersedia tidak ikut terperiksa; laporan menyebutkan jumlahnya.
+     Peringatan **Pembanding lemah** berarti sumber yang sebahasa dan setopik dengan draf masih kurang dari 5.
+     Skor rendah dalam keadaan ini belum berarti aman: lengkapi pembanding atau panen paper setopik dulu.
 5. Putuskan setiap komentar AI: **Terima**, **Edit** (ubah kata-katanya), atau **Buang**.
    - Label **Kutipan cocok**: kalimat yang dikomentari AI memang ada di paragraf itu.
    - Label **Kutipan tidak ditemukan, cek manual**: AI mengutip kalimat yang tidak ada di paragraf itu. Baca paragrafnya dulu. Kemungkinan besar komentarnya keliru.

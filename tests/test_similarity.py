@@ -65,6 +65,36 @@ class TestCheck(unittest.TestCase):
         self.assertEqual([f["id"] for f in self.sim["findings"]], ["m1", "m2", "m3", "m4"])
         self.assertIn("Literasi keuangan syariah memiliki", self.by_par[1]["source_excerpt"])
 
+    def test_language_and_weak_comparison(self):
+        self.assertEqual(similarity.guess_lang(SOURCE_TEXT), "id")
+        self.assertEqual(similarity.guess_lang("The effect of the treatment on the outcome is shown in this study, "
+                                               "which was conducted with care and is reported by the authors."), "en")
+        self.assertEqual(similarity.guess_lang("x y z"), "")
+
+        # One Indonesian source (OTHER is one sentence, too short to tell): too few to trust a low score.
+        self.assertEqual(self.sim["lang"], "id")
+        self.assertEqual(self.sim["same_lang"], {"korpus": 1, "dikutip": 0})
+        self.assertTrue(self.sim["weak"])
+        self.assertIn("hanya 1 sumber yang berbahasa Indonesia dan setopik", similarity.weak_message(self.sim))
+
+        english = {**OTHER, "text": "The effect of the treatment on the outcome is shown in this study, which was "
+                                    "conducted with care and is reported by the authors of the paper."}
+        sim = similarity.check(PARAGRAPHS, online=False, sources=[english] * 6)
+        self.assertTrue(sim["weak"])  # six sources, none in Indonesian
+        sim = similarity.check(PARAGRAPHS, online=False, sources=[SOURCE] * 5)
+        self.assertFalse(sim["weak"])
+        self.assertEqual(sim["relevant"]["korpus"], 5)
+
+        # Indonesian, but about something else: does not count as a usable comparison.
+        off_topic = {**OTHER, "text": (
+            "Penelitian ini membahas perlindungan data pribadi mahasiswa dalam penggunaan teknologi informasi di "
+            "perguruan tinggi. Kebocoran data pribadi dapat terjadi melalui sistem informasi akademik yang lemah. "
+            "Perlindungan data pribadi memerlukan kesadaran pengguna dan kebijakan keamanan sistem informasi.") * 3}
+        sim = similarity.check(PARAGRAPHS, online=False, sources=[off_topic] * 6)
+        self.assertEqual((sim["same_lang"]["korpus"], sim["relevant"]["korpus"]), (6, 0))
+        self.assertTrue(sim["weak"])
+        self.assertIn("6 paper berbahasa Indonesia di koleksi topiknya berbeda", similarity.weak_message(sim))
+
     def test_no_sources(self):
         sim = similarity.check(PARAGRAPHS, online=False, sources=[])
         self.assertEqual((sim["score"], sim["findings"]), (0.0, []))
@@ -128,8 +158,11 @@ class TestReviewIntegration(unittest.TestCase):
         self.assertIn("Disembunyikan dari dokumen mahasiswa", internal)
         self.assertNotIn("## Komentar per paragraf", internal)
 
+        self.assertIn("Pembanding lemah", internal)
         final = review.report_markdown(r, final=True)
         self.assertIn("bukan skor Turnitin", final)
+        self.assertIn("sumber pembanding berbahasa Indonesia masih sedikit", final)
+        self.assertNotIn("Panen Paper", final)
         self.assertNotIn("Teks sumber:", final)
         self.assertNotIn(first["sentence"], final)
         self.assertIn(similarity.LABELS[similarity.WRONG_SOURCE], final)

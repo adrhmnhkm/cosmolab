@@ -36,6 +36,27 @@ MIN_SENTENCE_WORDS = 8
 FLAG_COVERAGE = 0.5   # share of the sentence's words found in one source
 FLAG_RUN = 10         # or this many identical words in a row
 EXCERPT_CHARS = 240
+# Fewer same-language sources than this and a low score says little.
+WEAK_MIN_SOURCES = 5
+
+LANG_NAMES = {"id": "Indonesia", "en": "Inggris"}
+_LANG_WORDS = {
+    "id": {"yang", "dan", "dengan", "untuk", "dalam", "ini", "pada", "dari", "adalah", "tidak", "akan", "oleh",
+           "bahwa", "juga", "atau", "dapat", "sebagai", "tersebut"},
+    "en": {"the", "and", "of", "to", "in", "is", "that", "for", "with", "are", "this", "by", "as", "be", "which",
+           "from", "on", "was"},
+}
+
+
+def guess_lang(text: str, sample_words: int = 3000) -> str:
+    """'id', 'en', or '' when unsure. Counts common function words; no AI."""
+    ws = verify.normalize((text or "")[: sample_words * 10]).split()[:sample_words]
+    counts = {lang: sum(1 for w in ws if w in vocab) for lang, vocab in _LANG_WORDS.items()}
+    best = max(counts, key=counts.get)
+    other = min(counts.values())
+    if counts[best] < 5 or counts[best] < 1.5 * other:
+        return ""
+    return best
 
 NO_CITATION, WRONG_SOURCE, TOO_CLOSE = "tanpa_sitasi", "sitasi_lain", "terlalu_dekat"
 LABELS = {
@@ -198,6 +219,89 @@ def _excerpt(source_text: str, matched: set[str]) -> str:
     return ""
 
 
+TOPIC_PHRASES = 30      # most frequent two-word phrases of the draft, e.g. "ruang publik"
+TOPIC_MIN_SHARE = 0.3   # share of those phrases a collection paper must contain to count as on topic
+
+# Academic words that appear in almost any paper and say nothing about the topic.
+_GENERIC = _LANG_WORDS["id"] | _LANG_WORDS["en"] | set("""
+penelitian peneliti hasil metode data analisis secara terhadap berdasarkan merupakan menjadi memiliki sehingga
+karena namun antara bagi lebih sangat banyak berbagai setiap telah sudah masih hanya maupun serta melalui
+terdapat adanya dilakukan menggunakan digunakan menunjukkan sosial masyarakat indonesia tahun bentuk proses faktor
+pengaruh tinggi besar baik sumber informasi jurnal kajian studi teori konsep aspek sistem pendekatan kualitatif
+kuantitatif responden variabel hubungan peran upaya kondisi tujuan masalah penting utama umum khusus lain sendiri
+mereka kami kita saya yaitu yakni misalnya seperti kemudian selain para cara salah satu pertama kedua nilai tingkat
+jumlah pula agar ketika saat sejak hingga sampai tentang mengenai terkait dimana gambar tabel halaman sebuah suatu
+individu kelompok kehidupan manusia dunia negara pemerintah perkembangan kemampuan pemahaman pengetahuan bagaimana
+mengapa apakah karya penulis buku study research results analysis method based using used also however between
+through their these those have been more other such than into about would could paper article university approach
+findings review were there when what where while within without both each many most some only well
+""".split())
+
+
+def _content_bigrams(text: str) -> list[str]:
+    ws = words(text)
+    return [f"{a} {b}" for a, b in zip(ws, ws[1:])
+            if len(a) > 3 and len(b) > 3 and a not in _GENERIC and b not in _GENERIC
+            and not a.isdigit() and not b.isdigit()]
+
+
+def topic_phrases(draft_text: str, n: int = TOPIC_PHRASES) -> list[str]:
+    """The draft's most frequent two-word content phrases. They describe its topic far
+    better than single words, which unrelated papers often share ("digital", "media")."""
+    from collections import Counter
+
+    return [b for b, _ in Counter(_content_bigrams(draft_text)).most_common(n)]
+
+
+def on_topic(source_text: str, phrases: list[str]) -> bool:
+    if not phrases:
+        return True
+    have = set(_content_bigrams(source_text[:60000]))
+    return sum(p in have for p in phrases) / len(phrases) >= TOPIC_MIN_SHARE
+
+
+def _language_check(paragraphs: list[dict], corpus: list[dict], cited: list[dict]) -> dict:
+    """How many sources can really be compared: same language as the draft, and on its topic.
+
+    Text matching only works within one language, and a collection paper on
+    another topic will never match. Cited works count as on topic: the student
+    chose them.
+    """
+    draft_text = " ".join(p["text"] for p in paragraphs)
+    lang = guess_lang(draft_text)
+    same = {"korpus": 0, "dikutip": 0}
+    relevant = {"korpus": 0, "dikutip": 0}
+    if lang:
+        same_corpus = [s for s in corpus if guess_lang(s["text"]) == lang]
+        same["korpus"] = len(same_corpus)
+        same["dikutip"] = relevant["dikutip"] = sum(1 for s in cited if guess_lang(s["text"]) == lang)
+        phrases = topic_phrases(draft_text)
+        relevant["korpus"] = sum(1 for s in same_corpus if on_topic(s["text"], phrases))
+    total = relevant["korpus"] + relevant["dikutip"]
+    return {"lang": lang, "same_lang": same, "relevant": relevant, "weak": bool(lang) and total < WEAK_MIN_SOURCES}
+
+
+def weak_message(sim: dict) -> str:
+    """Warning shown instead of a reassuring 'nothing found' when few sources can really be compared."""
+    lang = LANG_NAMES.get(sim.get("lang"), sim.get("lang"))
+    rel = sim.get("relevant") or sim["same_lang"]
+    n = rel["korpus"] + rel["dikutip"]
+    off_topic = sim["same_lang"]["korpus"] - rel["korpus"]
+    return (f"Pembanding lemah: hanya {n} sumber yang berbahasa {lang} dan setopik dengan draf"
+            + (f" ({off_topic} paper berbahasa {lang} di koleksi topiknya berbeda)" if off_topic > 0 else "") + ". "
+            f"Skor {sim['score']}% belum berarti aman, karena kalimat hanya bisa dicocokkan dengan sumber sebahasa "
+            "dan setopik. "
+            f"Lengkapi pembanding dari daftar pustaka, atau tambah paper berbahasa {lang} ke koleksi proyek"
+            + (" (Panen Paper, centang Khusus jurnal Indonesia)" if sim.get("lang") == "id" else "")
+            + ", lalu jalankan ulang.")
+
+
+def weak_note_student(sim: dict) -> str:
+    lang = LANG_NAMES.get(sim.get("lang"), sim.get("lang"))
+    return (f"Catatan: sumber pembanding berbahasa {lang} masih sedikit, sehingga skor ini belum berarti draf "
+            "bebas dari kemiripan dengan sumber lain.")
+
+
 def check(paragraphs: list[dict], citations: dict | None = None, online: bool = True,
           sources: list[dict] | None = None, fetch=None) -> dict:
     """Compare every sentence of the draft with the sources.
@@ -286,6 +390,7 @@ def check(paragraphs: list[dict], citations: dict | None = None, online: bool = 
         top.append({"title": src["title"], "authors": src["authors"], "year": src["year"], "kind": src["kind"],
                     "pct": round(100 * n / total_words, 1) if total_words else 0.0})
     return {
+        **_language_check(paragraphs, corpus, cited),
         "checked_at": datetime.now().isoformat(timespec="seconds"),
         "online": online,
         "sources": {"korpus": len(corpus), "dikutip": len(cited), "dikutip_gagal": missed},

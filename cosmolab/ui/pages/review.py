@@ -199,6 +199,8 @@ def _similarity_tab(key: str, report: dict):
     st.markdown(f"**Perkiraan kemiripan: {sim['score']}%** dari {sim['words']} kata. Pembanding: {src['korpus']} paper "
                 f"di koleksi proyek dan {src['dikutip']} abstrak sumber yang dikutip"
                 + (f" ({src['dikutip_gagal']} sumber dikutip tidak punya abstrak)." if src.get("dikutip_gagal") else "."))
+    if sim.get("weak"):
+        st.warning(_similarity.weak_message(sim))
     if sim.get("top_sources"):
         render_table([{"Sumber": _similarity.source_label(t), "Asal": "Koleksi" if t["kind"] == "korpus" else "Dikutip",
                        "Porsi draf": f"{t['pct']}%"} for t in sim["top_sources"]])
@@ -208,7 +210,8 @@ def _similarity_tab(key: str, report: dict):
     _coverage_section(key, report)
 
     if not sim["findings"]:
-        st.success("Tidak ada kalimat yang terlalu mirip dengan sumber pembanding.")
+        if not sim.get("weak"):
+            st.success("Tidak ada kalimat yang terlalu mirip dengan sumber pembanding.")
         return
     st.caption("Temuan masuk ke dokumen mahasiswa. Centang **Sembunyikan** kalau temuan keliru, misalnya kalimat "
                "definisi baku atau kutipan yang tanda petiknya hilang saat dokumen diunggah.")
