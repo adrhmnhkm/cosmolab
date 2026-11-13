@@ -117,6 +117,7 @@ st.markdown(
 
 # Menu entry (stored in st.session_state["active_nav_menu"]) -> page module.
 PAGES = {
+    "Beranda": pages.home,
     "Paper Explorer & Korpus": pages.explorer,
     "Roadmap Belajar & Kurikulum": pages.roadmap,
     "Arena Sparring Nalar": pages.sparring,

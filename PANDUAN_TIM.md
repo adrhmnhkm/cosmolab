@@ -20,7 +20,9 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
 2. Muncul daftar proyek klien. Ketik nama proyek yang mau dibuka, lalu tekan Enter.
    - Ketik `baru` untuk membuat proyek baru. Anda akan ditanya nama proyek dan nama klien.
    - Biarkan kosong untuk memakai data utama (koleksi lama, bukan milik klien mana pun).
-3. Dashboard terbuka di browser. Nama proyek aktif tampil di kiri atas. Pastikan namanya benar sebelum mulai.
+3. Dashboard terbuka di browser, di halaman **Beranda**. Nama proyek aktif tampil di kiri atas dan di Beranda. Pastikan namanya benar sebelum mulai.
+   - **Perlu tindakan** di Beranda berisi pekerjaan yang menunggu: review yang komentarnya belum diputuskan, review yang Word-nya belum dibuat, dan paper yang belum dianalisis. Klik **Buka** untuk langsung ke halamannya.
+   - Pemilik yang menjalankan dashboard tanpa mode tim juga melihat status setup, semua proyek, dan pemakaian AI bulan ini.
 4. Selesai bekerja: tutup jendela hitam (command prompt). Dashboard ikut mati.
 
 ## 3. Aturan proyek klien

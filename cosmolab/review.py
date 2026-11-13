@@ -763,6 +763,11 @@ def export_docx(report: dict, reviewer: str) -> Path:
     stem = f"{meta.date:%Y%m%d}_Review_{re.sub(r'[^A-Za-z0-9]+', '_', report['title']).strip('_')[:60]}"
     path = deliverables.build_docx(body, meta, config.ROOT / "deliverables" / f"{stem}.docx")
     d = decision_counts(report)
+    # Recorded so the Home page knows this review has been delivered.
+    report["docx_path"] = str(path)
+    report["docx_at"] = datetime.now().isoformat(timespec="seconds")
+    if report.get("stem"):
+        save(report)
     audit.log("review_draf_kirim", file=report.get("source") or report["title"], reviewer=reviewer,
               accepted=d[ACCEPT], edited=d[EDIT], dropped=d[DROP],
               ungrounded=report["summary"].get("ungrounded", 0))

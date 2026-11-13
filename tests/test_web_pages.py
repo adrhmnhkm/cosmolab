@@ -17,6 +17,7 @@ from cosmolab import review
 WEB = str(Path(__file__).resolve().parent.parent / "cosmolab" / "web.py")
 
 PAGES = [
+    "Beranda",
     "Paper Explorer & Korpus",
     "Roadmap Belajar & Kurikulum",
     "Arena Sparring Nalar",

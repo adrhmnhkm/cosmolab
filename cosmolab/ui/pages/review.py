@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 import streamlit as st
+from cosmolab import config
 from cosmolab import review as _review
 from cosmolab import similarity as _similarity
 from cosmolab import coverage as _coverage
@@ -459,6 +460,9 @@ def render(ctx: AppContext):
         subtitle="Umpan balik ala pembimbing untuk draf skripsi, tesis, atau disertasi: komentar dan pertanyaan "
                  "pemandu per paragraf, plus pemeriksaan sitasi. Draf tidak ditulis ulang.",
     )
+    if not config.PROJECT:
+        st.warning("Anda memakai data utama. Buat proyek untuk klien ini supaya review dan pembanding kemiripannya "
+                   "terpisah: `cosmolab project new <nama>`, lalu `cosmolab -P <nama> ui`.")
 
     tab_new, tab_saved = st.tabs(["Review baru", "Review tersimpan"])
     with tab_new:

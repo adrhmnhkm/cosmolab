@@ -1,6 +1,5 @@
 """Sidebar: brand, active project, field filter, menu, and technical info."""
 
-from datetime import datetime
 import streamlit as st
 from cosmolab import config
 from cosmolab import db
@@ -79,9 +78,9 @@ def build_sidebar() -> AppContext:
     )
 
     if "active_nav_menu" not in st.session_state:
-        st.session_state["active_nav_menu"] = "Paper Explorer & Korpus"
+        st.session_state["active_nav_menu"] = "Beranda"
 
-
+    render_nav_item("Beranda", "Beranda", icon=":material/home:")
     # Menu follows the research workflow: collect, read, then ask and write.
     st.sidebar.markdown("<div class='nav-cluster-header'>1 · Kumpulkan paper</div>", unsafe_allow_html=True)
     render_nav_item("Cari & unduh paper", "Panen Paper Ilmiah", icon=":material/travel_explore:")
@@ -109,15 +108,9 @@ def build_sidebar() -> AppContext:
     st.sidebar.divider()
 
     # Technical details live at the bottom, out of the researcher's way
-    from cosmolab import usage as _usage
-    _month = datetime.now().strftime("%Y-%m")
-    _u = _usage.summarize(_usage.load(config.ROOT, _month), by="month")
     fac_dist = db.get_faculty_distribution()
     with st.sidebar.expander("Info teknis", expanded=False):
         st.caption(f"Model AI: {config.LLM_MODEL}")
-        if _u:
-            _cost = _usage.format_money(_u[0]["cost"]) if _usage.pricing() else "tarif belum diisi"
-            st.caption(f"Pemakaian AI bulan ini: {_u[0]['total_tokens']:,} token · {_u[0]['calls']} panggilan · {_cost}")
         st.caption("Paper per bidang:")
         for f in faculty_list:
             cnt = fac_dist.get(f.id, 0)
