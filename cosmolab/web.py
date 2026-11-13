@@ -32,8 +32,8 @@ from cosmolab import evaluate as _evaluate
 from cosmolab import audit as _audit
 
 from cosmolab.ui.components import ASSETS_DIR, LOGO_LIGHT_PNG, LOGO_MARK_PNG
-from cosmolab.ui.sidebar import build_sidebar
 from cosmolab.ui import pages
+from cosmolab.ui import reload as _ui_reload
 
 # Live hot-reloading of submodules inside Streamlit session
 try:
@@ -63,6 +63,9 @@ try:
     importlib.reload(_evaluate)
 except Exception:
     pass
+# Pages and the modules they use, including pages added since the server started.
+_ui_reload.reload_ui()
+from cosmolab.ui.sidebar import build_sidebar  # noqa: E402  (after the reload, so the new version is used)
 
 
 # Page Configuration
