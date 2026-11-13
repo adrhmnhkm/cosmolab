@@ -34,6 +34,7 @@ EVENT_LABELS = {
     "review_draf": "Review draf mahasiswa",
     "pertanyaan_riset": "Pertanyaan riset diubah",
     "posisi_paper": "Posisi paper dinilai",
+    "latihan_sidang": "Latihan sidang",
     "review_draf_kirim": "Kirim catatan review",
 }
 

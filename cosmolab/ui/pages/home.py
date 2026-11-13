@@ -32,7 +32,7 @@ START = [
     ("Review draf", "Review Draf Mahasiswa", ":material/rate_review:"),
     ("Cari paper", "Panen Paper Ilmiah", ":material/travel_explore:"),
     ("Tanya koleksi", "Tanya Korpus & Sintesis", ":material/forum:"),
-    ("Tulis artikel", "Studio Artikel Siap Baca", ":material/edit_note:"),
+    ("Latihan sidang", "Latihan Sidang", ":material/record_voice_over:"),
 ]
 
 

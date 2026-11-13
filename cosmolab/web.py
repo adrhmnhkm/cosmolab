@@ -126,6 +126,7 @@ PAGES = {
     "Arena Sparring Nalar": pages.sparring,
     "Tanya Korpus & Sintesis": pages.ask,
     "Review Draf Mahasiswa": pages.review,
+    "Latihan Sidang": pages.defense,
     "Studio Artikel Siap Baca": pages.studio,
     "Bedah DOI Seketika": pages.doi,
     "Panen Paper Ilmiah": pages.harvest,

@@ -13,7 +13,7 @@ import sys
 # Core modules the pages use that web.py does not already reload. usage is
 # left out: it wraps the AI client once at startup.
 CORE = ("cosmolab.utils", "cosmolab.sinta", "cosmolab.similarity", "cosmolab.coverage", "cosmolab.review",
-        "cosmolab.backup", "cosmolab.position", "cosmolab.home")
+        "cosmolab.backup", "cosmolab.position", "cosmolab.defense", "cosmolab.home")
 # Shared UI modules, before the pages that import from them.
 UI = ("cosmolab.ui.components", "cosmolab.ui.context", "cosmolab.ui.claims", "cosmolab.ui.papers",
       "cosmolab.ui.sidebar")

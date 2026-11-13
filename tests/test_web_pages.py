@@ -23,6 +23,7 @@ PAGES = [
     "Arena Sparring Nalar",
     "Tanya Korpus & Sintesis",
     "Review Draf Mahasiswa",
+    "Latihan Sidang",
     "Studio Artikel Siap Baca",
     "Bedah DOI Seketika",
     "Panen Paper Ilmiah",

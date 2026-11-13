@@ -29,8 +29,8 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
    - Menu di sidebar mengikuti urutan kerja untuk satu klien:
      - **1 · Kumpulkan**: **Cari & tambah paper**. Termasuk tab **Ringkas dari DOI** untuk meringkas satu paper tanpa memasukkannya ke koleksi.
      - **2 · Pahami**: **Koleksi paper** (daftar, matriks literatur, cari di naskah, ekspor daftar pustaka .bib/.ris) dan **Tanya koleksi**.
-     - **3 · Hasil untuk klien**: **Tinjauan pustaka & celah riset** dan **Review draf mahasiswa**.
-     - **Lainnya**: Tulis artikel, Latihan debat, Periksa akurasi.
+     - **3 · Hasil untuk klien**: **Tinjauan pustaka & celah riset**, **Review draf mahasiswa**, dan **Latihan sidang**.
+     - **Lainnya**: Tulis artikel, Periksa akurasi.
    - Analisis AI setiap paper berisi tujuan riset, metode, sampel dan data, temuan, keterbatasan, dan saran riset lanjutan. Matriks literatur di **Koleksi paper** memakai kolom yang sama, dan pencari celah riset memakai keterbatasan serta saran riset lanjutan sebagai bahan. Paper filsafat dan teologi juga mendapat premis, keberatan, dan pembelaan.
    - **Pertanyaan riset** di Beranda: isi topik, pertanyaan riset mahasiswa, dan hipotesisnya (boleh kosong). Setelah itu tekan **Nilai paper**. AI menilai setiap paper yang sudah dianalisis: mendukung, menolak, campuran, atau tidak berkaitan, dengan satu kalimat alasan. Penilaian memakai ringkasan analisis, bukan naskah penuh, jadi murah (8 paper per panggilan AI). Hasilnya tampil sebagai grafik di Beranda, lencana dan alasan di detail paper, dan kolom di matriks literatur. Kalau pertanyaan atau hipotesis diubah, penilaian lama tidak dipakai dan paper perlu dinilai ulang. Penilaian AI ini bahan awal: baca alasannya sebelum dipakai.
    - Paper yang dianalisis sebelum 13 Nov 2026 belum punya tujuan, sampel, keterbatasan, dan saran. Lengkapi di **Cari & tambah paper**, tab **Analisis paper**, bagian **Perlu dilengkapi**. Biaya AI-nya sama dengan analisis baru. Koreksi peneliti pada kalimat yang berubah ditandai usang, jadi periksa ulang paper yang pernah dikoreksi.
@@ -92,6 +92,17 @@ Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar sepert
 Keputusan tersimpan otomatis. Review bisa dilanjutkan nanti dari tab **Review tersimpan**.
 
 Jangan menulis ulang bagian draf untuk mahasiswa. Perbaikan tetap dikerjakan mahasiswa sendiri.
+
+### Latihan sidang
+
+Menjelang sidang, buka **Latihan sidang**. AI berperan sebagai dosen penguji.
+
+1. Pilih draf: unggah file, atau pakai draf yang sudah direview. Pilih jenjang dan jumlah pertanyaan, lalu klik **Mulai latihan**.
+2. AI membaca draf sekali dan menyusun pertanyaan tentang masalah, teori, metode, hasil, dan kontribusi. Setiap pertanyaan mengutip kalimat dari draf. Pertanyaan yang kutipannya tidak ada di draf dibuang otomatis.
+3. Mahasiswa menjawab dengan kata-katanya sendiri, lalu klik **Minta umpan balik**. AI menilai jawaban (kuat, cukup, perlu diperkuat), menyebut yang sudah baik, yang belum terjawab, yang perlu disiapkan, dan satu pertanyaan lanjutan.
+4. **Unduh catatan latihan** untuk bahan belajar mahasiswa.
+
+AI tidak menuliskan jawaban untuk mahasiswa. Pertanyaan dan penilaian ini bahan latihan, bukan prediksi pertanyaan penguji sebenarnya.
 
 ## 6. Mengirim hasil ke klien
 
