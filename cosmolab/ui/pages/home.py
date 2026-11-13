@@ -14,6 +14,7 @@ import streamlit as st
 
 from cosmolab import config
 from cosmolab import home as _home
+from cosmolab import position as _position
 from cosmolab import usage as _usage
 from cosmolab.ui.components import _badge, _e, render_hero
 from cosmolab.ui.context import AppContext
@@ -62,6 +63,79 @@ def _project_header():
         st.warning("Dashboard ini memakai **data utama**, bukan proyek klien. Hasil kerja untuk klien sebaiknya "
                    "disimpan di proyeknya sendiri supaya tidak tercampur: `cosmolab project new <nama>`, lalu "
                    "`cosmolab -P <nama> ui`.")
+
+
+def _question_section(ctx: AppContext):
+    """The project's research question, and where the papers stand on it."""
+    q = _position.load_question()
+    st.markdown("#### Pertanyaan riset")
+    col_q, col_p = st.columns([3, 2])
+    with col_q, st.container(border=True):
+        if q["question"]:
+            if q["topic"]:
+                st.caption(f"Topik: {q['topic']}")
+            st.markdown(f"**{q['question']}**")
+            if q["hypothesis"]:
+                st.markdown(f"Hipotesis: {q['hypothesis']}")
+        else:
+            st.caption("Belum diisi. Isi pertanyaan riset mahasiswa, lalu AI menilai paper mana yang mendukung, "
+                       "menolak, atau tidak berkaitan dengannya.")
+        with st.expander("Ubah pertanyaan riset" if q["question"] else "Isi pertanyaan riset"):
+            with st.form("home_question_form", border=False):
+                topic = st.text_input("Topik", value=q["topic"], placeholder="contoh: Literasi keuangan mahasiswa")
+                question = st.text_area("Pertanyaan riset", value=q["question"], height=80,
+                                        placeholder="contoh: Apakah literasi keuangan memengaruhi perilaku menabung mahasiswa?")
+                hypothesis = st.text_area("Hipotesis (boleh kosong)", value=q["hypothesis"], height=68,
+                                          placeholder="contoh: Literasi keuangan berpengaruh positif terhadap perilaku menabung.")
+                if q["question"]:
+                    st.caption("Kalau pertanyaan atau hipotesis diubah, penilaian posisi yang lama tidak dipakai lagi "
+                               "dan paper perlu dinilai ulang.")
+                if st.form_submit_button("Simpan", type="primary"):
+                    if not question.strip():
+                        st.error("Pertanyaan riset belum diisi.")
+                    else:
+                        _position.save_question(topic, question, hypothesis)
+                        st.rerun()
+
+    with col_p, st.container(border=True):
+        st.markdown("##### Posisi paper terhadap pertanyaan riset")
+        if not q["question"]:
+            st.caption("Muncul setelah pertanyaan riset diisi.")
+            return
+        note = st.session_state.pop("home_judge_note", None)
+        if note:
+            (st.error if note[0] == "error" else st.success)(note[1])
+        rows = _position.counts(ctx.papers)
+        todo = _position.pending(ctx.all_papers)
+        if rows:
+            order = [_position.LABELS[k] for k in _position.ORDER]
+            df = pd.DataFrame(rows)
+            base = alt.Chart(df).encode(y=alt.Y("Posisi:N", sort=order, title=None, axis=alt.Axis(labelLimit=170)))
+            bars = base.mark_bar(cornerRadiusEnd=4, height=16).encode(
+                x=alt.X("Paper:Q", title=None, axis=None),
+                color=alt.Color("Posisi:N", legend=None,
+                                scale=alt.Scale(domain=order, range=[TEAL, TEAL_LIGHT, AMBER, GRAY])),
+                tooltip=["Posisi", "Paper"])
+            text = base.mark_text(align="left", dx=4, color=INK).encode(x="Paper:Q", text="Paper:Q")
+            _chart(bars + text, 28 * len(rows) + 10)
+            st.caption("Dinilai AI dari ringkasan analisis tiap paper. Alasannya ada di detail paper di Koleksi.")
+        elif not todo:
+            st.caption("Belum ada paper yang dianalisis. Posisi dinilai dari hasil analisis paper.")
+        if todo:
+            st.caption(f"Belum dinilai: {_position.estimate_text(len(todo))}")
+            if st.button(f"Nilai {len(todo)} paper", key="home_judge", type="secondary" if rows else "primary",
+                         width="stretch"):
+                with st.spinner("AI menilai posisi paper..."):
+                    res = _position.judge(ctx.all_papers)
+                if res["error"]:
+                    st.session_state["home_judge_note"] = (
+                        "error", f"Berhenti di tengah: {res['error']}. {res['judged']} paper sudah dinilai dan tersimpan.")
+                elif res["failed"]:
+                    st.session_state["home_judge_note"] = (
+                        "error", f"{res['judged']} paper dinilai, {res['failed']} tidak dijawab AI. Tekan tombol lagi.")
+                else:
+                    st.session_state["home_judge_note"] = ("ok", f"{res['judged']} paper dinilai.")
+                st.rerun()
 
 
 def _kpi_row(ctx: AppContext, activity: list[dict], owner: bool):
@@ -265,6 +339,8 @@ def render(ctx: AppContext):
         _todo_section(ctx)
     with col_s:
         _start_section()
+
+    _question_section(ctx)
 
     st.markdown("#### Isi koleksi")
     if ctx.selected_faculty_id != "all":

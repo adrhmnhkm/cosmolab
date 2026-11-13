@@ -30,6 +30,8 @@ EVENT_LABELS = {
     "evaluasi": "Evaluasi",
     "koreksi": "Koreksi",
     "tanya": "Tanya koleksi",
+    "pertanyaan_riset": "Pertanyaan riset diubah",
+    "posisi_paper": "Posisi paper dinilai",
 }
 
 
@@ -42,6 +44,7 @@ FEATURE_LABELS = {
     "entail": "Cek klaim terhadap sumber",
     "evaluate": "Evaluasi jawaban",
     "passages": "Kutipan dari paper",
+    "position": "Posisi paper",
     "retrieval": "Pencarian di koleksi",
     "review": "Review draf",
     "writer": "Tulis artikel",

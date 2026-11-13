@@ -12,6 +12,7 @@ from cosmolab import analysis_check as _acheck
 from cosmolab import analyze as _analyze
 from cosmolab import corrections as _corrections
 from cosmolab import metadata as _metadata
+from cosmolab import position as _position
 from cosmolab import sinta as _sinta
 from cosmolab.ui.components import _e
 from cosmolab.ui.components import _badge
@@ -82,6 +83,9 @@ def sinta_ranks() -> dict:
     return st.session_state["_sinta_ranks"]
 
 
+POSITION_TONES = {"mendukung": "good", "menolak": "bad", "campuran": "mix", "tidak_berkaitan": "muted"}
+
+
 def paper_badges(p: dict) -> str:
     """Status, stance, study type, and warnings that need the researcher's attention."""
     out = []
@@ -95,6 +99,10 @@ def paper_badges(p: dict) -> str:
         arg_t = p.get("argument_type") or ""
         if arg_t and arg_t not in ("other", "unclassified"):
             out.append(_badge(TYPE_LABELS.get(arg_t, arg_t), _type_tone(arg_t)))
+    pos = _position.position_of(p.get("file") or "")
+    if pos:
+        out.append(_badge(f"Pertanyaan riset: {_position.LABELS[pos['position']].lower()}",
+                          POSITION_TONES.get(pos["position"], "muted")))
     sinta = sinta_ranks().get(p.get("file") or "")
     if sinta:
         out.append(_badge(_sinta.label(sinta), SINTA_TONES.get(sinta["rank"], "muted")))
@@ -129,7 +137,7 @@ def _numbered_list(items: list, prefix: str = "") -> str:
     return f"<ol class='an-list'>{rows}</ol>"
 
 
-WIDE_FACTS = {"Tujuan riset", "Metode riset", "Sampel dan data"}
+WIDE_FACTS = {"Tujuan riset", "Metode riset", "Sampel dan data", "Alasan posisi"}
 
 
 def render_analysis_detail(p: dict):
@@ -172,6 +180,12 @@ def render_analysis_detail(p: dict):
     if is_arg:
         stn = p.get("supports_or_critiques") or "neutral"
         facts.append(("Sikap terhadap topik", _badge(STANCE_LABELS.get(stn, "Netral"), STANCE_TONES.get(stn, "muted"))))
+    pos = _position.position_of(p.get("file") or "")
+    if pos:
+        facts.append(("Posisi terhadap pertanyaan riset",
+                      _badge(_position.LABELS[pos["position"]], POSITION_TONES.get(pos["position"], "muted"))))
+        if pos.get("reason"):
+            facts.append(("Alasan posisi", pos["reason"]))
     if p.get("doi"):
         facts.append(("DOI", p["doi"]))
     else:

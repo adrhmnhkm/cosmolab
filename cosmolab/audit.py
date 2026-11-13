@@ -32,6 +32,8 @@ EVENT_LABELS = {
     "harvest": "Cari paper",
     "telusuri_sitasi": "Telusuri sitasi",
     "review_draf": "Review draf mahasiswa",
+    "pertanyaan_riset": "Pertanyaan riset diubah",
+    "posisi_paper": "Posisi paper dinilai",
     "review_draf_kirim": "Kirim catatan review",
 }
 

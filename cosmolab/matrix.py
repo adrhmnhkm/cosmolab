@@ -13,6 +13,7 @@ from . import config
 from . import db
 from . import faculties as _faculties
 from . import citations
+from . import position as _position
 
 # Same keys as analyze.LIT_FIELDS (not imported: analyze pulls in the LLM client).
 LIT_KEYS = ("research_question", "sample_data", "limitations", "future_research")
@@ -29,6 +30,7 @@ def build_literature_matrix(faculty_id: str = "all") -> list[dict]:
     else:
         papers = all_papers
 
+    positions = _position.load_positions()
     matrix = []
     for idx, p in enumerate(papers, 1):
         p_fac_id = p.get("faculty") or "umum"
@@ -86,6 +88,8 @@ def build_literature_matrix(faculty_id: str = "all") -> list[dict]:
             "findings": _joined("key_findings"),
             "limitations": _joined("limitations"),
             "future_research": _joined("future_research"),
+            "position": _position.LABELS.get((positions.get(p.get("file") or "") or {}).get("position"), "-"),
+            "position_reason": (positions.get(p.get("file") or "") or {}).get("reason") or "-",
             "analyzed": bool(p.get("thesis")),
             "old_analysis": bool(p.get("thesis")) and not all(k in raw for k in LIT_KEYS),
             "key_objection": p.get("key_objection") or "-",
@@ -114,7 +118,7 @@ def export_matrix_csv(matrix: list[dict], out_path: Path | None = None) -> Path:
     headers = [
         "No", "Penulis", "Tahun", "Judul", "Bidang", "Jenis penelitian",
         "Tujuan riset", "Metode", "Sampel dan data", "Temuan", "Keterbatasan", "Saran riset lanjutan",
-        "Kesimpulan", "Inti paper", "Premis", "Keberatan", "Pembelaan",
+        "Posisi terhadap pertanyaan riset", "Alasan posisi", "Kesimpulan", "Inti paper", "Premis", "Keberatan", "Pembelaan",
         "Sitasi APA", "DOI", "Tautan",
     ]
 
@@ -125,7 +129,7 @@ def export_matrix_csv(matrix: list[dict], out_path: Path | None = None) -> Path:
             writer.writerow([
                 r["no"], r["author"], r["year"], r["title"], r["faculty"], r["argument_type"],
                 r["research_question"], r["method"], r["sample"], r["findings"], r["limitations"], r["future_research"],
-                r["conclusion"], r["thesis"], r["premises"], r["key_objection"], r["key_defense"],
+                r["position"], r["position_reason"], r["conclusion"], r["thesis"], r["premises"], r["key_objection"], r["key_defense"],
                 r["citation_apa"], r["doi"], r["url"],
             ])
 

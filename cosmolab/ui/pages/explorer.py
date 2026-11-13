@@ -286,6 +286,7 @@ def render(ctx: AppContext):
             if old:
                 st.info(f"{old} paper dianalisis dengan versi lama, jadi kolom tujuan, sampel, keterbatasan, dan saran "
                         "masih kosong. Lengkapi di menu Cari & tambah paper, tab Analisis paper, bagian Perlu dilengkapi.")
+            has_positions = any(r["position"] != "-" for r in matrix_data)
             display_rows = []
             for r in matrix_data:
                 display_rows.append({
@@ -298,6 +299,7 @@ def render(ctx: AppContext):
                     "Temuan": r["findings"],
                     "Keterbatasan": r["limitations"],
                     "Saran riset lanjutan": r["future_research"],
+                    **({"Posisi": r["position"], "Alasan posisi": r["position_reason"]} if has_positions else {}),
                 })
             with st.container(border=True):
                 render_table(display_rows, height=520)
