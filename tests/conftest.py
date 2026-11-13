@@ -39,6 +39,11 @@ config._set_root(_test_root)
 # use_project(None) resets to the default root; keep that inside the copy too.
 config._default_root = lambda: _test_root
 
+# The SINTA journal list is shared by all projects and lives outside data/.
+from cosmolab import sinta  # noqa: E402
+
+sinta.list_path = lambda: _tmp / "shared" / "sinta_journals.json"
+
 
 def pytest_sessionfinish(session, exitstatus):
     shutil.rmtree(_tmp, ignore_errors=True)

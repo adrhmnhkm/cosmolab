@@ -12,7 +12,81 @@ from cosmolab import analyze as _analyze
 from cosmolab import snowball as _snowball
 from cosmolab.ui.components import _e
 from cosmolab.ui.components import render_hero
+from cosmolab.ui.components import render_table
 from cosmolab.ui.context import AppContext
+from cosmolab import sinta as _sinta
+
+
+def _sinta_changed():
+    st.session_state.pop("_sinta_ranks", None)
+
+
+def render_sinta_tab():
+    """Shared SINTA journal list: import, add, and look up journals of papers."""
+    st.caption(
+        "SINTA tidak punya API publik, jadi tim menyimpan daftar peringkat jurnal sendiri. Paper diberi label SINTA "
+        "kalau ISSN jurnalnya ada di daftar ini. Paper tanpa label belum tentu tidak terakreditasi: jurnalnya saja "
+        "yang belum ada di daftar. Peringkat berubah saat akreditasi ulang, jadi cek ulang di "
+        "[sinta.kemdiktisaintek.go.id](https://sinta.kemdiktisaintek.go.id/journals) sebelum dikutip ke klien."
+    )
+    entries = _sinta.load()
+
+    col_a, col_b = st.columns(2)
+    with col_a.container(border=True):
+        st.markdown("##### Tambah satu jurnal")
+        with st.form("sinta_add_form", clear_on_submit=True):
+            name = st.text_input("Nama jurnal")
+            issn = st.text_input("ISSN (cetak dan/atau online, pisahkan dengan koma)", placeholder="2087-1236, 2502-3721")
+            rank = st.selectbox("Peringkat", _sinta.RANKS, format_func=lambda r: f"SINTA {r}")
+            if st.form_submit_button("Simpan", use_container_width=True):
+                try:
+                    res = _sinta.add(name, issn, rank)
+                    _sinta_changed()
+                    st.success(f"SINTA {res['rank']} {'ditambahkan' if res['status'] == 'added' else 'diperbarui'}: "
+                               f"{', '.join(res['issns'])}")
+                    entries = _sinta.load()
+                except ValueError as e:
+                    st.error(str(e))
+
+    with col_b.container(border=True):
+        st.markdown("##### Impor CSV")
+        st.caption("Kolom wajib: ISSN (boleh `issn` dan `eissn`) dan peringkat (`peringkat`, `sinta`, atau `akreditasi`). "
+                   "Kolom nama jurnal dan tanggal cek opsional.")
+        up = st.file_uploader("File CSV", type=["csv"], key="sinta_csv")
+        if up is not None and st.button("Impor", key="sinta_import_btn", use_container_width=True):
+            import tempfile
+            from pathlib import Path
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "sinta.csv"
+                path.write_bytes(up.getvalue())
+                try:
+                    res = _sinta.import_csv(path)
+                    _sinta_changed()
+                    st.success(f"{res['added']} jurnal baru, {res['updated']} diperbarui.")
+                    if res["skipped"]:
+                        st.warning(f"Baris dilewati karena ISSN atau peringkat tidak valid: {', '.join(map(str, res['skipped']))}")
+                    entries = _sinta.load()
+                except (ValueError, UnicodeDecodeError) as e:
+                    st.error(f"Impor gagal: {e}")
+
+    with st.container(border=True):
+        st.markdown("##### Cocokkan paper proyek ini")
+        ranked = _sinta.ranks_by_file()
+        st.caption(f"{len(ranked)} paper di proyek ini berlabel SINTA. Paper lama belum menyimpan ISSN jurnalnya; "
+                   "tombol ini mencarinya lewat DOI di OpenAlex (sekali per paper).")
+        if st.button("Cari jurnal paper lewat DOI", key="sinta_fill_btn", use_container_width=True):
+            with st.spinner("Mencari jurnal dan ISSN..."):
+                res = _sinta.fill_journals()
+            _sinta_changed()
+            st.success(f"ISSN dicari untuk {res['checked']} paper, ketemu {res['found']}. "
+                       f"Sekarang {len(_sinta.ranks_by_file())} paper berlabel SINTA.")
+
+    st.markdown(f"##### Daftar jurnal ({len(entries)})")
+    if entries:
+        render_table([{"Peringkat": f"SINTA {e['rank']}", "Nama jurnal": e.get("name", ""),
+                       "ISSN": ", ".join(e["issns"]), "Dicek": e.get("checked", "")} for e in entries])
+    else:
+        st.info("Daftar masih kosong. Tambah jurnal yang sering dipakai klien, atau impor CSV.")
 
 
 def render_snowball_tab(ctx: AppContext):
@@ -320,14 +394,18 @@ def render(ctx: AppContext):
         except Exception as e:
             status_box.error(f"Terjadi kesalahan: {e}")
 
-    tab_h2, tab_h6, tab_h1, tab_h4, tab_h5, tab_h3 = st.tabs([
+    tab_h2, tab_h6, tab_h1, tab_h4, tab_h5, tab_h3, tab_h7 = st.tabs([
         "Cari topik",
         "Telusuri sitasi",
         "Per bidang ilmu",
         "Unggah PDF / DOI",
         "Analisis paper",
-        "Kelola bidang ilmu"
+        "Kelola bidang ilmu",
+        "Peringkat SINTA",
     ])
+
+    with tab_h7:
+        render_sinta_tab()
 
     with tab_h1:
         with st.container(border=True):
@@ -381,6 +459,11 @@ def render(ctx: AppContext):
             col_c1, col_c2 = st.columns([3, 1])
             custom_q = col_c1.text_input("Topik atau kata kunci", placeholder="contoh: green accounting, blended learning, islamic microfinance")
             custom_max = int(col_c2.number_input("Jumlah paper", min_value=3, max_value=60, value=10, key="c_max"))
+            only_id = st.checkbox(
+                "Khusus jurnal Indonesia", key="c_indonesia",
+                help="Cari hanya di jurnal Indonesia atau artikel berbahasa Indonesia (jurnal Garuda/SINTA yang punya DOI), "
+                     "lewat OpenAlex. Pakai kata kunci bahasa Indonesia.",
+            )
 
             # Options include all registered faculties + option to create ad-hoc
             fac_dropdown_keys = [f.id for f in faculty_list] + ["_new_faculty_on_the_fly_"]
@@ -422,7 +505,8 @@ def render(ctx: AppContext):
                 st.success(f"Bidang '{saved_new_fac.name}' tersimpan.")
 
             run_live_harvest_process(
-                lambda cb: _harvest.harvest(custom_q, max_results=custom_max, workers=4, delay=0.5, faculty=effective_fac_id, progress_cb=cb),
+                lambda cb: _harvest.harvest(custom_q, max_results=custom_max, workers=4, delay=0.5, faculty=effective_fac_id, progress_cb=cb,
+                                            indonesia=only_id),
                 auto_analyze=auto_an_cust
             )
 

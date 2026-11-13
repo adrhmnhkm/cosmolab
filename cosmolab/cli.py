@@ -31,6 +31,8 @@ app = typer.Typer(help="cosmolab - multidisciplinary research assistant")
 console = Console(force_terminal=True, legacy_windows=False)
 project_app = typer.Typer(help="Kelola proyek klien (satu folder data per proyek)")
 app.add_typer(project_app, name="project")
+sinta_app = typer.Typer(help="Daftar peringkat jurnal SINTA (dicocokkan lewat ISSN)")
+app.add_typer(sinta_app, name="sinta")
 
 
 @app.callback()
@@ -117,12 +119,13 @@ def harvest(
     max_results: int = typer.Option(40, "--max-results", "-n", help="Maximum papers to harvest"),
     workers: int = typer.Option(4, "--workers", "-w", help="Number of parallel download threads"),
     delay: float = typer.Option(0.5, "--delay", "-d", help="Politeness delay between downloads per worker"),
-    auto_extract: bool = typer.Option(True, "--extract/--no-extract", help="Automatically extract text from downloaded PDFs")
+    auto_extract: bool = typer.Option(True, "--extract/--no-extract", help="Automatically extract text from downloaded PDFs"),
+    indonesia: bool = typer.Option(False, "--indonesia", help="Hanya jurnal Indonesia / artikel berbahasa Indonesia (via OpenAlex)"),
 ):
     """Search arXiv, DOAJ, S2 & OpenAlex and download OA PDFs in parallel with smart deduplication."""
     with Progress() as progress:
         task = progress.add_task("[cyan]Harvesting papers in parallel...", total=None)
-        stats = _harvest.harvest(query, max_results=max_results, workers=workers, delay=delay)
+        stats = _harvest.harvest(query, max_results=max_results, workers=workers, delay=delay, indonesia=indonesia)
         progress.update(task, completed=1, description="[green]Harvest complete")
     
     _print_stats_table(stats, title="Harvest Results")
@@ -980,6 +983,68 @@ def backup(
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     console.print(f"[green]OK[/green] {res['files']} file, {res['size'] / 1_048_576:.1f} MB: {res['path']}")
+
+
+@sinta_app.command("import")
+def sinta_import(path: str = typer.Argument(..., help="File CSV berkolom ISSN dan peringkat")):
+    """Impor daftar jurnal SINTA dari CSV."""
+    from . import sinta as _sinta
+
+    try:
+        res = _sinta.import_csv(path)
+    except (ValueError, OSError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]OK[/green] {res['added']} jurnal baru, {res['updated']} diperbarui.")
+    if res["skipped"]:
+        console.print(f"[yellow]Baris dilewati (ISSN/peringkat tidak valid): {', '.join(map(str, res['skipped']))}[/yellow]")
+    console.print(f"Tersimpan di {_sinta.list_path()}")
+
+
+@sinta_app.command("add")
+def sinta_add(
+    issn: str = typer.Option(..., "--issn", help="ISSN cetak dan/atau online, pisahkan dengan koma"),
+    peringkat: str = typer.Option(..., "--peringkat", "-r", help="1 sampai 6"),
+    nama: str = typer.Option("", "--nama", help="Nama jurnal"),
+):
+    """Tambah atau perbarui satu jurnal."""
+    from . import sinta as _sinta
+
+    try:
+        res = _sinta.add(nama, issn, peringkat)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    word = "ditambahkan" if res["status"] == "added" else "diperbarui"
+    console.print(f"[green]OK[/green] SINTA {res['rank']} {word}: {', '.join(res['issns'])}")
+
+
+@sinta_app.command("list")
+def sinta_list():
+    """Tampilkan daftar jurnal SINTA yang tersimpan."""
+    from . import sinta as _sinta
+
+    entries = _sinta.load()
+    if not entries:
+        console.print("Daftar masih kosong. Isi dengan: cosmolab sinta import <file.csv>")
+        return
+    table = Table(title=f"{len(entries)} jurnal SINTA")
+    for col in ("Peringkat", "Nama", "ISSN", "Dicek"):
+        table.add_column(col)
+    for e in entries:
+        table.add_row(f"SINTA {e['rank']}", e.get("name", ""), ", ".join(e["issns"]), e.get("checked", ""))
+    console.print(table)
+
+
+@sinta_app.command("cek")
+def sinta_cek(limit: int = typer.Option(None, "--limit", help="Batasi jumlah paper yang dicari")):
+    """Cari jurnal & ISSN paper proyek aktif lewat DOI (OpenAlex), lalu hitung yang berlabel SINTA."""
+    from . import sinta as _sinta
+
+    res = _sinta.fill_journals(limit=limit)
+    ranked = _sinta.ranks_by_file()
+    console.print(f"ISSN dicari untuk {res['checked']} paper, ketemu {res['found']}.")
+    console.print(f"{len(ranked)} paper ada di daftar SINTA.")
 
 
 if __name__ == "__main__":

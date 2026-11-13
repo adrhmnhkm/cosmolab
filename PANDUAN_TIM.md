@@ -30,7 +30,21 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
 - **Lokasi data**: semua isi proyek ada di folder `projects/<nama-proyek>/`. Folder ini tidak ikut ke Git. Cadangkan secara rutin dengan `cosmolab -P <nama-proyek> backup`, lalu salin file zip dari folder `backups/` ke penyimpanan tim.
 - **Hasil untuk klien** (artikel, matriks, laporan celah riset) tersimpan di dalam folder proyek itu: `articles/`, `matrices/`, `gaps/`, `synthesis/`.
 
-## 4. Mereview draf mahasiswa
+## 4. Jurnal Indonesia dan peringkat SINTA
+
+**Mencari paper dari jurnal Indonesia.** Di **Panen Paper**, tab **Cari topik**, centang **Khusus jurnal Indonesia**. Pakai kata kunci bahasa Indonesia. CosmoLab hanya mengambil jurnal Indonesia atau artikel berbahasa Indonesia yang punya DOI dan naskah terbuka. Jurnal tanpa DOI tidak ikut; cari manual di Garuda kalau perlu.
+
+**Label SINTA.** Paper dari jurnal yang ada di daftar SINTA tim mendapat label **SINTA 1** sampai **SINTA 6**. Di **Koleksi Paper**, buka **Filter lain** untuk menyaring, misalnya hanya SINTA 1–2.
+
+SINTA tidak menyediakan data untuk diambil otomatis, jadi tim mengisi daftarnya sendiri di **Panen Paper**, tab **Peringkat SINTA**:
+
+1. Buka halaman jurnal di <https://sinta.kemdiktisaintek.go.id/journals>. Catat nama, ISSN cetak dan online, serta peringkatnya.
+2. Isi di **Tambah satu jurnal**, atau kumpulkan banyak jurnal di Excel lalu simpan sebagai CSV dan **Impor CSV**. Kolom yang dibutuhkan: `nama`, `issn`, `eissn`, `peringkat`.
+3. Klik **Cari jurnal paper lewat DOI** supaya paper lama ikut mendapat label.
+
+Paper tanpa label **belum tentu** tidak terakreditasi; mungkin jurnalnya saja yang belum ada di daftar. Peringkat bisa berubah saat akreditasi ulang. Cek ulang di situs SINTA sebelum menyebut peringkat ke klien.
+
+## 5. Mereview draf mahasiswa
 
 Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar seperti pembimbing, bukan menulis ulang draf.
 
@@ -51,7 +65,7 @@ Keputusan tersimpan otomatis. Review bisa dilanjutkan nanti dari tab **Review te
 
 Jangan menulis ulang bagian draf untuk mahasiswa. Perbaikan tetap dikerjakan mahasiswa sendiri.
 
-## 5. Mengirim hasil ke klien
+## 6. Mengirim hasil ke klien
 
 Klien hanya menerima file Word atau PDF berkop firma, bukan file Markdown atau HTML.
 
@@ -70,7 +84,7 @@ File klien tersimpan di `projects/<proyek>/deliverables/`. Laporan pemeriksaan s
 
 Kop firma (nama, tagline, alamat, kontak, logo) diatur di file `.env` oleh admin tim.
 
-## 6. Bekerja bersama lewat jaringan (Tailscale)
+## 7. Bekerja bersama lewat jaringan (Tailscale)
 
 CosmoLab tidak dibuka ke internet. Tim mengaksesnya lewat **Tailscale**, jaringan pribadi yang hanya bisa dimasuki akun yang diundang admin. Gratis untuk tim kecil.
 
@@ -101,7 +115,7 @@ CosmoLab tidak dibuka ke internet. Tim mengaksesnya lewat **Tailscale**, jaringa
 - Rekap per fitur untuk satu proyek: `cosmolab -P <proyek> usage`
 - Rekap semua proyek untuk bulan tertentu: `cosmolab usage --all --month 2026-11`
 
-## 7. Kalau ada masalah
+## 8. Kalau ada masalah
 
 | Pesan | Artinya | Yang dilakukan |
 | --- | --- | --- |

@@ -43,6 +43,25 @@ class TestWebPages(unittest.TestCase):
                 self.assertEqual([e.value for e in at.exception], [], page)
                 self.assertGreater(len(at.markdown), 0, page)
 
+    def test_sinta_tab_adds_a_journal(self):
+        from cosmolab import sinta
+
+        with mock.patch("importlib.reload", lambda m: m):
+            at = AppTest.from_file(WEB, default_timeout=120)
+            at.session_state["active_nav_menu"] = "Panen Paper Ilmiah"
+            at.run()
+            [t for t in at.text_input if t.label == "Nama jurnal"][0].input("Jurnal Uji")
+            [t for t in at.text_input if t.label.startswith("ISSN")][0].input("2087-1236")
+            [s for s in at.selectbox if s.label == "Peringkat"][0].set_value(2)
+            [b for b in at.button if b.label == "Simpan"][0].click()
+            at.run()
+        try:
+            self.assertEqual([e.value for e in at.exception], [])
+            self.assertIn("SINTA 2 ditambahkan", " ".join(s.value for s in at.success))
+            self.assertEqual(sinta.rank_for(["2087-1236"])["name"], "Jurnal Uji")
+        finally:
+            sinta.remove("2087-1236")
+
     def test_review_page_runs_a_review(self):
         from test_review import DRAFT, fake_chat
 

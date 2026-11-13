@@ -11,6 +11,7 @@ from cosmolab import entail as _entail
 from cosmolab import analysis_check as _acheck
 from cosmolab import corrections as _corrections
 from cosmolab import metadata as _metadata
+from cosmolab import sinta as _sinta
 from cosmolab.ui.components import _e
 from cosmolab.ui.components import _badge
 from cosmolab.ui.claims import CLAIM_TONES
@@ -71,6 +72,16 @@ def _type_tone(arg_t: str) -> str:
     return "muted"
 
 
+SINTA_TONES = {1: "good", 2: "good", 3: "info", 4: "info", 5: "muted", 6: "muted"}
+
+
+def sinta_ranks() -> dict:
+    """file -> SINTA entry, cached per session. Pop '_sinta_ranks' after the list changes."""
+    if "_sinta_ranks" not in st.session_state:
+        st.session_state["_sinta_ranks"] = _sinta.ranks_by_file()
+    return st.session_state["_sinta_ranks"]
+
+
 def paper_badges(p: dict) -> str:
     """Status, stance, study type, and warnings that need the researcher's attention."""
     out = []
@@ -82,6 +93,9 @@ def paper_badges(p: dict) -> str:
         arg_t = p.get("argument_type") or ""
         if arg_t and arg_t not in ("other", "unclassified"):
             out.append(_badge(TYPE_LABELS.get(arg_t, arg_t), _type_tone(arg_t)))
+    sinta = sinta_ranks().get(p.get("file") or "")
+    if sinta:
+        out.append(_badge(_sinta.label(sinta), SINTA_TONES.get(sinta["rank"], "muted")))
     meta = _meta_store().get(p.get("file") or "") or {}
     serious = [n["label"] for n in meta.get("notices", []) if n.get("serious")]
     if serious:

@@ -105,13 +105,14 @@ def _flatten_inverted_abstract(inverted_index: dict) -> str:
         return ""
 
 
-def _search_openalex(query: str, max_results: int):
+def _search_openalex(query: str, max_results: int, extra_filter: str = ""):
     out, cursor = [], "*"
+    flt = "is_oa:true,type:article" + (f",{extra_filter}" if extra_filter else "")
     try:
         while len(out) < max_results:
             r = _request_with_retry("GET", config.OPENALEX, params={
                 "search": query,
-                "filter": "is_oa:true,type:article",
+                "filter": flt,
                 "per_page": 25,
                 "cursor": cursor,
                 "mailto": config.EMAIL,
@@ -167,6 +168,8 @@ def _search_doaj(query: str, max_results: int):
 
             abstract = bib.get("abstract", "")
             works.append({
+                "journal": (bib.get("journal") or {}).get("title", ""),
+                "issn": [i.get("id", "") for i in bib.get("identifier", []) if i.get("type") in ("pissn", "eissn")],
                 "id": f"doaj:{it.get('id', '')}",
                 "authors": _authors.from_named(bib.get("author")),
                 "title": title.replace("\n", " ").strip(),
@@ -307,6 +310,8 @@ def _search_crossref(query: str, max_results: int):
             
             abstract = item.get("abstract", "")
             works.append({
+                "journal": (item.get("container-title") or [""])[0],
+                "issn": list(item.get("ISSN") or []),
                 "id": f"crossref:{doi or item.get('URL')}",
                 "authors": _authors.from_crossref(item.get("author")),
                 "title": title.replace("\n", " ").strip(),
@@ -361,24 +366,48 @@ def _compute_relevance(title: str, abstract: str, keywords: list[str]) -> float:
     return score * (1.0 + coverage)
 
 
-def _search(query: str, max_results: int):
-    """Federated academic search across DOAJ, OpenAlex, Crossref, Semantic Scholar, CORE, and arXiv with relevance filtering."""
+def journal_info(work: dict) -> tuple[str, list[str]]:
+    """Journal name and ISSNs of a search result, from any source."""
+    if work.get("journal") or work.get("issn"):
+        return work.get("journal") or "", [i for i in work.get("issn") or [] if i]
+    src = (work.get("primary_location") or {}).get("source") or {}
+    issns = list(src.get("issn") or [])
+    if src.get("issn_l") and src["issn_l"] not in issns:
+        issns.insert(0, src["issn_l"])
+    return src.get("display_name") or "", issns
+
+
+# Indonesian journals: OpenAlex can filter by the journal's country and by the
+# article's language. Many Indonesian journals have no country in OpenAlex, so
+# both filters are searched and merged.
+INDONESIA_FILTERS = ("primary_location.source.country_code:ID", "language:id")
+
+
+def _search(query: str, max_results: int, indonesia: bool = False):
+    """Federated academic search across DOAJ, OpenAlex, Crossref, Semantic Scholar, CORE, and arXiv with relevance filtering.
+
+    indonesia=True searches only OpenAlex, limited to Indonesian journals or
+    Indonesian-language articles (the Garuda/SINTA journals that have DOIs).
+    """
     portion = max(3, max_results // 3)
 
-    # Parallel API calls to all sources for faster federated search
-    source_fns = [
-        ("doaj", _search_doaj, query, portion),
-        ("crossref", _search_crossref, query, portion),
-        ("core", _search_core, query, portion),
-        ("semanticscholar", _search_semanticscholar, query, portion),
-        ("arxiv", _search_arxiv, query, portion),
-    ]
+    if indonesia:
+        source_fns = [(f"openalex-{f}", _search_openalex, query, max_results, f) for f in INDONESIA_FILTERS]
+    else:
+        # Parallel API calls to all sources for faster federated search
+        source_fns = [
+            ("doaj", _search_doaj, query, portion),
+            ("crossref", _search_crossref, query, portion),
+            ("core", _search_core, query, portion),
+            ("semanticscholar", _search_semanticscholar, query, portion),
+            ("arxiv", _search_arxiv, query, portion),
+        ]
 
     collected = []
     with ThreadPoolExecutor(max_workers=len(source_fns)) as executor:
         futures = {
-            executor.submit(fn, q, n): name
-            for name, fn, q, n in source_fns
+            executor.submit(fn, *args): name
+            for name, fn, *args in source_fns
         }
         for future in as_completed(futures):
             source_name = futures[future]
@@ -390,7 +419,7 @@ def _search(query: str, max_results: int):
 
     # OpenAlex as filler if quota not reached
     remaining = (max_results * 2) - len(collected)
-    if remaining > 0:
+    if remaining > 0 and not indonesia:
         openalex_works = _search_openalex(query, remaining)
         collected += openalex_works
 
@@ -545,7 +574,8 @@ def _title_is_duplicate(new_title: str, existing_titles: list, threshold: float 
 
 
 
-def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 0.5, faculty: str = None, progress_cb: callable = None) -> dict:
+def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 0.5, faculty: str = None,
+            progress_cb: callable = None, indonesia: bool = False) -> dict:
     config.ensure_dirs()
     done = load_done()
     
@@ -558,9 +588,10 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
     stats = {"found": 0, "downloaded": 0, "skipped": 0, "no_pdf": 0, "duplicate": 0, "source": {"arxiv": 0, "openalex": 0, "doaj": 0, "semanticscholar": 0, "crossref": 0, "core": 0}}
     to_download = []
 
-    _fire_cb(progress_cb, "search_start", f"Mencari literatur: '{query}' di federasi repositori ilmiah...", {"query": query})
+    where = "jurnal Indonesia (OpenAlex)" if indonesia else "federasi repositori ilmiah"
+    _fire_cb(progress_cb, "search_start", f"Mencari literatur: '{query}' di {where}...", {"query": query})
 
-    for work in _search(query, max_results):
+    for work in _search(query, max_results, indonesia=indonesia):
         stats["found"] += 1
         wid = work["id"]
         title = work.get("title") or "untitled"
@@ -623,8 +654,10 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
             abstract_text = _flatten_inverted_abstract(abstract_text)
         abstract_text = str(abstract_text)
         item_faculty = faculty or _faculties.detect_faculty_from_text(title, abstract_text)
+        journal, issns = journal_info(work)
 
         to_download.append({
+            "journal": journal, "issn": issns,
             "wid": wid, "title": title, "year": year, "doi": doi,
             "pdf": pdf, "fname": fname, "dest": dest, "source": source,
             "arxiv_id": arxiv_id,
@@ -676,6 +709,8 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
                     "arxiv_id": item["arxiv_id"],
                     "faculty": item.get("faculty", "ilahiyyat"),
                     "authors": item.get("authors") or [],
+                    **({"journal": item["journal"]} if item.get("journal") else {}),
+                    **({"issn": item["issn"]} if item.get("issn") else {}),
                 })
                 done.add(wid)
                 save_done(done)

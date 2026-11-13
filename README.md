@@ -48,6 +48,7 @@ terhadap teks paper aslinya** sebelum hasilnya sampai ke klien.
 
 ### 1 · Kumpulkan paper
 - **Panen federasi** dari 6 sumber sekaligus: arXiv, OpenAlex, DOAJ, Semantic Scholar, CORE (butuh `CORE_API_KEY`), Crossref, dengan deduplikasi judul.
+- **Jurnal Indonesia**: mode `--indonesia` mencari hanya jurnal Indonesia / artikel berbahasa Indonesia lewat OpenAlex (jurnal Garuda/SINTA yang punya DOI). Paper diberi label **SINTA 1–6** dari daftar peringkat milik tim, dicocokkan lewat ISSN.
 - **Bedah DOI seketika**: masukkan DOI, dapat ringkasan Abstrak, Metode, Hasil, Kesimpulan, dan celah riset.
 - **Snowballing sitasi**: telusuri rujukan (backward) dan paper yang mengutip (forward).
 - **Lengkapi metadata**: penulis, DOI, dan cek data bibliografi lewat Crossref/DataCite, termasuk status retraksi.
@@ -134,6 +135,7 @@ cosmolab ui
 | `COSMOLAB_FIRM_*` | | Nama, tagline, alamat, kontak, logo untuk kop dokumen |
 | `COSMOLAB_PRICING` | | Tarif per 1 juta token, format `model:input:output;...` |
 | `COSMOLAB_TEAM_PASSWORD` | | Password dashboard mode tim, minimal 10 karakter |
+| `COSMOLAB_SINTA_FILE` | | Lokasi daftar SINTA. Default `shared/sinta_journals.json` |
 
 > [!WARNING]
 > `.env` berisi kunci rahasia. Jangan commit dan jangan kirim ke klien.
@@ -188,6 +190,9 @@ CosmoLab memakai folder `data/`. Lihat detail tiap perintah dengan `cosmolab <pe
 | Perintah | Fungsi |
 | --- | --- |
 | `harvest "<kueri>" --max-results 40` | Panen paper dari semua sumber |
+| `harvest "<kueri>" --indonesia` | Panen khusus jurnal Indonesia / berbahasa Indonesia |
+| `sinta import <file.csv>` · `sinta add --issn ... -r 2` · `sinta list` | Kelola daftar peringkat jurnal SINTA (bersama semua proyek, di `shared/`) |
+| `sinta cek` | Cari jurnal & ISSN paper lama lewat DOI, lalu hitung yang berlabel SINTA |
 | `extract [--force]` | Ekstrak teks PDF |
 | `analyze` | Analisis argumen dengan LLM |
 | `inspect <DOI>` / `doi <DOI>` | Bedah paper dari DOI |
@@ -277,7 +282,7 @@ Detail desain: [LAPORAN_FITUR_TERBARU.md](LAPORAN_FITUR_TERBARU.md).
 
 | Lapisan | Modul |
 | --- | --- |
-| Pengumpulan | `harvest`, `snowball`, `inspector`, `authors`, `dois`, `metadata` |
+| Pengumpulan | `harvest`, `sinta`, `snowball`, `inspector`, `authors`, `dois`, `metadata` |
 | Pengolahan | `extract`, `analyze`, `analysis_check`, `corrections`, `storage`, `db` |
 | Pencarian | `retrieval`, `passages`, `llmcache` |
 | Penalaran | `ask`, `ask_agent`, `entail`, `synthesize`, `gap_finder`, `matrix` |
@@ -311,7 +316,7 @@ cosmolab -P 2026-11-klien-a ui --team --port 8501
 
 `--team` membuka dashboard di IP Tailscale mesin ini dan memasang layar password.
 Tanpa `--team`, dashboard hanya mendengar di `localhost`. Satu proyek, satu port.
-Panduan lengkap untuk admin dan anggota: [PANDUAN_TIM.md §6](PANDUAN_TIM.md#6-bekerja-bersama-lewat-jaringan-tailscale).
+Panduan lengkap untuk admin dan anggota: [PANDUAN_TIM.md §7](PANDUAN_TIM.md#7-bekerja-bersama-lewat-jaringan-tailscale).
 
 ## Pengembangan
 

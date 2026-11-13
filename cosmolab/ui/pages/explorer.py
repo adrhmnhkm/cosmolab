@@ -16,9 +16,14 @@ from cosmolab.ui.components import _badge
 from cosmolab.ui.papers import STANCE_LABELS
 from cosmolab.ui.papers import TYPE_LABELS
 from cosmolab.ui.papers import paper_badges
+from cosmolab.ui.papers import sinta_ranks
 from cosmolab.ui.papers import render_analysis_detail
 from cosmolab.ui.papers import render_analysis_review
 from cosmolab.ui.context import AppContext
+
+
+# Highest rank number to keep (1 is best); 0 = no filter.
+SINTA_FILTERS = {0: "Semua", 2: "SINTA 1–2", 4: "SINTA 1–4", 6: "Ada di daftar SINTA"}
 
 
 def render(ctx: AppContext):
@@ -59,6 +64,8 @@ def render(ctx: AppContext):
                         default="Semua",
                         format_func=lambda x: "Semua" if x == "Semua" else STANCE_LABELS.get(x, x),
                     )
+                    filter_sinta = st.selectbox("Peringkat jurnal SINTA", list(SINTA_FILTERS), format_func=SINTA_FILTERS.get,
+                                                help="Dicocokkan lewat ISSN dengan daftar SINTA tim (menu Panen Paper, tab Peringkat SINTA).")
 
             filtered = papers
             if filter_q:
@@ -67,6 +74,9 @@ def render(ctx: AppContext):
                 filtered = [p for p in filtered if p.get("argument_type") == filter_type]
             if filter_stance and filter_stance != "Semua":
                 filtered = [p for p in filtered if p.get("supports_or_critiques") == filter_stance]
+            if filter_sinta:
+                ranks = sinta_ranks()
+                filtered = [p for p in filtered if (ranks.get(p.get("file") or "") or {}).get("rank", 99) <= filter_sinta]
             if filter_status == "Belum Dianalisis":
                 filtered = [p for p in filtered if not p.get("thesis")]
             elif filter_status == "Sudah Dianalisis":
