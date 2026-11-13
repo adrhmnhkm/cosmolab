@@ -132,8 +132,41 @@ CosmoLab tidak dibuka ke internet. Tim mengaksesnya lewat **Tailscale**, jaringa
 1. Pilih satu komputer kantor sebagai **server**: komputer yang menyala selama jam kerja dan menyimpan folder CosmoLab beserta `projects/`.
 2. Pasang Tailscale di komputer server dari <https://tailscale.com/download>, lalu login dengan akun firma.
 3. Di halaman admin Tailscale, undang email setiap anggota tim.
-4. Buka `.env` di komputer server dan isi `COSMOLAB_TEAM_PASSWORD` dengan password minimal 10 karakter. Bagikan password ini ke tim lewat jalur aman, misalnya langsung atau pengelola password. Jangan lewat grup chat.
+4. Buat akun untuk setiap orang (lihat **Akun tim** di bawah). Selama belum ada akun, dashboard memakai satu password bersama dari `COSMOLAB_TEAM_PASSWORD` di `.env` (minimal 10 karakter).
 5. Isi `COSMOLAB_PRICING` dengan tarif model AI yang dipakai supaya biaya per proyek terhitung.
+
+### Akun tim
+
+Setiap orang punya akun sendiri. Dengan begitu log audit mencatat siapa yang bekerja, nama konsultan di Word terisi otomatis, dan konsultan hanya bisa membuka proyek yang ditugaskan kepadanya.
+
+Ada dua peran:
+
+- **admin**: membuka semua proyek dan data utama, serta melihat bagian **Khusus pemilik** di Beranda (status setup, semua proyek, pemakaian AI).
+- **konsultan**: bekerja di proyek tempat ia menjadi anggota. Tidak melihat bagian pemilik.
+
+Admin mengelola akun dari command prompt di komputer server:
+
+| Perintah | Fungsi |
+| --- | --- |
+| `cosmolab team add rina --role konsultan --name "Rina Wulandari"` | Buat akun dan tampilkan password sementara |
+| `cosmolab team list` | Daftar akun, peran, proyek, dan status password |
+| `cosmolab team add-member <proyek> rina` | Beri akses ke satu proyek |
+| `cosmolab team remove-member <proyek> rina` | Cabut akses ke satu proyek |
+| `cosmolab team reset rina` | Password sementara baru (kalau lupa) |
+| `cosmolab team remove rina` | Hapus akun dan semua akses proyeknya |
+
+Urutan pertama kali:
+
+1. Buat akun admin untuk diri sendiri: `cosmolab team add <nama> --role admin`.
+2. Buat akun setiap konsultan, lalu beri akses proyeknya dengan `add-member`.
+3. Berikan password sementara langsung ke orangnya, jangan lewat grup chat. Password sementara hanya tampil sekali.
+
+Yang perlu diketahui:
+
+- Begitu akun pertama dibuat, password bersama tidak berlaku lagi. Semua orang masuk dengan akunnya.
+- Password disimpan sebagai hash di `shared/team_users.json` di komputer server. File ini tidak ikut ke GitHub. Jangan dikirim ke siapa pun.
+- Akses yang dicabut berlaku pada klik berikutnya, tanpa perlu mematikan server.
+- Dashboard yang dijalankan tanpa mode tim (di komputer pemilik) tetap tanpa login.
 
 ### Menyalakan server
 
@@ -145,8 +178,11 @@ CosmoLab tidak dibuka ke internet. Tim mengaksesnya lewat **Tailscale**, jaringa
 ### Untuk anggota tim
 
 1. Pasang Tailscale di laptop Anda dan login dengan email yang diundang admin.
-2. Buka alamat dari admin di browser, lalu masukkan password tim.
-3. Anggota tim tidak perlu memasang Python atau CosmoLab.
+2. Buka alamat dari admin di browser, lalu masuk dengan nama pengguna dan password dari admin.
+3. Saat pertama masuk, Anda diminta mengganti password sementara dengan password sendiri (minimal 10 karakter).
+4. Nama Anda tampil di sidebar. Klik **Keluar** kalau selesai, terutama di komputer bersama.
+5. Di Beranda, pilih **Punya saya** pada Perlu tindakan untuk melihat review yang Anda buat saja.
+6. Anggota tim tidak perlu memasang Python atau CosmoLab.
 
 ### Biaya AI per proyek
 

@@ -2,6 +2,7 @@
 
 import streamlit as st
 from cosmolab import config
+from cosmolab import team as _team
 from cosmolab import db
 from cosmolab import faculties as _faculties
 from cosmolab.ui.components import LOGO_MARK_URI
@@ -45,6 +46,15 @@ def build_sidebar() -> AppContext:
         st.sidebar.info(f"Proyek: **{config.PROJECT}**{_client}")
     else:
         st.sidebar.warning("Data utama (bukan proyek klien)")
+
+    _user = _team.current()
+    if _user:
+        st.sidebar.caption(f"Masuk sebagai **{_user['name']}** ({_team.ROLES.get(_user['role'], _user['role'])})")
+        if st.sidebar.button("Keluar", key="team_logout", icon=":material/logout:"):
+            from cosmolab.ui import login as _login
+
+            _login.logout()
+            st.rerun()
 
     # Faculty Filter in Sidebar
     faculty_list = _faculties.list_faculties()

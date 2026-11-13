@@ -26,6 +26,7 @@ from . import writer as _writer
 from . import inspector as _inspector
 from . import retrieval as _retrieval
 from . import config
+from . import team as _team
 
 app = typer.Typer(help="cosmolab - multidisciplinary research assistant")
 console = Console(force_terminal=True, legacy_windows=False)
@@ -95,6 +96,94 @@ def project_show():
     if info.get("description"):
         console.print(f"Ringkasan: {info['description']}")
     console.print(f"Folder data: {config.ROOT}")
+
+
+team_app = typer.Typer(help="Kelola akun tim untuk dashboard mode tim")
+app.add_typer(team_app, name="team")
+
+
+def _team_fail(err: Exception):
+    console.print(f"[red]{err}[/red]")
+    raise typer.Exit(1)
+
+
+def _show_temp_password(username: str, password: str):
+    console.print(f"Password sementara untuk [cyan]{username}[/cyan]: [bold]{password}[/bold]")
+    console.print("[dim]Tampil sekali ini saja. Berikan langsung ke orangnya; ia wajib menggantinya saat pertama masuk.[/dim]")
+
+
+@team_app.command("add")
+def team_add(
+    username: str = typer.Argument(..., help="Nama pengguna: huruf kecil, angka, titik, garis bawah, tanda hubung"),
+    role: str = typer.Option("konsultan", "--role", help="admin atau konsultan"),
+    name: str = typer.Option("", "--name", help="Nama lengkap, dipakai di Word review"),
+):
+    """Buat akun dan cetak password sementaranya."""
+    try:
+        password = _team.add_user(username, role=role, name=name)
+    except ValueError as e:
+        _team_fail(e)
+    console.print(f"[green]Akun dibuat:[/green] {username.lower()} ({role})")
+    _show_temp_password(username.lower(), password)
+    if role != _team.ADMIN:
+        console.print(f"[dim]Beri akses proyek: cosmolab team add-member <proyek> {username.lower()}[/dim]")
+
+
+@team_app.command("list")
+def team_list():
+    """Daftar akun, peran, dan proyeknya."""
+    users = _team.list_users()
+    if not users:
+        console.print("[yellow]Belum ada akun. Selama belum ada akun, mode tim memakai password tim bersama.[/yellow]")
+        return
+    table = Table(title="Akun tim")
+    for col in ("Nama pengguna", "Nama", "Peran", "Proyek", "Password"):
+        table.add_column(col)
+    for u in users:
+        projects = "semua" if u["role"] == _team.ADMIN else (", ".join(_team.projects_of(u["username"])) or "-")
+        table.add_row(u["username"], u["name"], _team.ROLES.get(u["role"], u["role"]), projects,
+                      "sementara" if u["must_change"] else "sudah diganti")
+    console.print(table)
+
+
+@team_app.command("add-member")
+def team_add_member(project: str = typer.Argument(...), username: str = typer.Argument(...)):
+    """Beri satu akun akses ke satu proyek."""
+    try:
+        _team.add_member(project, username)
+    except ValueError as e:
+        _team_fail(e)
+    console.print(f"[green]{username.lower()} sekarang anggota proyek {project}.[/green]")
+
+
+@team_app.command("remove-member")
+def team_remove_member(project: str = typer.Argument(...), username: str = typer.Argument(...)):
+    """Cabut akses satu akun dari satu proyek."""
+    try:
+        _team.remove_member(project, username)
+    except ValueError as e:
+        _team_fail(e)
+    console.print(f"[green]{username.lower()} bukan lagi anggota proyek {project}.[/green]")
+
+
+@team_app.command("reset")
+def team_reset(username: str = typer.Argument(...)):
+    """Buat password sementara baru untuk satu akun."""
+    try:
+        password = _team.reset_password(username)
+    except ValueError as e:
+        _team_fail(e)
+    _show_temp_password(username.lower(), password)
+
+
+@team_app.command("remove")
+def team_remove(username: str = typer.Argument(...)):
+    """Hapus satu akun dan cabut semua akses proyeknya."""
+    try:
+        _team.remove_user(username)
+    except ValueError as e:
+        _team_fail(e)
+    console.print(f"[green]Akun {username.lower()} dihapus.[/green]")
 
 
 def _print_stats_table(stats: dict, title: str = "Statistics"):
@@ -373,10 +462,10 @@ def ui(
     args = [sys.executable, "-m", "streamlit", "run", str(web_script), "--server.port", str(port)]
     address = "localhost"
     if team:
-        if len(config.TEAM_PASSWORD) < 10:
+        if not _team.has_users() and len(config.TEAM_PASSWORD) < 10:
             console.print(
-                "[red]Mode tim butuh password minimal 10 karakter.[/red] Isi COSMOLAB_TEAM_PASSWORD di .env, "
-                "lalu jalankan lagi."
+                "[red]Mode tim butuh akun atau password tim.[/red] Buat akun: cosmolab team add <nama> --role admin. "
+                "Atau isi COSMOLAB_TEAM_PASSWORD (minimal 10 karakter) di .env."
             )
             raise typer.Exit(1)
         address = host or _tailscale_ip()
@@ -396,7 +485,8 @@ def ui(
     console.print(f"[bold cyan]Launching Cosmolab Web Dashboard on port {port}...[/bold cyan]")
     console.print(f"[dim]Proyek: {label}  |  URL: http://{address}:{port}[/dim]")
     if team:
-        console.print("[dim]Mode tim aktif: anggota tim membuka alamat di atas dan memasukkan password tim.[/dim]")
+        how = "masuk dengan akun masing-masing" if _team.has_users() else "memasukkan password tim"
+        console.print(f"[dim]Mode tim aktif: anggota tim membuka alamat di atas dan {how}.[/dim]")
     subprocess.run(args, env=env, cwd=str(config.PROJECT_ROOT))
 
 

@@ -77,35 +77,10 @@ st.set_page_config(
 )
 
 
-def _require_team_login():
-    """In team mode (`cosmolab ui --team`), ask for the team password before showing anything."""
-    import hmac
-    import os
-    import time
-    if os.environ.get("COSMOLAB_TEAM_MODE") != "1" or st.session_state.get("team_auth_ok"):
-        return
-    if LOGO_LIGHT_PNG.exists():
-        st.image(str(LOGO_LIGHT_PNG), width=300)
-    st.markdown("### Masuk tim")
-    if not config.TEAM_PASSWORD:
-        st.error("Password tim belum diatur di server. Hubungi admin tim.")
-        st.stop()
-    tries = st.session_state.get("team_auth_tries", 0)
-    with st.form("team_login"):
-        pw = st.text_input("Password tim", type="password")
-        submitted = st.form_submit_button("Masuk")
-    if submitted:
-        if tries >= 5:
-            time.sleep(min(30, 2 ** (tries - 4)))  # slow down repeated guesses
-        if hmac.compare_digest(pw.encode("utf-8"), config.TEAM_PASSWORD.encode("utf-8")):
-            st.session_state["team_auth_ok"] = True
-            st.rerun()
-        st.session_state["team_auth_tries"] = tries + 1
-        st.error("Password salah.")
-    st.stop()
+# Team mode: per-person accounts, or the shared password while no account exists.
+from cosmolab.ui import login as _login  # noqa: E402
 
-
-_require_team_login()
+_login.require_login()
 
 
 # -------------------------------------------------------------

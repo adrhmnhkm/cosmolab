@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import config, similarity as _similarity, verify
+from . import config, similarity as _similarity, team as _team, verify
 from .utils import fire_cb
 
 LEVELS = {"s1": "skripsi (S1)", "s2": "tesis (S2)", "s3": "disertasi (S3)"}
@@ -737,6 +737,8 @@ def save(report: dict) -> dict:
     if not report.get("stem"):
         report["stem"] = (f"{datetime.now():%Y%m%d_%H%M%S}_"
                           f"{re.sub(r'[^A-Za-z0-9]+', '_', report['title']).strip('_')[:60] or 'draf'}")
+        if _team.current_username():
+            report.setdefault("created_by", _team.current_username())
     json_path = out / f"{report['stem']}.json"
     md_path = out / f"{report['stem']}.md"
     json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

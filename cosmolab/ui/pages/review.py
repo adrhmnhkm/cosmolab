@@ -17,6 +17,7 @@ from pathlib import Path
 
 import streamlit as st
 from cosmolab import config
+from cosmolab import team as _team
 from cosmolab import review as _review
 from cosmolab import similarity as _similarity
 from cosmolab import coverage as _coverage
@@ -438,6 +439,8 @@ def _show(stem: str, key: str):
         data=lambda: _review.report_markdown(_review.load(stem)), file_name=f"{stem}.md", mime="text/markdown",
         use_container_width=True, key=f"{key}_{stem}_md", on_click="ignore",
     )
+    if f"{key}_{stem}_reviewer" not in st.session_state:
+        st.session_state[f"{key}_{stem}_reviewer"] = _team.current_name()  # the logged-in account; can be changed
     reviewer = col_d2.text_input("Nama konsultan pemeriksa (tercantum di Word):", key=f"{key}_{stem}_reviewer")
     if st.button("Buat Word berkop firma", type="primary", use_container_width=True, key=f"{key}_{stem}_docx_btn"):
         try:

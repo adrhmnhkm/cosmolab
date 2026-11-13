@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import config
+from . import team as _team
 
 EVENT_LABELS = {
     "analisis": "Analisis paper",
@@ -35,6 +36,7 @@ EVENT_LABELS = {
     "pertanyaan_riset": "Pertanyaan riset diubah",
     "posisi_paper": "Posisi paper dinilai",
     "latihan_sidang": "Latihan sidang",
+    "masuk": "Masuk dashboard",
     "review_draf_kirim": "Kirim catatan review",
 }
 
@@ -49,6 +51,10 @@ def prompt_version(*prompts: str) -> str:
 
 
 def _who() -> str:
+    """The team account using the dashboard; outside team mode, the computer's user."""
+    account = _team.current_username()
+    if account:
+        return account
     try:
         return getpass.getuser()
     except Exception:

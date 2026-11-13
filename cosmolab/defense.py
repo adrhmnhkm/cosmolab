@@ -25,6 +25,7 @@ from pathlib import Path
 
 from . import audit, config
 from . import review as _review
+from . import team as _team
 
 LEVELS = _review.LEVELS
 AREAS = {
@@ -149,6 +150,8 @@ def save(session: dict) -> dict:
     if not session.get("stem"):
         slug = re.sub(r"[^A-Za-z0-9]+", "_", session.get("title") or "").strip("_")[:60] or "draf"
         session["stem"] = f"{datetime.now():%Y%m%d_%H%M%S}_{slug}"
+        if _team.current_username():
+            session.setdefault("created_by", _team.current_username())
     (out / f"{session['stem']}.json").write_text(json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
     return session
 

@@ -135,7 +135,7 @@ cosmolab ui
 | `CORE_API_KEY` | | Cari salinan paper di repositori kampus |
 | `COSMOLAB_FIRM_*` | | Nama, tagline, alamat, kontak, logo untuk kop dokumen |
 | `COSMOLAB_PRICING` | | Tarif per 1 juta token, format `model:input:output;...` |
-| `COSMOLAB_TEAM_PASSWORD` | | Password dashboard mode tim, minimal 10 karakter |
+| `COSMOLAB_TEAM_PASSWORD` | | Password bersama mode tim (minimal 10 karakter), dipakai selama belum ada akun tim |
 | `COSMOLAB_SINTA_FILE` | | Lokasi daftar SINTA. Default `shared/sinta_journals.json` |
 
 > [!WARNING]
@@ -316,7 +316,7 @@ projects/<nama-proyek>/      # git-ignored, cadangkan rutin
 cosmolab -P 2026-11-klien-a ui --team --port 8501
 ```
 
-`--team` membuka dashboard di IP Tailscale mesin ini dan memasang layar password.
+`--team` membuka dashboard di IP Tailscale mesin ini dan memasang layar login. Buat akun per orang dengan `cosmolab team add <nama>`; lihat PANDUAN_TIM.md bagian 7.
 Tanpa `--team`, dashboard hanya mendengar di `localhost`. Satu proyek, satu port.
 Panduan lengkap untuk admin dan anggota: [PANDUAN_TIM.md §7](PANDUAN_TIM.md#7-bekerja-bersama-lewat-jaringan-tailscale).
 

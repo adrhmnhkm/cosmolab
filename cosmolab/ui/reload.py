@@ -15,7 +15,7 @@ import sys
 CORE = ("cosmolab.utils", "cosmolab.sinta", "cosmolab.similarity", "cosmolab.coverage", "cosmolab.review",
         "cosmolab.backup", "cosmolab.position", "cosmolab.defense", "cosmolab.home")
 # Shared UI modules, before the pages that import from them.
-UI = ("cosmolab.ui.components", "cosmolab.ui.context", "cosmolab.ui.claims", "cosmolab.ui.papers",
+UI = ("cosmolab.ui.components", "cosmolab.ui.login", "cosmolab.ui.context", "cosmolab.ui.claims", "cosmolab.ui.papers",
       "cosmolab.ui.sidebar")
 
 

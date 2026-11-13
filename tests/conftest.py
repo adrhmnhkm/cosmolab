@@ -47,3 +47,8 @@ sinta.list_path = lambda: _tmp / "shared" / "sinta_journals.json"
 
 def pytest_sessionfinish(session, exitstatus):
     shutil.rmtree(_tmp, ignore_errors=True)
+
+# Team accounts: never read or write the real shared/team_users.json.
+from cosmolab import team as _team  # noqa: E402
+
+_team.USERS_FILE = _tmp / "shared" / "team_users.json"

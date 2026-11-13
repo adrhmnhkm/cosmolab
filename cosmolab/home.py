@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import config
 from . import review as _review
+from . import team as _team
 from . import usage as _usage
 
 BACKUP_MAX_DAYS = 7
@@ -33,6 +34,7 @@ EVENT_LABELS = {
     "pertanyaan_riset": "Pertanyaan riset diubah",
     "posisi_paper": "Posisi paper dinilai",
     "latihan_sidang": "Latihan sidang",
+    "masuk": "Masuk dashboard",
 }
 
 
@@ -59,8 +61,8 @@ def feature_label(key: str) -> str:
 
 
 def is_owner() -> bool:
-    """The dashboard run on the owner's own computer, not the shared team login."""
-    return os.environ.get("COSMOLAB_TEAM_MODE") != "1"
+    """The dashboard run on the owner's own computer, or an admin account in team mode."""
+    return os.environ.get("COSMOLAB_TEAM_MODE") != "1" or _team.is_admin()
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +130,7 @@ def todo(papers: list[dict], root: Path | None = None) -> list[dict]:
             total = len(report.get("comments") or [])
             items.append({"kind": "review", "title": report.get("title") or report["stem"],
                           "detail": "; ".join(issues), "stem": report["stem"], "issues": issues,
+                          "created_by": report.get("created_by") or "",
                           "decided": total - d[_review.PENDING], "total": total})
     unanalyzed = sum(1 for p in papers if not p.get("thesis"))
     if unanalyzed:

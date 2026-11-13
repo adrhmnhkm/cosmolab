@@ -15,6 +15,7 @@ import streamlit as st
 from cosmolab import config
 from cosmolab import home as _home
 from cosmolab import position as _position
+from cosmolab import team as _team
 from cosmolab import usage as _usage
 from cosmolab.ui.components import _badge, _e, render_hero
 from cosmolab.ui.context import AppContext
@@ -169,6 +170,11 @@ def _todo_section(ctx: AppContext):
     with st.container(border=True):
         st.markdown("##### Perlu tindakan")
         items = _home.todo(ctx.all_papers)
+        me = _team.current_username()
+        if me and any(it["kind"] == "review" for it in items):
+            if st.radio("Tampilkan", ["Semua", "Punya saya"], horizontal=True, key="home_todo_scope",
+                        label_visibility="collapsed") == "Punya saya":
+                items = [it for it in items if it["kind"] == "review" and it.get("created_by") == me]
         if not items:
             st.success("Tidak ada pekerjaan tertunda.")
             return
@@ -267,7 +273,7 @@ def _activity_section(activity: list[dict], owner: bool):
 def _owner_section():
     st.divider()
     st.markdown("#### Khusus pemilik")
-    st.caption("Bagian ini hanya tampil di dashboard yang dijalankan tanpa mode tim.")
+    st.caption("Bagian ini tampil di dashboard tanpa mode tim, dan untuk akun admin di mode tim.")
 
     col_s, col_u = st.columns([2, 3])
     with col_s, st.container(border=True):
