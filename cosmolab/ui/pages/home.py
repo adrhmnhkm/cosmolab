@@ -139,6 +139,45 @@ def _question_section(ctx: AppContext):
                 st.rerun()
 
 
+def _open_paper(title: str):
+    """Go to Koleksi paper with the list filtered to this title."""
+    st.session_state["explorer_filter_q"] = title
+    st.session_state["active_nav_menu"] = "Paper Explorer & Korpus"
+
+
+def _evidence_card(ctx: AppContext):
+    """Which papers are strong evidence for the hypothesis, and how to use each group."""
+    g = _position.evidence_groups(ctx.papers)
+    if not g["tiers"]:
+        return
+    title = "Seberapa kuat literatur mendukung hipotesis" if g["effect_study"] else "Jenis bukti di koleksi"
+    with st.container(border=True):
+        st.markdown(f"##### {title}")
+        cols = st.columns(len(g["tiers"]))
+        for col, tier in zip(cols, g["tiers"]):
+            with col:
+                st.markdown(f"**{tier['label']} · {len(tier['papers'])}**")
+                st.caption(tier["hint"])
+                for i, p in enumerate(tier["papers"]):
+                    extra = []
+                    if p["position"] != _position.SUPPORTS:
+                        extra.append(_position.LABELS[p["position"]].lower())
+                    if tier["key"] in ("pendukung", "konteks") and p["note"]:
+                        extra.append(p["note"])
+                    c_text, c_btn = st.columns([9, 1], vertical_alignment="center")
+                    note = f" <span style='color:#64748B'>· {_e(', '.join(extra))}</span>" if extra else ""
+                    c_text.markdown(f"<div style='font-size:0.85rem;line-height:1.35;margin-bottom:6px'>{_e(p['title'])} "
+                                    f"({_e(p['year'])}){note}</div>", unsafe_allow_html=True)
+                    c_btn.button("", key=f"ev_{tier['key']}_{i}", icon=":material/open_in_new:", type="tertiary",
+                                 on_click=_open_paper, args=(p["title"],), help="Buka di Koleksi paper")
+        if g["no_counter"]:
+            ask = ("\"Apa ada penelitian yang hasilnya tidak signifikan?\"" if g["effect_study"]
+                   else "pandangan yang berlawanan")
+            st.warning(f"Belum ada paper yang menolak atau hasilnya campuran. Penguji bisa menanyakan {ask}. "
+                       "Cari meta-analisis atau paper tentang kendala dan kritik terhadap topik ini.",
+                       icon=":material/warning:")
+
+
 def _kpi_row(ctx: AppContext, activity: list[dict], owner: bool):
     k = _home.kpis(ctx.papers)
     c1, c2, c3, c4 = st.columns(4)
@@ -347,6 +386,7 @@ def render(ctx: AppContext):
         _start_section()
 
     _question_section(ctx)
+    _evidence_card(ctx)
 
     st.markdown("#### Isi koleksi")
     if ctx.selected_faculty_id != "all":

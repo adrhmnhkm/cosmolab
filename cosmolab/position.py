@@ -9,9 +9,14 @@ The AI reads the stored analysis of each paper (not the full text, so it is
 cheap) and says whether the paper supports the hypothesis, contradicts it,
 is mixed, or is not about it, with one sentence of reason.
 
+The same call records how strong the paper's evidence is for that question,
+from its design: a controlled test of an effect counts for more than a
+one-group test, a correlation, a qualitative study, or a review. Without this,
+"9 papers support" reads as strong evidence when only 4 tested the effect.
+
 Files in the active data root:
   research_question.json  {"topic", "question", "hypothesis", "updated"}
-  positions.json          {"question_key", "papers": {file: {"position", "reason", "at"}}}
+  positions.json          {"question_key", "papers": {file: {"position", "evidence", "reason", "at"}}}
 
 Positions are tied to the question they were judged against. When the question
 or hypothesis changes, the old positions no longer count.
@@ -40,6 +45,27 @@ UNRELATED = "tidak_berkaitan"
 ORDER = [SUPPORTS, MIXED, CONTRADICTS, UNRELATED]
 LABELS = {SUPPORTS: "Mendukung", MIXED: "Campuran", CONTRADICTS: "Menolak", UNRELATED: "Tidak berkaitan"}
 
+# Strength of evidence, from the paper's design. Strongest first.
+CONTROLLED = "terkontrol"
+UNCONTROLLED = "tanpa_kontrol"
+ASSOCIATION = "hubungan"
+QUALITATIVE = "kualitatif"
+REVIEW = "tinjauan"
+CONCEPTUAL = "konseptual"
+EVIDENCE_ORDER = [CONTROLLED, UNCONTROLLED, ASSOCIATION, QUALITATIVE, REVIEW, CONCEPTUAL]
+EVIDENCE_LABELS = {
+    CONTROLLED: "Uji pengaruh dengan kontrol",
+    UNCONTROLLED: "Uji pengaruh tanpa kontrol",
+    ASSOCIATION: "Hubungan / korelasi",
+    QUALITATIVE: "Kualitatif / deskriptif",
+    REVIEW: "Tinjauan / meta-analisis",
+    CONCEPTUAL: "Konseptual / normatif",
+}
+EVIDENCE_SHORT = {
+    CONTROLLED: "dengan kontrol", UNCONTROLLED: "tanpa kontrol", ASSOCIATION: "hubungan",
+    QUALITATIVE: "kualitatif", REVIEW: "tinjauan", CONCEPTUAL: "konseptual",
+}
+
 BATCH = 8                 # papers per AI call
 SEC_PER_BATCH = (10, 30)  # rough duration of one call
 
@@ -52,12 +78,23 @@ Untuk setiap paper, tentukan posisinya terhadap pertanyaan riset itu:
 - "campuran": paper memuat bukti ke dua arah, atau hasilnya bergantung pada kondisi tertentu.
 - "tidak_berkaitan": paper tidak membahas pertanyaan riset ini. Pilih ini kalau ragu apakah paper relevan.
 
+Untuk setiap paper, tentukan juga jenis buktinya dari metode dan sampelnya:
+- "terkontrol": menguji pengaruh dengan kelompok pembanding atau kontrol (eksperimen, kuasi-eksperimen dengan kelas kontrol).
+- "tanpa_kontrol": menguji pengaruh tanpa kelompok pembanding (satu kelompok pretest-posttest, pra-eksperimen).
+- "hubungan": mengukur hubungan atau korelasi (survei, korelasi, regresi), bukan pengaruh perlakuan.
+- "kualitatif": studi kasus, wawancara, observasi, analisis isi, deskriptif.
+- "tinjauan": kajian literatur, tinjauan sistematis, meta-analisis.
+- "konseptual": kajian konseptual, teoretis, filosofis, atau yuridis normatif.
+
 Aturan:
 - Nilai hanya dari ringkasan yang diberikan. Jangan menebak isi paper.
 - "reason": satu kalimat bahasa Indonesia yang menyebut temuan atau argumen paper yang menjadi dasar penilaian.
+- Pakai kata "signifikan" hanya kalau paper melaporkan uji statistik. Untuk paper kualitatif, tulis apa yang
+  dilaporkan atau diamati, bukan "meningkatkan secara signifikan".
 
 Kembalikan JSON saja:
-{"results": [{"id": <nomor paper>, "position": "mendukung"|"menolak"|"campuran"|"tidak_berkaitan", "reason": str}]}
+{"results": [{"id": <nomor paper>, "position": "mendukung"|"menolak"|"campuran"|"tidak_berkaitan",
+  "evidence": "terkontrol"|"tanpa_kontrol"|"hubungan"|"kualitatif"|"tinjauan"|"konseptual", "reason": str}]}
 """
 
 
@@ -137,9 +174,10 @@ def position_of(file: str, root: Path | None = None) -> dict | None:
 
 
 def pending(papers: list[dict], root: Path | None = None) -> list[dict]:
-    """Analysed papers with no position for the current question."""
+    """Analysed papers with no position for the current question, or judged before evidence was recorded."""
     done = load_positions(root)
-    return [p for p in papers if p.get("thesis") and p.get("file") not in done]
+    # "evidence" missing = judged by an older version; "" = the AI gave none, which is not asked again.
+    return [p for p in papers if p.get("thesis") and "evidence" not in (done.get(p.get("file")) or {})]
 
 
 def counts(papers: list[dict], root: Path | None = None) -> list[dict]:
@@ -151,6 +189,54 @@ def counts(papers: list[dict], root: Path | None = None) -> list[dict]:
         if entry and entry.get("position") in tally:
             tally[entry["position"]] += 1
     return [{"Posisi": LABELS[k], "Paper": tally[k]} for k in ORDER if tally[k]]
+
+
+EFFECT_TYPES = {CONTROLLED, UNCONTROLLED, ASSOCIATION}
+TIERS = [
+    ("kuat", "Bukti kuat", {CONTROLLED},
+     "Menguji pengaruh dengan kelas atau kelompok pembanding. Jadikan rujukan utama di tinjauan pustaka dan pembahasan."),
+    ("tinjauan", "Tinjauan dan meta-analisis", {REVIEW},
+     "Merangkum banyak penelitian. Pakai untuk gambaran umum dan untuk mencari penelitian yang hasilnya berbeda."),
+    ("pendukung", "Bukti pendukung", {UNCONTROLLED, ASSOCIATION},
+     "Tanpa kelompok pembanding, atau hanya mengukur hubungan. Boleh dikutip, tapi jangan ditulis sebagai bukti "
+     "bahwa perlakuan berpengaruh."),
+    ("konteks", "Konteks", {QUALITATIVE, CONCEPTUAL},
+     "Kualitatif atau konseptual. Pakai untuk menjelaskan bagaimana dan mengapa, bukan apakah berpengaruh."),
+]
+
+
+def evidence_groups(papers: list[dict], root: Path | None = None) -> dict:
+    """Judged papers (not "unrelated") grouped by strength of evidence, for the Beranda card.
+
+    {"tiers": [{"key", "label", "hint", "papers": [{"file", "title", "year", "note", "position"}]}],
+     "judged": n, "effect_study": bool, "no_counter": bool}
+    effect_study: the collection tests effects or relations (so "kelompok pembanding" makes sense).
+    no_counter: no paper contradicts or is mixed, a question examiners ask.
+    """
+    done = load_positions(root)
+    rows = []
+    for p in papers:
+        entry = done.get(p.get("file") or "")
+        if entry and entry.get("position") in LABELS and entry["position"] != UNRELATED:
+            rows.append((p, entry))
+    tiers = []
+    for key, label, kinds, hint in TIERS:
+        items = [{"file": p.get("file") or "", "title": p.get("title") or p.get("file") or "-",
+                  "year": p.get("year") or "n.d.", "note": EVIDENCE_SHORT.get(e.get("evidence"), ""),
+                  "position": e["position"]}
+                 for p, e in rows if e.get("evidence") in kinds]
+        if items:
+            # Contradicting and mixed papers stand out less if buried; same position: newest first.
+            items.sort(key=lambda x: (ORDER.index(x["position"]), -int(x["year"]) if str(x["year"]).isdigit() else 0))
+            tiers.append({"key": key, "label": label, "hint": hint, "papers": items})
+    unknown = [{"file": p.get("file") or "", "title": p.get("title") or "-", "year": p.get("year") or "n.d.",
+                "note": "", "position": e["position"]} for p, e in rows if e.get("evidence") not in EVIDENCE_LABELS]
+    if unknown:
+        tiers.append({"key": "lain", "label": "Belum jelas", "hint": "Jenis buktinya tidak terbaca dari ringkasan. "
+                      "Buka paper untuk memeriksa metodenya.", "papers": unknown})
+    return {"tiers": tiers, "judged": len(rows),
+            "effect_study": any(e.get("evidence") in EFFECT_TYPES for _, e in rows),
+            "no_counter": bool(rows) and not any(e["position"] in (CONTRADICTS, MIXED) for _, e in rows)}
 
 
 def estimate_text(n: int) -> str:
@@ -168,6 +254,8 @@ def _digest(p: dict) -> str:
     lines = [f"Judul: {p.get('title') or '-'} ({p.get('year') or 'n.d.'})", f"Inti: {p.get('thesis') or '-'}"]
     if raw.get("research_question"):
         lines.append(f"Tujuan: {raw['research_question']}")
+    if raw.get("research_method"):
+        lines.append(f"Metode: {str(raw['research_method'])[:400]}")
     if raw.get("sample_data"):
         lines.append(f"Sampel/data: {raw['sample_data']}")
     findings = [x for x in (raw.get("key_findings") or []) if isinstance(x, str) and x.strip()]
@@ -211,7 +299,9 @@ def _ask(q: dict, batch: list[dict], model: str) -> dict:
         except (TypeError, ValueError):
             continue
         if 0 <= idx < len(batch) and r.get("position") in LABELS:
-            out[batch[idx]["file"]] = {"position": r["position"], "reason": str(r.get("reason") or "").strip()[:400]}
+            evidence = r.get("evidence") if r.get("evidence") in EVIDENCE_LABELS else ""
+            out[batch[idx]["file"]] = {"position": r["position"], "evidence": evidence,
+                                       "reason": str(r.get("reason") or "").strip()[:400]}
     return out
 
 

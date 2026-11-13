@@ -90,6 +90,7 @@ def build_literature_matrix(faculty_id: str = "all") -> list[dict]:
             "future_research": _joined("future_research"),
             "position": _position.LABELS.get((positions.get(p.get("file") or "") or {}).get("position"), "-"),
             "position_reason": (positions.get(p.get("file") or "") or {}).get("reason") or "-",
+            "evidence": _position.EVIDENCE_LABELS.get((positions.get(p.get("file") or "") or {}).get("evidence"), "-"),
             "analyzed": bool(p.get("thesis")),
             "old_analysis": bool(p.get("thesis")) and not all(k in raw for k in LIT_KEYS),
             "key_objection": p.get("key_objection") or "-",
@@ -118,7 +119,7 @@ def export_matrix_csv(matrix: list[dict], out_path: Path | None = None) -> Path:
     headers = [
         "No", "Penulis", "Tahun", "Judul", "Bidang", "Jenis penelitian",
         "Tujuan riset", "Metode", "Sampel dan data", "Temuan", "Keterbatasan", "Saran riset lanjutan",
-        "Posisi terhadap pertanyaan riset", "Alasan posisi", "Kesimpulan", "Inti paper", "Premis", "Keberatan", "Pembelaan",
+        "Posisi terhadap pertanyaan riset", "Jenis bukti", "Alasan posisi", "Kesimpulan", "Inti paper", "Premis", "Keberatan", "Pembelaan",
         "Sitasi APA", "DOI", "Tautan",
     ]
 
@@ -129,7 +130,7 @@ def export_matrix_csv(matrix: list[dict], out_path: Path | None = None) -> Path:
             writer.writerow([
                 r["no"], r["author"], r["year"], r["title"], r["faculty"], r["argument_type"],
                 r["research_question"], r["method"], r["sample"], r["findings"], r["limitations"], r["future_research"],
-                r["position"], r["position_reason"], r["conclusion"], r["thesis"], r["premises"], r["key_objection"], r["key_defense"],
+                r["position"], r["evidence"], r["position_reason"], r["conclusion"], r["thesis"], r["premises"], r["key_objection"], r["key_defense"],
                 r["citation_apa"], r["doi"], r["url"],
             ])
 

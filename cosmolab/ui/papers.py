@@ -184,6 +184,8 @@ def render_analysis_detail(p: dict):
     if pos:
         facts.append(("Posisi terhadap pertanyaan riset",
                       _badge(_position.LABELS[pos["position"]], POSITION_TONES.get(pos["position"], "muted"))))
+        if pos.get("evidence") in _position.EVIDENCE_LABELS:
+            facts.append(("Jenis bukti", _position.EVIDENCE_LABELS[pos["evidence"]]))
         if pos.get("reason"):
             facts.append(("Alasan posisi", pos["reason"]))
     if p.get("doi"):

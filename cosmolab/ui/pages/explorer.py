@@ -52,7 +52,7 @@ def render(ctx: AppContext):
         else:
             with st.container(border=True):
                 col_f1, col_f2 = st.columns([3, 2])
-                filter_q = col_f1.text_input("Cari judul", placeholder="Ketik kata kunci...")
+                filter_q = col_f1.text_input("Cari judul", placeholder="Ketik kata kunci...", key="explorer_filter_q")
                 filter_status = col_f2.selectbox("Status", ["Semua Status", "Belum Dianalisis", "Sudah Dianalisis"],
                                                  format_func=lambda x: {"Semua Status": "Semua paper", "Belum Dianalisis": "Belum dianalisis", "Sudah Dianalisis": "Sudah dianalisis"}[x])
 
@@ -299,7 +299,8 @@ def render(ctx: AppContext):
                     "Temuan": r["findings"],
                     "Keterbatasan": r["limitations"],
                     "Saran riset lanjutan": r["future_research"],
-                    **({"Posisi": r["position"], "Alasan posisi": r["position_reason"]} if has_positions else {}),
+                    **({"Posisi": r["position"], "Jenis bukti": r["evidence"], "Alasan posisi": r["position_reason"]}
+                       if has_positions else {}),
                 })
             with st.container(border=True):
                 render_table(display_rows, height=520)

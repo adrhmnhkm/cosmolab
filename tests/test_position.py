@@ -9,7 +9,7 @@ from cosmolab import config, position
 
 def _papers(n):
     return [{"file": f"p{i}.pdf", "title": f"Paper {i}", "year": "2024", "thesis": "inti",
-             "raw_json": json.dumps({"key_findings": [f"temuan {i}"]})} for i in range(1, n + 1)]
+             "raw_json": json.dumps({"key_findings": [f"temuan {i}"], "research_method": f"kuasi {i}"})} for i in range(1, n + 1)]
 
 
 class TestPosition(unittest.TestCase):
@@ -42,7 +42,8 @@ class TestPosition(unittest.TestCase):
         def fake_ask(q, batch, model):
             calls.append(len(batch))
             kinds = [position.SUPPORTS, position.CONTRADICTS, position.UNRELATED]
-            return {p["file"]: {"position": kinds[i % 3], "reason": "karena temuan"} for i, p in enumerate(batch)}
+            return {p["file"]: {"position": kinds[i % 3], "evidence": position.CONTROLLED, "reason": "karena temuan"}
+                    for i, p in enumerate(batch)}
 
         with mock.patch.object(position, "_ask", fake_ask):
             res = position.judge(papers)
@@ -68,7 +69,7 @@ class TestPosition(unittest.TestCase):
             state["n"] += 1
             if state["n"] == 2:
                 raise RuntimeError("kuota habis")
-            return {p["file"]: {"position": position.MIXED, "reason": "r"} for p in batch}
+            return {p["file"]: {"position": position.MIXED, "evidence": "", "reason": "r"} for p in batch}
 
         with mock.patch.object(position, "_ask", flaky):
             res = position.judge(papers)
@@ -76,7 +77,8 @@ class TestPosition(unittest.TestCase):
         self.assertEqual(len(position.pending(papers)), 2)
 
     def test_parse_and_bad_answers(self):
-        text = '```json\n{"results": [{"id": 1, "position": "mendukung", "reason": "a"}, {"id": 9, "position": "menolak"},' \
+        text = '```json\n{"results": [{"id": 1, "position": "mendukung", "evidence": "hubungan", "reason": "a"}, ' \
+               '{"id": 9, "position": "menolak"},' \
                ' {"id": 2, "position": "setuju"}, "rusak"]}\n```'
         self.assertEqual(len(position._parse(text)), 3)
         self.assertEqual(position._parse("maaf, tidak bisa"), [])
@@ -88,10 +90,52 @@ class TestPosition(unittest.TestCase):
         client.chat.completions.create.return_value = _Resp()
         with mock.patch.object(position, "OpenAI", lambda **kw: client):
             got = position._ask({"topic": "", "question": "q", "hypothesis": ""}, _papers(2), "m")
-        self.assertEqual(got, {"p1.pdf": {"position": "mendukung", "reason": "a"}})  # wrong id and wrong label dropped
+        self.assertEqual(got, {"p1.pdf": {"position": "mendukung", "evidence": "hubungan", "reason": "a"}})
         sent = client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
         self.assertIn("PERTANYAAN RISET: q", sent)
         self.assertIn("Temuan: temuan 2", sent)
+        self.assertIn("Metode: kuasi 2", sent)
+
+    def _judge(self, papers, positions, evidence):
+        def fake_ask(q, batch, model):
+            return {p["file"]: {"position": positions[i], "evidence": evidence[i], "reason": "r"}
+                    for i, p in enumerate(batch)}
+
+        with mock.patch.object(position, "_ask", fake_ask):
+            position.judge(papers)
+
+    def test_evidence_groups_and_old_positions_judged_again(self):
+        papers = _papers(6)
+        position.save_question("", "Apakah X memengaruhi Y?", "X meningkatkan Y.")
+        self._judge(papers, [position.SUPPORTS] * 4 + [position.MIXED, position.UNRELATED],
+                    [position.CONTROLLED, position.CONTROLLED, position.QUALITATIVE, position.ASSOCIATION, "",
+                     position.CONTROLLED])
+        self.assertEqual(position.pending(papers), [])  # "" (no evidence given) is not asked again
+        g = position.evidence_groups(papers)
+        self.assertEqual([(t["key"], [p["file"] for p in t["papers"]]) for t in g["tiers"]], [
+            ("kuat", ["p1.pdf", "p2.pdf"]),  # p6 is unrelated: left out
+            ("pendukung", ["p4.pdf"]),
+            ("konteks", ["p3.pdf"]),
+            ("lain", ["p5.pdf"]),
+        ])
+        self.assertEqual(g["tiers"][1]["papers"][0]["note"], "hubungan")
+        self.assertEqual((g["judged"], g["effect_study"], g["no_counter"]), (5, True, False))  # p5 is mixed
+
+        # Positions saved before evidence existed are judged again.
+        data = json.loads((config.ROOT / position.POSITIONS_FILE).read_text(encoding="utf-8"))
+        del data["papers"]["p1.pdf"]["evidence"]
+        (config.ROOT / position.POSITIONS_FILE).write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual([p["file"] for p in position.pending(papers)], ["p1.pdf"])
+
+    def test_evidence_groups_for_a_conceptual_collection(self):
+        papers = _papers(2)
+        position.save_question("", "Bagaimana kedudukan hukum X?")
+        self._judge(papers, [position.SUPPORTS, position.SUPPORTS], [position.CONCEPTUAL, position.REVIEW])
+        g = position.evidence_groups(papers)
+        self.assertEqual([t["key"] for t in g["tiers"]], ["tinjauan", "konteks"])
+        self.assertEqual((g["effect_study"], g["no_counter"]), (False, True))
+        self.assertEqual(position.evidence_groups([]), {"tiers": [], "judged": 0, "effect_study": False,
+                                                        "no_counter": False})
 
     def test_estimate_text(self):
         self.assertEqual(position.estimate_text(35), "35 paper, 5 panggilan AI, perkiraan 1–3 menit.")
