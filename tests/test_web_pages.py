@@ -111,6 +111,39 @@ class TestWebPages(unittest.TestCase):
         self.assertTrue(saved["coverage"]["items"])
         self.assertIn("tidak bisa dibandingkan", " ".join(m.value for m in at.markdown))
 
+    def test_review_comments_are_paged_and_filtered(self):
+        from test_review import DRAFT, fake_chat
+
+        r = review.review_text(DRAFT, title="Draf Panjang", online=False, similarity=False, chat=fake_chat)
+        base = r["comments"]
+        r["comments"] = [{**base[i % len(base)], "id": f"k{i + 1}", "decision": review.PENDING} for i in range(23)]
+        r["summary"] = review.summarize(r)
+        stem = review.save(r)["json"].stem
+
+        with mock.patch("importlib.reload", lambda m: m):
+            at = AppTest.from_file(WEB, default_timeout=120)
+            at.session_state["active_nav_menu"] = "Review Draf Mahasiswa"
+            at.session_state["review_current"] = stem
+            at.run()
+            captions = lambda: " ".join(c.value for c in at.caption)  # noqa: E731
+            self.assertIn("Komentar 1–10 dari 23", captions())
+            # Both tabs show this review (new and saved); count the "new" tab only.
+            self.assertEqual(len([x for x in at.radio if x.key and x.key.startswith(f"rv_new_{stem}_")]), 10)
+
+            at.radio(key=f"rv_new_{stem}_k2_d").set_value(review.DROP)
+            at.run()
+            self.assertEqual(review.decision_counts(review.load(stem))[review.DROP], 1)
+            self.assertEqual(at.radio(key=f"rv_new_{stem}_k2_d").value, review.DROP)
+
+            at.button(key=f"rv_new_{stem}_next").click()
+            at.run()
+            self.assertIn("Komentar 11–20 dari 23", captions())
+
+            at.selectbox(key=f"rv_new_{stem}_fstatus").set_value("sudah")
+            at.run()
+            self.assertIn("Komentar 1–1 dari 1 (difilter dari 23)", captions())
+        self.assertEqual([e.value for e in at.exception], [])
+
     def test_review_page_runs_a_review(self):
         from test_review import DRAFT, fake_chat
 

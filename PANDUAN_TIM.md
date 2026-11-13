@@ -70,6 +70,7 @@ Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar sepert
      Peringatan **Pembanding lemah** berarti sumber yang sebahasa dan setopik dengan draf masih kurang dari 5.
      Skor rendah dalam keadaan ini belum berarti aman: lengkapi pembanding atau panen paper setopik dulu.
 5. Putuskan setiap komentar AI: **Terima**, **Edit** (ubah kata-katanya), atau **Buang**.
+   - Komentar tampil 10 per halaman. Pilih **Belum diputuskan** di kolom **Tampilkan** untuk melihat yang tersisa saja, atau saring per **Tingkat** (penting, saran, catatan).
    - Label **Kutipan cocok**: kalimat yang dikomentari AI memang ada di paragraf itu.
    - Label **Kutipan tidak ditemukan, cek manual**: AI mengutip kalimat yang tidak ada di paragraf itu. Baca paragrafnya dulu. Kemungkinan besar komentarnya keliru.
    - Tombol **Terima ... komentar yang kutipannya cocok** menerima sekaligus semua komentar berlabel kutipan cocok. Tetap baca sekilas sebelum menekannya.

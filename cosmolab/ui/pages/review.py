@@ -10,6 +10,7 @@ collection or to a cited work. Its findings go to the student unless the
 consultant hides them.
 """
 
+import math
 import tempfile
 import time
 from pathlib import Path
@@ -25,6 +26,8 @@ from cosmolab.ui.context import AppContext
 SEVERITY_TONES = {_review.PENTING: "bad", _review.SARAN: "warn", _review.CATATAN: "muted"}
 SIM_TONES = {_similarity.NO_CITATION: "bad", _similarity.WRONG_SOURCE: "warn", _similarity.TOO_CLOSE: "info"}
 CHOICES = [_review.ACCEPT, _review.EDIT, _review.DROP]
+PAGE_SIZE = 10
+STATUS_FILTERS = {"semua": "Semua", "belum": "Belum diputuskan", "sudah": "Sudah diputuskan"}
 
 
 def _uploaded_md(uploaded) -> str:
@@ -141,21 +144,29 @@ def _on_accept_grounded(stem: str):
     _review.save(report)
 
 
-def _sync_widgets(key: str, report: dict):
-    """Put the saved decisions into the widgets before they are drawn."""
+def _sync_comment_widgets(key: str, report: dict, comments: list[dict]):
+    """Put the saved decisions into the comment widgets before they are drawn."""
     stem = report["stem"]
-    for c in report["comments"]:
+    for c in comments:
         d = c.get("decision", _review.PENDING)
         st.session_state[_wkey(key, stem, c["id"], "d")] = None if d == _review.PENDING else d
         if d == _review.EDIT:
             st.session_state[_wkey(key, stem, c["id"], "c")] = c.get("edited_comment") or c["comment"]
             st.session_state[_wkey(key, stem, c["id"], "q")] = c.get("edited_question", c["question"])
+
+
+def _sync_similarity_widgets(key: str, report: dict):
+    stem = report["stem"]
     for f in (report.get("similarity") or {}).get("findings", []):
         st.session_state[_wkey(key, stem, f["id"], "h")] = bool(f.get("hidden"))
 
 
-def _comment_card(key: str, report: dict, c: dict):
+def _comment_card(key: str, report: dict, c: dict, par: dict | None = None):
     stem = report["stem"]
+    if par:
+        where = f" · {_e(par['section'])}" if par.get("section") else ""
+        st.markdown(f"**P{par['n']}**{where}")
+        st.caption(f"Paragraf yang diawali: “{par['opening']}”")
     st.markdown(
         _badge(_review.SEVERITIES[c["severity"]], SEVERITY_TONES[c["severity"]]) + " "
         + _badge(_review.CATEGORIES[c["category"]], "info") + " "
@@ -174,7 +185,78 @@ def _comment_card(key: str, report: dict, c: dict):
                      on_change=_on_edit, args=(key, stem, c["id"]))
         st.text_input("Pertanyaan pemandu", key=_wkey(key, stem, c["id"], "q"),
                       on_change=_on_edit, args=(key, stem, c["id"]))
-    st.divider()
+
+
+def _reset_page(page_key: str):
+    st.session_state[page_key] = 1
+
+
+def _next_page(page_key: str, pages: int):
+    st.session_state[page_key] = min(pages, st.session_state.get(page_key, 1) + 1)
+
+
+@st.fragment
+def _comments_panel(key: str, stem: str):
+    """The AI comments, ten per page with filters.
+
+    A fragment: deciding a comment redraws only this list, not the whole page.
+    When the review becomes ready (or stops being ready) the whole page is
+    redrawn so the Word section below updates.
+    """
+    report = _review.load(stem)
+    comments = report["comments"]
+    total = len(comments)
+    d = _review.decision_counts(report)
+
+    ready = _review.is_ready(report)
+    seen_key = f"{key}_{stem}_ready_seen"
+    if st.session_state.get(seen_key, ready) != ready:
+        st.session_state[seen_key] = ready
+        st.rerun(scope="app")
+    st.session_state[seen_key] = ready
+
+    st.progress(1 - d[_review.PENDING] / total if total else 1.0,
+                text=f"{total - d[_review.PENDING]} dari {total} komentar sudah diputuskan "
+                     f"({d[_review.ACCEPT]} terima, {d[_review.EDIT]} edit, {d[_review.DROP]} buang)")
+    if not comments:
+        st.info("Tidak ada komentar per paragraf.")
+        return
+    grounded_pending = sum(1 for c in comments if c.get("grounded") and c.get("decision") == _review.PENDING)
+    if grounded_pending:
+        st.button(f"Terima {grounded_pending} komentar yang kutipannya cocok", key=f"{key}_{stem}_bulk",
+                  on_click=_on_accept_grounded, args=(stem,))
+
+    page_key = f"{key}_{stem}_page"
+    col_s, col_t = st.columns(2)
+    status = col_s.selectbox("Tampilkan", list(STATUS_FILTERS), format_func=STATUS_FILTERS.get,
+                             key=f"{key}_{stem}_fstatus", on_change=_reset_page, args=(page_key,))
+    severity = col_t.selectbox("Tingkat", ["semua"] + list(_review.SEVERITIES),
+                               format_func=lambda k: "Semua tingkat" if k == "semua" else _review.SEVERITIES[k],
+                               key=f"{key}_{stem}_fsev", on_change=_reset_page, args=(page_key,))
+    shown = [c for c in comments
+             if (status == "semua" or (c.get("decision") == _review.PENDING) == (status == "belum"))
+             and (severity == "semua" or c["severity"] == severity)]
+    if not shown:
+        st.info("Tidak ada komentar dengan filter ini.")
+        return
+
+    pages = math.ceil(len(shown) / PAGE_SIZE)
+    if st.session_state.get(page_key, 1) > pages:
+        st.session_state[page_key] = 1
+    page = st.selectbox("Halaman", list(range(1, pages + 1)), key=page_key,
+                        format_func=lambda n: f"{n} dari {pages}") if pages > 1 else 1
+    start = (page - 1) * PAGE_SIZE
+    chunk = shown[start:start + PAGE_SIZE]
+    st.caption(f"Komentar {start + 1}–{start + len(chunk)} dari {len(shown)}"
+               + ("" if status == "semua" and severity == "semua" else f" (difilter dari {total})"))
+
+    _sync_comment_widgets(key, report, chunk)
+    pars = {p["n"]: p for p in report["paragraphs"]}
+    for c in chunk:
+        with st.container(border=True):
+            _comment_card(key, report, c, pars.get(c["paragraph"]))
+    if page < pages:
+        st.button("Halaman berikutnya", key=f"{key}_{stem}_next", on_click=_next_page, args=(page_key, pages))
 
 
 def _run_fill(stem: str):
@@ -293,7 +375,7 @@ def _similarity_tab(key: str, report: dict):
 
 def _show(stem: str, key: str):
     report = _review.load(stem)
-    _sync_widgets(key, report)
+    _sync_similarity_widgets(key, report)
     s = report["summary"]
     d = _review.decision_counts(report)
     total = len(report["comments"])
@@ -329,31 +411,8 @@ def _show(stem: str, key: str):
             "Putuskan setiap komentar AI. Hanya komentar yang diterima atau diedit yang masuk ke dokumen mahasiswa. "
             "“Kutipan tidak ditemukan” berarti AI mengutip kalimat yang tidak ada di paragraf itu: periksa dulu."
         )
-        st.progress(1 - d[_review.PENDING] / total if total else 1.0,
-                    text=f"{total - d[_review.PENDING]} dari {total} komentar sudah diputuskan "
-                         f"({d[_review.ACCEPT]} terima, {d[_review.EDIT]} edit, {d[_review.DROP]} buang)")
-        grounded_pending = sum(1 for c in report["comments"]
-                               if c.get("grounded") and c.get("decision") == _review.PENDING)
-        if grounded_pending:
-            st.button(f"Terima {grounded_pending} komentar yang kutipannya cocok", key=f"{key}_{stem}_bulk",
-                      on_click=_on_accept_grounded, args=(stem,))
-
-        by_par = {}
-        for c in report["comments"]:
-            by_par.setdefault(c["paragraph"], []).append(c)
-        if not by_par:
-            st.info("Tidak ada komentar per paragraf.")
-        for p in report["paragraphs"]:
-            cs = by_par.get(p["n"])
-            if not cs:
-                continue
-            where = f" · {p['section']}" if p["section"] else ""
-            open_n = sum(1 for c in cs if c.get("decision") == _review.PENDING)
-            label = f"P{p['n']}{where} · {len(cs)} komentar" + (f" · {open_n} belum diputuskan" if open_n else "")
-            with st.expander(label, expanded=bool(open_n)):
-                st.caption(f"Paragraf yang diawali: “{p['opening']}”")
-                for c in cs:
-                    _comment_card(key, report, c)
+        st.session_state[f"{key}_{stem}_ready_seen"] = _review.is_ready(report)
+        _comments_panel(key, stem)
 
     with tab_s:
         refs = report["citations"]["references"]
@@ -375,13 +434,13 @@ def _show(stem: str, key: str):
     col_d1, col_d2 = st.columns(2, vertical_alignment="bottom")
     col_d1.download_button(
         "Unduh Markdown" if ready else "Unduh versi internal (Markdown)",
-        data=_review.report_markdown(report), file_name=f"{stem}.md", mime="text/markdown",
-        use_container_width=True, key=f"{key}_{stem}_md",
+        data=lambda: _review.report_markdown(_review.load(stem)), file_name=f"{stem}.md", mime="text/markdown",
+        use_container_width=True, key=f"{key}_{stem}_md", on_click="ignore",
     )
     reviewer = col_d2.text_input("Nama konsultan pemeriksa (tercantum di Word):", key=f"{key}_{stem}_reviewer")
     if st.button("Buat Word berkop firma", type="primary", use_container_width=True, key=f"{key}_{stem}_docx_btn"):
         try:
-            st.session_state[f"{key}_{stem}_docx"] = str(_review.export_docx(report, reviewer))
+            st.session_state[f"{key}_{stem}_docx"] = str(_review.export_docx(_review.load(stem), reviewer))
         except ValueError as e:
             st.warning(str(e))
         except Exception as e:
@@ -390,7 +449,7 @@ def _show(stem: str, key: str):
     if docx and Path(docx).exists():
         st.download_button(f"Unduh Word: {Path(docx).name}", data=Path(docx).read_bytes(), file_name=Path(docx).name,
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                           use_container_width=True, key=f"{key}_{stem}_docx_dl")
+                           use_container_width=True, key=f"{key}_{stem}_docx_dl", on_click="ignore")
 
 
 def render(ctx: AppContext):
