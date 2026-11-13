@@ -61,7 +61,10 @@ Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar sepert
      Labelnya: **tanpa sitasi** (paling penting), **sitasi ke karya lain**, dan **sitasi benar tapi terlalu mirip sumber**.
      Skornya perkiraan, bukan skor Turnitin, karena Turnitin memakai basis data yang jauh lebih besar. Jangan menjanjikan skor Turnitin ke klien.
      Temuan ikut ke dokumen mahasiswa. Centang **Sembunyikan** kalau temuannya keliru, misalnya definisi baku.
-     Tambah paper ke koleksi proyek lalu klik **Jalankan ulang** supaya pembandingnya lebih lengkap.
+     Klik **Lengkapi pembanding dari daftar pustaka** supaya sumber yang dikutip dibandingkan dengan teks lengkapnya, bukan hanya abstrak.
+     CosmoLab mengunduh yang legal dan terbuka. Sisanya (biasanya buku) tercantum di **Sumber yang perlu dikirim mahasiswa**:
+     minta PDF atau foto halaman yang dikutip ke mahasiswa, lalu unggah di situ. Jangan memakai situs unduhan bajakan.
+     Kalimat yang mengutip sumber yang tidak tersedia tidak ikut terperiksa; laporan menyebutkan jumlahnya.
 5. Putuskan setiap komentar AI: **Terima**, **Edit** (ubah kata-katanya), atau **Buang**.
    - Label **Kutipan cocok**: kalimat yang dikomentari AI memang ada di paragraf itu.
    - Label **Kutipan tidak ditemukan, cek manual**: AI mengutip kalimat yang tidak ada di paragraf itu. Baca paragrafnya dulu. Kemungkinan besar komentarnya keliru.

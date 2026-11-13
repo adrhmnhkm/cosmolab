@@ -16,6 +16,7 @@ from pathlib import Path
 import streamlit as st
 from cosmolab import review as _review
 from cosmolab import similarity as _similarity
+from cosmolab import coverage as _coverage
 from cosmolab import verify as _verify
 from cosmolab.ui.components import _badge, _e, render_hero, render_table
 from cosmolab.ui.context import AppContext
@@ -119,6 +120,66 @@ def _comment_card(key: str, report: dict, c: dict):
     st.divider()
 
 
+def _run_fill(stem: str):
+    """Download the cited works with a live log, then rerun the similarity check."""
+    report = _review.load(stem)
+    with st.status("Mencari teks lengkap sumber yang dikutip...", expanded=True) as box:
+        bar = st.progress(0.0)
+        log = st.empty()
+        lines = []
+
+        def cb(kind, msg, data=None):
+            data = data or {}
+            if kind == "item" and data.get("total"):
+                bar.progress(data["done"] / data["total"], text=f"{data['done']} dari {data['total']} sumber")
+            lines.append(msg)
+            log.markdown("\n".join(f"- {_e(x)}" for x in lines[-8:]))
+
+        try:
+            _review.save(_review.fill_sources(report, progress_cb=cb))
+            box.update(label="Selesai. Cek kemiripan dijalankan ulang dengan sumber baru.", state="complete")
+        except Exception as e:
+            box.update(label=f"Gagal: {e}", state="error")
+
+
+def _coverage_section(key: str, report: dict):
+    stem = report["stem"]
+    st.markdown("##### Cakupan sumber yang dikutip")
+    summ = _coverage.summary(report)
+    if not summ:
+        st.caption("Cek kemiripan baru memakai abstrak sumber yang dikutip. Unduh teks lengkapnya (hanya yang legal dan "
+                   "terbuka) supaya hasilnya lebih berarti. Draf dengan 50 sumber bisa beberapa menit.")
+        if st.button("Lengkapi pembanding dari daftar pustaka", key=f"{key}_{stem}_fill", type="primary"):
+            _run_fill(stem)
+            st.rerun()
+        return
+
+    st.markdown(_coverage.summary_text(summ))
+    items = report["coverage"]["items"]
+    with st.expander(f"Rincian per sumber ({len(items)})"):
+        render_table([{"Sumber": it["raw"][:140], "Jenis": _coverage.KINDS[it["kind"]],
+                       "Status": _coverage.STATUS_LABELS[it["status"]]} for it in items])
+    if st.button("Cari lagi sumber baru", key=f"{key}_{stem}_fill_again",
+                 help="Sumber yang sudah dicari tidak dicari ulang. Paper yang baru ditambahkan ke koleksi ikut dihitung."):
+        _run_fill(stem)
+        st.rerun()
+
+    missing = [it for it in items if it["status"] == _coverage.MISSING]
+    if missing:
+        with st.expander(f"Sumber yang perlu dikirim mahasiswa ({len(missing)})"):
+            st.caption("Minta mahasiswa mengirim PDF atau foto halaman yang dikutip. Unggah di sini; cek kemiripan "
+                       "dijalankan ulang otomatis.")
+            for it in missing:
+                st.markdown(f"**{_e(_coverage.KINDS[it['kind']])}** · {_e(it['raw'][:220])}")
+                up = st.file_uploader("PDF sumber", type=["pdf"], key=_wkey(key, stem, f"src{it['i']}", "up"),
+                                      label_visibility="collapsed")
+                if up is not None and st.button("Simpan sumber ini", key=_wkey(key, stem, f"src{it['i']}", "save")):
+                    with st.spinner("Membaca PDF dan menjalankan ulang cek kemiripan..."):
+                        _review.save(_review.add_source_upload(_review.load(stem), it["i"], up.getvalue(), up.name))
+                    st.rerun()
+                st.divider()
+
+
 def _similarity_tab(key: str, report: dict):
     stem, sim = report["stem"], report.get("similarity")
     err = st.session_state.pop(f"{stem}_sim_error", None)
@@ -143,6 +204,8 @@ def _similarity_tab(key: str, report: dict):
                        "Porsi draf": f"{t['pct']}%"} for t in sim["top_sources"]])
     st.button("Jalankan ulang (misalnya setelah menambah paper)", key=f"{key}_{stem}_sim_rerun",
               on_click=_on_rerun_similarity, args=(stem, True))
+
+    _coverage_section(key, report)
 
     if not sim["findings"]:
         st.success("Tidak ada kalimat yang terlalu mirip dengan sumber pembanding.")

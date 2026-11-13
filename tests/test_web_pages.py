@@ -91,11 +91,25 @@ class TestWebPages(unittest.TestCase):
             at.button(key=f"rv_new_{stem}_docx_btn").click()
             at.run()
 
+            # Fill in cited works: nothing is open in this test, so the book is listed for the student.
+            from cosmolab import harvest
+
+            with mock.patch.object(harvest, "_resolve_unpaywall", lambda doi: None), \
+                    mock.patch.object(harvest, "_search_openalex", lambda *a, **k: []), \
+                    mock.patch.object(harvest, "_search_semanticscholar", lambda *a, **k: []), \
+                    mock.patch.object(harvest, "_search_doaj", lambda *a, **k: []), \
+                    mock.patch.object(harvest, "_search_core", lambda *a, **k: []), \
+                    mock.patch.object(similarity, "_cached_abstract", lambda doi: ""):
+                at.button(key=f"rv_new_{stem}_fill").click()
+                at.run()
+
         self.assertEqual([e.value for e in at.exception], [])
         self.assertTrue(any(b.label.startswith("Unduh Word") for b in at.get("download_button")))
         saved = review.load(stem)
         self.assertTrue([f for f in saved["similarity"]["findings"] if f["id"] == first][0]["hidden"])
         self.assertEqual(saved["summary"]["similarity_findings"], len(saved["similarity"]["findings"]) - 1)
+        self.assertTrue(saved["coverage"]["items"])
+        self.assertIn("tidak bisa dibandingkan", " ".join(m.value for m in at.markdown))
 
     def test_review_page_runs_a_review(self):
         from test_review import DRAFT, fake_chat

@@ -760,8 +760,39 @@ def harvest_faculty(faculty_id: str, max_results_per_query: int = 10, workers: i
     return aggregated
 
 
-def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty: str = None) -> dict:
-    """Import a manually downloaded PDF (e.g. from PhilPapers, PhilArchive, or personal collection)."""
+def import_pdf_url(url: str, title: str, year: str = "", doi: str = "", authors: list | None = None,
+                   source: str = "url", faculty: str = None) -> dict:
+    """Download one legal PDF from a known URL into the collection and extract its text.
+
+    Used to fill in the works a student's draft cites. Returns {"ok", "file"} or {"error"}.
+    """
+    config.ensure_dirs()
+    fname = f"{year}_{safe_name(title)}.pdf" if year else f"{safe_name(title)}.pdf"
+    dest = config.PDF_DIR / fname
+    if not dest.exists() and not _download(url, dest):
+        return {"error": f"Gagal mengunduh PDF: {url}"}
+    append_meta({
+        "id": f"{source}:{doi or url}", "title": title, "year": year, "doi": doi, "url": url, "file": fname,
+        "abstract": "", "source": source, "arxiv_id": "",
+        "faculty": faculty or _faculties.detect_faculty_from_text(title),
+        "authors": authors or [],
+    })
+    from . import extract
+    try:
+        text = extract._pdf_to_text(dest)
+        if text.strip():
+            (config.TEXT_DIR / f"{Path(fname).stem}.txt").write_text(text, encoding="utf-8")
+    except Exception as e:
+        console.print(f"[yellow]WARN  Text extraction failed for {fname}: {e}[/yellow]")
+    return {"ok": True, "file": fname, "title": title}
+
+
+def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty: str = None,
+                     year: str = "", authors: list | None = None) -> dict:
+    """Import a manually downloaded PDF (e.g. from PhilPapers, PhilArchive, or personal collection).
+
+    year and authors, when given, are stored as is and no author lookup is run.
+    """
     config.ensure_dirs()
     clean_stem = safe_name(Path(filename).stem)
     dest_name = f"manual_{clean_stem}.pdf"
@@ -774,7 +805,7 @@ def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty:
     meta_entry = {
         "id": f"manual:{dest_name}",
         "title": paper_title,
-        "year": "n.d.",
+        "year": year or "n.d.",
         "doi": "",
         "url": "",
         "file": dest_name,
@@ -783,8 +814,10 @@ def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty:
         "arxiv_id": "",
         "faculty": item_faculty,
     }
+    if authors:
+        meta_entry["authors"] = list(authors)
     append_meta(meta_entry)
-    
+
     # Extract text immediately
     from . import extract
     txt_out = config.TEXT_DIR / f"{Path(dest_name).stem}.txt"
@@ -795,12 +828,13 @@ def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty:
     except Exception as e:
         console.print(f"[yellow]WARN  Text extraction failed for {dest_name}: {e}[/yellow]")
 
-    try:
-        names, src = _authors.resolve(meta_entry, use_ai=True)
-        if names:
-            _authors.save_entry(dest_name, names, src)
-    except Exception as e:
-        console.print(f"[yellow]WARN  Author lookup failed for {dest_name}: {e}[/yellow]")
+    if not authors:
+        try:
+            names, src = _authors.resolve(meta_entry, use_ai=True)
+            if names:
+                _authors.save_entry(dest_name, names, src)
+        except Exception as e:
+            console.print(f"[yellow]WARN  Author lookup failed for {dest_name}: {e}[/yellow]")
 
     return {
         "ok": True,

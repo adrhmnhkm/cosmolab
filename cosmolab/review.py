@@ -320,14 +320,35 @@ def run_similarity(report: dict, online: bool = True) -> dict:
     md = report.get("draft_md")
     if not md:
         raise ValueError("Review ini dibuat sebelum cek kemiripan ada. Unggah ulang drafnya untuk menjalankan cek.")
-    old =report.get("similarity") or {}
+    from . import coverage
+
+    old = report.get("similarity") or {}
     hidden = {(f["sentence"], f["source"]["title"]) for f in old.get("findings", []) if f.get("hidden")}
     sim = _similarity.check(split_paragraphs(md), report["citations"], online=online)
     for f in sim["findings"]:
         f["hidden"] = (f["sentence"], f["source"]["title"]) in hidden
     report["similarity"] = sim
+    coverage.apply_abstracts(report)
     report["summary"] = summarize(report)
     return report
+
+
+def fill_sources(report: dict, online: bool = True, progress_cb=None) -> dict:
+    """Download the cited works that are legally available, then rerun the similarity check."""
+    from . import coverage
+
+    if not report.get("draft_md"):
+        raise ValueError("Review ini dibuat sebelum cek kemiripan ada. Unggah ulang drafnya.")
+    coverage.fill(report, progress_cb=progress_cb)
+    return run_similarity(report, online=online)
+
+
+def add_source_upload(report: dict, index: int, file_bytes: bytes, filename: str) -> dict:
+    """A file the student sent for one cited work, then rerun the similarity check."""
+    from . import coverage
+
+    coverage.add_upload(report, index, file_bytes, filename)
+    return run_similarity(report) if report.get("similarity") else report
 
 
 def review_file(path: Path, level: str = "s2", online: bool = True, model: str | None = None, chat=None,
@@ -504,11 +525,11 @@ def report_markdown(report: dict, final: bool | None = None) -> str:
             lines += ["Sitasi di teks yang tidak ada di daftar pustaka:", ""]
             lines += [f"- {c['name']}, {c['year']}" for c in missing]
             lines.append("")
-    lines += similarity_markdown(report.get("similarity"), final)
+    lines += similarity_markdown(report.get("similarity"), final, report)
     return "\n".join(lines).rstrip() + "\n"
 
 
-def similarity_markdown(sim: dict | None, final: bool) -> list[str]:
+def similarity_markdown(sim: dict | None, final: bool, report: dict | None = None) -> list[str]:
     """Report section for the similarity check. final=True leaves out hidden findings and source excerpts."""
     if not sim:
         return []
@@ -520,6 +541,17 @@ def similarity_markdown(sim: dict | None, final: bool) -> list[str]:
         f"Dibandingkan dengan {src['korpus']} paper di koleksi proyek dan {src['dikutip']} abstrak sumber yang dikutip.",
         "", _similarity.CAVEAT, "",
     ]
+    from . import coverage
+
+    cov = coverage.summary(report or {})
+    if cov:
+        lines += [coverage.summary_text(cov) + " Kalimat yang mengutip sumber yang tidak bisa dibandingkan "
+                  "tidak ikut terperiksa.", ""]
+        if not final and cov["missing"]:
+            lines += ["Sumber yang perlu diminta ke mahasiswa (cukup halaman yang dikutip):", ""]
+            lines += [f"- [{coverage.KINDS[it['kind']]}] {it['raw'][:200]}"
+                      for it in report["coverage"]["items"] if it["status"] == coverage.MISSING]
+            lines.append("")
     if not final and src.get("dikutip_gagal"):
         lines += [f"> {src['dikutip_gagal']} sumber yang dikutip tidak punya abstrak di OpenAlex, "
                   "jadi tidak ikut dibandingkan.", ""]

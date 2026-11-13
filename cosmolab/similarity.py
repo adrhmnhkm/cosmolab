@@ -115,6 +115,28 @@ def corpus_sources() -> list[dict]:
     return out
 
 
+def _cache_path():
+    return config.ROOT / "abstracts_cache.json"
+
+
+def _cached_abstract(doi: str) -> str:
+    """OpenAlex abstract, cached per project so reruns do not ask again."""
+    import json
+
+    path = _cache_path()
+    try:
+        cache = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        cache = {}
+    if doi in cache:
+        return cache[doi]
+    text = _openalex_abstract(doi)
+    cache[doi] = text
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    return text
+
+
 def _openalex_abstract(doi: str) -> str:
     from .harvest import _flatten_inverted_abstract
 
@@ -130,7 +152,7 @@ def cited_sources(citations: dict, corpus: list[dict], fetch=None) -> tuple[list
 
     Returns (sources, how many lookups found nothing).
     """
-    fetch = fetch or _openalex_abstract
+    fetch = fetch or _cached_abstract
     have = {s["doi"].lower() for s in corpus if s.get("doi")}
     out, missed = [], 0
     for ref in (citations or {}).get("references", []):
@@ -267,6 +289,8 @@ def check(paragraphs: list[dict], citations: dict | None = None, online: bool = 
         "checked_at": datetime.now().isoformat(timespec="seconds"),
         "online": online,
         "sources": {"korpus": len(corpus), "dikutip": len(cited), "dikutip_gagal": missed},
+        "cited_dois": [s["doi"].lower() for s in cited],
+        "corpus_files": [s["file"] for s in corpus if s.get("file")],
         "words": total_words,
         "score": round(100 * flagged_words / total_words, 1) if total_words else 0.0,
         "findings": findings,
