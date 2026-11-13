@@ -13,7 +13,7 @@ Kamu bekerja lintas bidang: humaniora, filsafat, agama, hukum, ekonomi, pendidik
 Kenali bidang pertanyaan, lalu pakai kerangka teori, metode, dan istilah baku bidang tersebut.
 
 TUGAS UTAMA:
-Jawablah pertanyaan pengguna dengan melakukan SINTESIS DIALEKTIS yang membandingkan kubu pendukung (proponents) dan kubu pengkritik (opponents) berdasarkan argumen, data, dan literatur yang ada dalam korpus, serta tradisi keilmuan utama di bidang tersebut.
+Jawablah pertanyaan pengguna dengan melakukan SINTESIS DIALEKTIS yang membandingkan kubu pendukung (proponents) dan kubu pengkritik (opponents) HANYA berdasarkan argumen, data, dan kutipan yang ada dalam KORPUS di bawah.
 
 PANDUAN STRUKTUR JAWABAN:
 1. 🎯 **Intisari / Tesis Jawaban**: Ringkasan konseptual padat yang langsung menjawab inti pertanyaan.
@@ -26,9 +26,12 @@ PANDUAN STRUKTUR JAWABAN:
 ATURAN KETAT:
 - Gunakan BAHASA INDONESIA akademis yang lugas, elegan, dan berbobot ilmiah.
 - Pertahankan istilah teknis baku bidang terkait (istilah Arab klasik, hukum, ekonomi, medis, sains, dll.) dan jelaskan singkat pada kemunculan pertama.
-- Berpijak pada literatur yang ada dalam korpus, dan bila korpus terbatas, katakan terus terang lalu lengkapi dengan penalaran akademik yang objektif.
+- Pakai HANYA isi korpus. Bila korpus tidak memuat jawabannya, tulis "Tidak ditemukan di korpus ini: <apa yang hilang>" dan JANGAN mengisi dari pengetahuanmu sendiri.
+- Bagian 3-4 (objeksi/pembelaan) boleh ditulis "Tidak ada di korpus" bila memang tidak ada.
 - Sitasi memakai nama belakang penulis dan tahun, misalnya `[Popescu & Rohrlich (1997)]`. Bila penulis tidak diketahui, pakai judul singkat dan tahun. JANGAN menulis "Paper 1" atau nomor urut korpus sebagai sitasi.
-- Setiap kalimat yang diberi sitasi harus benar-benar dinyatakan oleh paper itu. Penilaianmu sendiri jangan diberi sitasi.
+- SETIAP kalimat faktual wajib diakhiri sitasi, dengan halaman bila ada di "Bukti Verbatim", misalnya `[Popescu (1997), Hal. 4]`. Kalimat itu harus benar-benar dinyatakan oleh paper itu.
+- Ringkasan paper di korpus dibuat AI dan belum diverifikasi; hanya "Bukti Verbatim" yang teks asli paper. Utamakan Bukti Verbatim.
+- Kalimat penilaianmu sendiri awali dengan "Catatan analis:" dan jangan diberi sitasi.
 """
 
 
@@ -116,8 +119,9 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
                 referenced_papers.append(summary)
                 seen_files.add(f)
 
-    # If dialectical contrast is needed, ensure we have both 'supports' and 'critiques'
-    if needs_contrast or len(referenced_papers) < 3:
+    # Add the opposing side only when the question asks for it and names a known argument;
+    # otherwise papers unrelated to the question would be fed in as sources.
+    if needs_contrast and arg_type:
         pairs = db.get_dialectical_pairs(argument_type=arg_type)
         # Add opposing papers if not already present
         for opp in pairs["opponents"]:
@@ -144,15 +148,23 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
     thought_steps.append(step2_msg)
     console.print(f"[cyan]AGENT STEP 2[/cyan] [dim]{step2_msg}[/dim]")
 
-    if not referenced_papers:
-        # Fallback to general list if empty
-        all_p = db.get_all_papers_with_analyses()
-        referenced_papers = [db.get_paper_knowledge_summary(p["file"]) for p in all_p if p.get("thesis")][:top_k]
-
     # Step 3: Build compact structured knowledge context (~1,200 - 2,000 tokens)
     context_blocks = []
     all_grounded_citations = []
     found = retrieval.grounded_passages_batch([p.get("file") for p in referenced_papers], question, top_k=2, model=model)
+    # A passage marked "fallback" is only the paper's opening, not a match for the question.
+    # A paper with no matching passage of its own text is left out of the sources.
+    found = {f: [psg for psg in (psgs or []) if not psg.get("fallback")] for f, psgs in found.items()}
+    dropped = [p for p in referenced_papers if not found.get(p.get("file"))]
+    referenced_papers = [p for p in referenced_papers if found.get(p.get("file"))]
+    if dropped:
+        thought_steps.append(f"{len(dropped)} paper dikeluarkan karena teksnya tidak memuat bagian yang cocok dengan pertanyaan.")
+
+    if not referenced_papers:
+        thought_steps.append("Tidak ada paper di koleksi yang teksnya cocok dengan pertanyaan. AI tidak dipanggil.")
+        return {"answer": "Tidak ditemukan di korpus ini untuk pertanyaan tersebut.", "thought_steps": thought_steps,
+                "referenced_papers": [], "grounded_citations": []}
+
     for idx, p in enumerate(referenced_papers, 1):
         year = p.get("year") or "n.d."
         title = p.get("title") or "Untitled"
@@ -197,7 +209,7 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
                     })
                 if passages:
                     passages_str = " | ".join(f"\"{psg['verbatim']}\" ({psg['page_label']})" for psg in passages)
-                    block += f"- Bukti Verbatim Terverifikasi: {passages_str}\n"
+                    block += f"- Bukti Verbatim (teks asli paper): {passages_str}\n"
             except Exception:
                 pass
 
@@ -214,7 +226,8 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
         api_key=config.LLM_API_KEY,
     )
 
-    user_prompt = f"KORPUS SECOND BRAIN (Struktur Logika Terverifikasi):\n{full_context}\n\nPERTANYAAN PENELITI:\n{question}"
+    user_prompt = (f"KORPUS (ringkasan AI belum diverifikasi; hanya 'Bukti Verbatim' yang teks asli):\n{full_context}"
+                   f"\n\nPERTANYAAN PENELITI:\n{question}")
 
     try:
         resp = client.chat.completions.create(
@@ -224,47 +237,24 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.2,
+            timeout=180.0,
         )
         msg = resp.choices[0].message
         content = (msg.content or "").strip()
 
-        # Capture reasoning chain if available
+        # The model's reasoning is shown as a step, never used as the answer.
         reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
         if reasoning:
             thought_steps.append(f"AI Reasoning Chain: {reasoning[:300]}...")
 
-        # Fallback if upstream error occurs on primary model
+        # No silent switch to another model: the user must know which model answered.
         if "上游错误" in content or "out of API credit" in content:
-            thought_steps.append(f"Model utama ({model}) mengalami limit upstream. Mengalihkan secara otomatis ke gemini-3-8-flash...")
-            fallback_resp = client.chat.completions.create(
-                model="gemini-3-8-flash",
-                messages=[
-                    {"role": "system", "content": AGENTIC_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.2,
-            )
-            content = (fallback_resp.choices[0].message.content or "").strip()
-
-        if not content and reasoning:
-            content = reasoning.strip()
-
-        answer = content or "Tidak ada jawaban yang dihasilkan oleh model."
+            answer = (f"Model {model} sedang tidak bisa dipakai (kuota atau batas layanan). "
+                      "Coba lagi nanti atau ganti model.")
+        else:
+            answer = content or f"Model {model} tidak menghasilkan jawaban. Coba lagi."
     except Exception as e:
-        # Retry with gemini-3-8-flash if primary model raised exception
-        try:
-            thought_steps.append(f"Mencoba fallback model ke gemini-3-8-flash karena: {e}")
-            fallback_resp = client.chat.completions.create(
-                model="gemini-3-8-flash",
-                messages=[
-                    {"role": "system", "content": AGENTIC_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.2,
-            )
-            answer = (fallback_resp.choices[0].message.content or "").strip()
-        except Exception as fallback_err:
-            answer = f"Gagal menghasilkan sintesis agen: {e} | Fallback err: {fallback_err}"
+        answer = f"Gagal menghasilkan jawaban dengan model {model}: {e}"
 
     try:
         from . import audit

@@ -12,7 +12,6 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from . import config
-from . import db
 from . import retrieval
 
 console = Console(force_terminal=True, legacy_windows=False)
@@ -21,7 +20,9 @@ SYSTEM_PROMPT = """You are CosmoLab, a rigorous multidisciplinary research assis
 
 Answer the user's question accurately using ONLY the provided corpus context.
 Guidelines:
-1. Cite papers inline by title and year, e.g. `[Title (Year)]`. If exact page numbers are available in the context (e.g. Hal. X), cite the page as well: `[Title (Year), Hal. X]`.
+1. EVERY factual sentence must end with a citation by title and year, e.g. `[Title (Year)]`, with the page when the context gives one: `[Title (Year), Hal. X]`. Your own assessment starts with "Catatan analis:" and has no citation.
+   The paper summaries were written by an AI and are not verified; only "Bukti Verbatim" is the paper's own text. Prefer it.
+   Do not add facts from your own knowledge. If the corpus does not answer the question, say "Tidak ditemukan di korpus ini" and what is missing.
 2. Present claims, evidence, methods, objections, and technical concepts precisely, using the standard terms of the relevant field.
 3. If multiple papers take conflicting positions, contrast their arguments.
 4. When citing verbatim evidence, preserve the exact wording and indicate the page number.
@@ -47,18 +48,19 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
         results = []
 
     if not results:
-        # If no match, fallback to loading top available analyzed papers
-        all_papers = db.get_all_papers_with_analyses()
-        results = [p for p in all_papers if p.get("thesis")][:top_k]
-
-    if not results:
-        console.print("[red]FAIL  No papers found in database. Run `cosmolab harvest` and `cosmolab analyze` first.[/red]")
-        return "No papers available in the corpus."
+        console.print("[yellow]Tidak ada paper yang cocok dengan pertanyaan.[/yellow]")
+        return "Tidak ditemukan di korpus ini untuk pertanyaan tersebut."
 
     # Build context from retrieved papers, including grounded verbatim passages
     context_blocks = []
     grounded_citations = []
     found = retrieval.grounded_passages_batch([r.get("file") for r in results], question, top_k=2, model=model)
+    # A "fallback" passage is only the paper's opening, not a match. Papers without a match are left out.
+    found = {f: [psg for psg in (psgs or []) if not psg.get("fallback")] for f, psgs in found.items()}
+    results = [r for r in results if found.get(r.get("file"))]
+    if not results:
+        console.print("[yellow]Tidak ada paper yang teksnya cocok dengan pertanyaan.[/yellow]")
+        return "Tidak ditemukan di korpus ini untuk pertanyaan tersebut."
     for i, r in enumerate(results, start=1):
         block = f"### Paper {i}: {r.get('title')} ({r.get('year', 'n.d.')})\n"
         block += f"- File: {r.get('file')}\n"
@@ -88,7 +90,7 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
             try:
                 passages = found.get(r["file"]) or []
                 if passages:
-                    block += "- Bukti Verbatim Teks (Grounding):\n"
+                    block += "- Bukti Verbatim (teks asli paper):\n"
                     for psg in passages:
                         block += f"  * [{psg['page_label']}]: \"{psg['verbatim']}\"\n"
                         grounded_citations.append({
@@ -103,7 +105,8 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
         context_blocks.append(block)
 
     full_context = "\n\n".join(context_blocks)
-    user_prompt = f"Corpus Context:\n{full_context}\n\nUser Question:\n{question}"
+    user_prompt = (f"Corpus Context (AI summaries are unverified; only 'Bukti Verbatim' is the paper's own text):"
+                   f"\n{full_context}\n\nUser Question:\n{question}")
 
     client = OpenAI(
         api_key=config.NINEROUTER_API_KEY,
@@ -120,8 +123,9 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.2,
+            timeout=180.0,
         )
-        answer = resp.choices[0].message.content.strip()
+        answer = (resp.choices[0].message.content or "").strip() or f"Model {model} tidak menghasilkan jawaban."
     except Exception as e:
         console.print(f"[red]LLM API Error:[/red] {e}")
         console.print("[yellow]Tip: Check your API key, gateway status, or specify another model with --model.[/yellow]")

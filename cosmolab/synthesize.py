@@ -105,8 +105,9 @@ def synthesize(model: str = None, lang: str = "en") -> dict:
             {"role": "user", "content": user_msg},
         ],
         temperature=0.2,
+        timeout=180.0,
     )
-    body = resp.choices[0].message.content.strip()
+    body = (resp.choices[0].message.content or "").strip()
     table = _comparison_table(analyses)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report = config.SYNTH_DIR / f"report_{stamp}_{lang}.md"

@@ -62,7 +62,7 @@ def render_body():
         if not res.get("success"):
             st.error(f"{res.get('error')}")
         else:
-            a = res.get("analysis", {})
+            a = res.get("analysis") or {}
 
             st.markdown("---")
             # Header Card
@@ -83,6 +83,9 @@ def render_body():
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+            if res.get("analysis_note"):
+                st.warning(res["analysis_note"])
 
             # One-Sentence Takeaway
             if a.get("one_sentence_takeaway"):

@@ -243,7 +243,8 @@ def gather_evidence(claim: str, paper: dict, max_passages: int = 3, extra_query:
         kept = 0
         for psg in passages:
             text = psg.get("verbatim", "")
-            if kept >= max_passages or not text or _BIBLIO.search(text):
+            # "fallback" = the paper's opening, returned when nothing matched: not evidence for the claim.
+            if kept >= max_passages or not text or psg.get("fallback") or _BIBLIO.search(text):
                 continue
             kept += 1
             if text not in seen:
@@ -393,7 +394,8 @@ def check_answer(text: str, papers: list[dict] | None = None, model: str = None,
             if p and p not in c["matched"]:
                 c["matched"].append(p)
 
-    results = _judge_claims(claims, model, judge, evidence_fn)
+    # Only the paper's own text counts: the AI analysis would let the AI confirm itself.
+    results = _judge_claims(claims, model, judge, evidence_fn, use_analysis=False)
 
     summary = {}
     for row in results:

@@ -59,6 +59,7 @@ Return ONLY a valid JSON list of strings, for example: ["temporal origin", "kala
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
             max_tokens=150,
+            timeout=20.0,
         )
         content = (resp.choices[0].message.content or "").strip()
         # Parse JSON array from content
@@ -192,6 +193,7 @@ Return ONLY a valid JSON list of integers representing the chosen candidate IDs 
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=100,
+            timeout=30.0,
         )
         content = (resp.choices[0].message.content or "").strip()
         m = re.search(r"\[[0-9,\s]+\]", content)

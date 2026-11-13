@@ -572,7 +572,7 @@ def inspect(
         console.print(f"[bold red]Error:[/bold red] {res.get('error')}")
         return
 
-    a = res.get("analysis", {})
+    a = res.get("analysis") or {}
 
     # 1. Header Information
     oa_str = "[bold green]🟢 Open Access[/bold green]" if res.get("is_oa") else "[bold yellow]🔒 Paywalled / Berbayar[/bold yellow]"
@@ -582,6 +582,8 @@ def inspect(
 **DOI:** [{res.get('doi')}](https://doi.org/{res.get('doi')}) | **Sitasi:** {res.get('citation_count')} | **Status:** {oa_str}
 """
     console.print(Panel(Markdown(header_md), border_style="cyan"))
+    if res.get("analysis_note"):
+        console.print(f"[yellow]{res['analysis_note']}[/yellow]")
 
     # 2. One Sentence Takeaway
     if a.get("one_sentence_takeaway"):
@@ -974,7 +976,8 @@ def evaluation(
     action: str = typer.Argument("jalan", help="'buat' to draft test items, 'jalan' to run them, 'riwayat' for past runs"),
     n: int = typer.Option(10, "--n", help="Number of new papers to draft items from (buat)"),
     k: int = typer.Option(3, "--k", help="How many top passages count as a hit (jalan)"),
-    reviewed: bool = typer.Option(False, "--diperiksa", help="Use only items a researcher has reviewed"),
+    reviewed: bool = typer.Option(True, "--diperiksa/--semua-soal",
+                                  help="Use only items a researcher has reviewed (default); --semua-soal uses all"),
     rerank: bool = typer.Option(True, "--rerank/--no-rerank", help="Let the LLM reorder passages"),
     model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
 ):

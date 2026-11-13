@@ -279,9 +279,14 @@ Berikan respons HANYA dalam format JSON valid dengan field berikut:
 
 ATURAN:
 - Gunakan Bahasa Indonesia akademis yang jernih, mengalir, dan mudah dipahami oleh mahasiswa dan dosen.
-- Jangan mengarang hal yang tidak ada dalam teks dasar, tapi kamu boleh melakukan inferensi metodologis yang rasional berdasarkan bidang ilmunya.
+- Isi hanya dari abstrak dan metadata yang diberikan. Jangan menebak dari judul, bidang, atau nama jurnal.
+- Field yang tidak ada di abstrak isi null (atau [] untuk daftar).
 - Pastikan JSON valid tanpa tanda markdown pembungkus di luar JSON.
 """
+
+
+class _Skip(Exception):
+    """No abstract: skip the AI call."""
 
 
 def inspect_paper(doi: str, model: str = None) -> Dict[str, Any]:
@@ -304,7 +309,7 @@ def inspect_paper(doi: str, model: str = None) -> Dict[str, Any]:
 
     # Prepare context for LLM
     authors_str = ", ".join(meta["authors"]) if meta["authors"] else "Unknown"
-    abstract_text = meta.get("abstract") or "(Abstrak teks penuh tidak tersedia di indeks terbuka. Lakukan inferensi analitik dari judul dan venue jurnal)."
+    abstract_text = meta.get("abstract") or ""
 
     prompt_user = f"""DATA ARTIKEL ILMIAH:
 Judul: {meta['title']}
@@ -322,7 +327,13 @@ Abstrak:
     )
 
     analysis_data = {}
+    note = ""
+    if not abstract_text.strip():
+        # Without an abstract the AI could only guess from the title and journal.
+        note = "Abstrak tidak tersedia di indeks terbuka, jadi analisis AI tidak dibuat. Baca naskah lengkapnya."
     try:
+        if note:
+            raise _Skip()
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -330,6 +341,7 @@ Abstrak:
                 {"role": "user", "content": prompt_user},
             ],
             temperature=0.2,
+            timeout=120.0,
         )
         raw_content = resp.choices[0].message.content or ""
         
@@ -337,18 +349,12 @@ Abstrak:
         clean_json = re.sub(r"^```json\s*", "", raw_content.strip())
         clean_json = re.sub(r"\s*```$", "", clean_json.strip())
         analysis_data = json.loads(clean_json)
+    except _Skip:
+        analysis_data = {}
     except Exception as e:
-        # Fallback if JSON parsing fails
-        analysis_data = {
-            "problem_statement": f"Ringkasan masalah berdasarkan abstrak: {abstract_text[:300]}...",
-            "methodology": "Analisis teoritis/empiris sesuai bidang studi pada venue terkait.",
-            "key_findings": ["Temuan artikel dapat dirujuk langsung pada naskah lengkap."],
-            "conclusion": "Artikel memberikan kontribusi terhadap perdebatan subjek kajian.",
-            "research_gaps": ["Penyelidikan empiris lanjutan dengan variabel atau korpus yang lebih luas."],
-            "highlights": [f"Artikel terindeks di {meta.get('venue') or 'Jurnal Internasional'}"],
-            "one_sentence_takeaway": meta["title"],
-            "raw_llm_error": str(e),
-        }
+        # No generic stand-in text: it would read like an analysis of this paper.
+        analysis_data = {}
+        note = f"Analisis AI gagal ({e}). Metadata dan sitasi di bawah tetap benar."
 
     # Combine into comprehensive result
     combined = {
@@ -367,6 +373,7 @@ Abstrak:
         "apa_citation": _generate_apa(meta),
         "bibtex": _generate_bibtex(meta),
         "analysis": analysis_data,
+        "analysis_note": note,
         "inspected_at": datetime.now().isoformat(),
     }
 
