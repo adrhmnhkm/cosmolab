@@ -43,6 +43,10 @@ MAX_CHARS = 900
 WINDOW = 600
 RRF_K = 60.0
 EXTRA_WEIGHT = 0.35
+# A passage matches only if it holds enough of the question's words (or, with
+# embeddings, is close enough in meaning). One shared common word is not a match.
+MIN_QUERY_TERMS = 2   # distinct question words (fewer if the question has fewer)
+MIN_EXTRA_TERMS = 2   # distinct expansion words, for a question in another language
 
 
 def _stem(w: str) -> str:
@@ -257,14 +261,28 @@ def search(file_name: str, query: str, top_k: int = 5, extra_terms: str = "", de
         except Exception:
             cos = None
 
+    q_terms = {t for t, w in weights.items() if w == 1.0}
+    x_terms = set(weights) - q_terms
+    need = min(MIN_QUERY_TERMS, len(q_terms))
+    tfs = idx["bm25"].tf
+
+    def matches(i):
+        if need and len(q_terms.intersection(tfs[i])) >= need:
+            return True
+        if len(x_terms.intersection(tfs[i])) >= MIN_EXTRA_TERMS:
+            return True
+        return cos is not None and cos[i] >= config.DENSE_MIN
+
+    ok = [matches(i) for i in range(len(chunks))]
     order_bm = sorted(range(len(chunks)), key=lambda i: bm[i], reverse=True)
     fused = [0.0] * len(chunks)
     for r, i in enumerate(order_bm, 1):
-        if bm[i] > 0:
+        if bm[i] > 0 and ok[i]:
             fused[i] += 1.0 / (RRF_K + r)
     if cos is not None:
         for r, i in enumerate(sorted(range(len(chunks)), key=lambda i: cos[i], reverse=True), 1):
-            fused[i] += 1.0 / (RRF_K + r)
+            if ok[i]:
+                fused[i] += 1.0 / (RRF_K + r)
 
     best = max(fused) or 0.0
     ranked = sorted((i for i in range(len(chunks)) if fused[i] > 0), key=lambda i: fused[i], reverse=True)

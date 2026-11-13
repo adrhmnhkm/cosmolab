@@ -13,6 +13,7 @@ from openai import OpenAI
 from rich.console import Console
 from . import config
 from . import db
+from . import llmcache
 
 console = Console(force_terminal=True, legacy_windows=False)
 
@@ -83,6 +84,9 @@ Return ONLY a valid JSON list of strings, for example: ["temporal origin", "kala
     return list(dict.fromkeys(fallback_terms)) if fallback_terms else [query]
 
 
+EXPANSION_WEIGHT = 1.0
+
+
 def hybrid_search(
     query: str,
     limit: int = 10,
@@ -120,11 +124,11 @@ def hybrid_search(
         doc_map[f] = doc
         scores[f] = scores.get(f, 0.0) + (1.0 / (k + rank))
 
-    # Accumulate scores from conceptual expansion (weight 1.2 for semantic boost)
+    # Terms the AI added count no more than the user's own words.
     for rank, doc in enumerate(expanded_results, start=1):
         f = doc["file"]
         doc_map[f] = doc
-        scores[f] = scores.get(f, 0.0) + (1.2 / (k + rank))
+        scores[f] = scores.get(f, 0.0) + (EXPANSION_WEIGHT / (k + rank))
 
     # Sort merged papers by descending RRF score
     ranked_files = sorted(scores.keys(), key=lambda f: scores[f], reverse=True)
@@ -157,6 +161,17 @@ def rerank_papers(
     if not client:
         client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
 
+    ckey = llmcache.key("rerank", model, [query, top_k, [c.get("file") for c in candidates]])
+    cached = llmcache.get(ckey)
+    if isinstance(cached, list):
+        by_file = {c.get("file"): c for c in candidates}
+        return [dict(by_file[f], rerank_boost=True) for f in cached if f in by_file]
+
+    try:
+        extra = " ".join(expand_academic_query(query, model=model))  # cached
+    except Exception:
+        extra = ""
+
     # Build concise candidate summaries for re-ranking prompt
     candidate_prompts = []
     for idx, c in enumerate(candidates, start=1):
@@ -172,9 +187,12 @@ def rerank_papers(
             except Exception:
                 premises = ""
 
-        c_text = f"[{idx}] \"{title}\" ({year})\n   - Stance: {stance}\n   - Thesis: {thesis}"
+        c_text = f"[{idx}] \"{title}\" ({year})\n   - Stance: {stance}\n   - Thesis (AI summary): {thesis}"
         if premises:
-            c_text += f"\n   - Key Premises: {premises}"
+            c_text += f"\n   - Key Premises (AI summary): {premises}"
+        psg = _best_passage(c.get("file"), query, extra)
+        if psg:
+            c_text += f"\n   - Passage from the paper's own text: \"{psg}\""
         candidate_prompts.append(c_text)
 
     prompt = f"""You are an expert academic research re-ranker.
@@ -185,7 +203,10 @@ Evaluate the following candidate papers and rank the top {top_k} papers that mos
 Candidates:
 {chr(10).join(candidate_prompts)}
 
-Return ONLY a valid JSON list of integers representing the chosen candidate IDs in order of highest relevance, for example: [3, 1, 5, 2]"""
+Judge mainly by the passage from the paper's own text; the summaries were written by an AI and may be wrong.
+Choose at most {top_k}. Leave out papers that do not address the query; choosing fewer is fine.
+Return ONLY a valid JSON list of integers representing the chosen candidate IDs in order of highest relevance,
+for example: [3, 1, 5]. Return [] if no candidate addresses the query."""
 
     try:
         resp = client.chat.completions.create(
@@ -196,7 +217,7 @@ Return ONLY a valid JSON list of integers representing the chosen candidate IDs 
             timeout=30.0,
         )
         content = (resp.choices[0].message.content or "").strip()
-        m = re.search(r"\[[0-9,\s]+\]", content)
+        m = re.search(r"\[[0-9,\s]*\]", content)
         if m:
             indices = json.loads(m.group(0))
             reranked = []
@@ -208,16 +229,27 @@ Return ONLY a valid JSON list of integers representing the chosen candidate IDs 
                     reranked.append(item)
                     seen.add(i)
 
-            # Fill in remaining candidates if any slots are left
-            for idx, c in enumerate(candidates, start=1):
-                if idx not in seen and len(reranked) < top_k:
-                    reranked.append(c)
-
+            # Papers the model left out stay out: no refill with rejected candidates.
+            reranked = reranked[:top_k]
+            llmcache.put(ckey, [c.get("file") for c in reranked])
             return reranked
     except Exception as e:
         console.print(f"[dim yellow]Notice: Re-ranking fallback to hybrid order ({e})[/dim yellow]")
 
     return candidates[:top_k]
+
+
+def _best_passage(file_name: str, query: str, extra: str = "", max_length: int = 300) -> str:
+    """The paper's best matching passage for the query (no LLM), or "" when none matches."""
+    from . import passages
+
+    if not file_name:
+        return ""
+    try:
+        hits = passages.search(file_name, query, top_k=1, extra_terms=extra)
+    except Exception:
+        return ""
+    return _snippet(hits[0]["text"], passages.tokenize(query), max_length) if hits else ""
 
 
 def _snippet(text: str, query_words: list[str], max_length: int) -> str:
@@ -324,6 +356,7 @@ def grounded_passages_batch(
     max_length: int = 400,
     rerank: bool | None = None,
     model: str = None,
+    expand: bool = True,
 ) -> dict[str, list[dict]]:
     """Passages for several papers at once: one query expansion, papers searched in parallel.
 
@@ -336,7 +369,7 @@ def grounded_passages_batch(
         return {}
     rerank = config.RERANK_PASSAGES if rerank is None else rerank
     extra = ""
-    if rerank:
+    if expand:
         try:
             extra = " ".join(expand_academic_query(question, model=model))
         except Exception:
@@ -351,6 +384,25 @@ def grounded_passages_batch(
 
     with ThreadPoolExecutor(max_workers=min(6, len(files))) as pool:
         return dict(pool.map(one, files))
+
+
+def select_sources(question: str, top_k: int = 5, model: str = None, expand: bool = True,
+                   rerank: bool = True, passages: int = 2) -> tuple[list[dict], dict[str, list[dict]]]:
+    """The papers an answer may use, and their passages: (papers, {file: passages}).
+
+    Search, let the LLM rerank, then keep only papers whose own text has a
+    passage matching the question. A "fallback" passage (the paper's opening,
+    returned when nothing matched) does not count. Empty = the collection
+    does not cover the question.
+    """
+    candidates = hybrid_search(question, limit=top_k * 3, expand_concepts=expand, model=model)
+    if not candidates:
+        return [], {}
+    ranked = rerank_papers(question, candidates, top_k=top_k, model=model) if rerank else candidates[:top_k]
+    found = grounded_passages_batch([r.get("file") for r in ranked], question, top_k=passages,
+                                    rerank=None if rerank else False, model=model, expand=expand)
+    found = {f: [p for p in (psgs or []) if not p.get("fallback")] for f, psgs in found.items()}
+    return [r for r in ranked if found.get(r.get("file"))], found
 
 
 def get_grounded_passages_for_papers(

@@ -979,6 +979,7 @@ def evaluation(
     reviewed: bool = typer.Option(True, "--diperiksa/--semua-soal",
                                   help="Use only items a researcher has reviewed (default); --semua-soal uses all"),
     rerank: bool = typer.Option(True, "--rerank/--no-rerank", help="Let the LLM reorder passages"),
+    batas: int = typer.Option(0, "--batas", help="At most this many items of each kind (0 = all): a lighter run"),
     model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
 ):
     """Measure retrieval and claim-check accuracy on the evaluation set."""
@@ -994,14 +995,26 @@ def evaluation(
     if action == "riwayat":
         for h in evaluate.history():
             console.print(f"{h['time']}  k={h['k']}  halaman benar {pct(h['recall_at_k'])}  "
+                          f"paper benar {pct(h.get('source_recall'))}  tolak di luar topik {pct(h.get('negatives_rejected'))}  "
                           f"akurasi klaim {pct(h['claim_accuracy'])}  embedding {h.get('embed_model') or '-'}")
         return
-    r = evaluate.run(k=k, rerank=rerank, reviewed_only=reviewed, model=model)
+    problem = evaluate.ai_reachable()
+    if problem:
+        console.print(f"[red]{problem}[/red]\nNyalakan server AI dulu, lalu ulangi.")
+        raise typer.Exit(1)
+    r = evaluate.run(k=k, rerank=rerank, reviewed_only=reviewed, model=model, limit=batas or None,
+                     progress_cb=lambda text: console.print(f"[dim]{text}[/dim]"))
     console.print(f"Pencarian: {r['retrieval']['n']} soal, halaman benar di {k} teratas {pct(r['retrieval']['recall_at_k'])}, "
                   f"MRR {'-' if r['retrieval']['mrr'] is None else round(r['retrieval']['mrr'], 2)}")
+    s, ng = r["sources"], r["negatives"]
+    console.print(f"Sumber jawaban: paper benar masuk {s['k']} sumber {pct(s['recall'])}, "
+                  f"rata-rata {'-' if s['avg_sources'] is None else round(s['avg_sources'], 1)} sumber per soal")
+    console.print(f"Di luar topik: {ng['n']} soal, ditolak (tanpa sumber) {pct(ng['rejected'])}")
     c = r["claims"]
     console.print(f"Cek klaim: {c['n']} soal, akurasi {pct(c['accuracy'])}, klaim salah tertangkap {pct(c['false_caught'])}, "
                   f"klaim benar lolos {pct(c['true_passed'])}")
+    if c.get("failed"):
+        console.print(f"[yellow]{c['failed']} klaim tidak dinilai karena AI gagal dihubungi; tidak dihitung.[/yellow]")
 
 
 @app.command("log")

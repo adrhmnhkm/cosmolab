@@ -189,6 +189,11 @@ TEAM_PASSWORD = _env("COSMOLAB_TEAM_PASSWORD")
 # Remote: any OpenAI-compatible /embeddings model, e.g. EMBED_MODEL=bge-m3.
 # Local: EMBED_MODEL=local:<fastembed model>, needs `pip install fastembed`.
 EMBED_MODEL = _env("EMBED_MODEL")
+# With embeddings on, a passage with no word match still counts when its cosine similarity reaches this.
+try:
+    DENSE_MIN = float(_env("COSMOLAB_DENSE_MIN", "0.55"))
+except ValueError:
+    DENSE_MIN = 0.55
 EMBED_BASE_URL = _env("EMBED_BASE_URL") or LLM_BASE_URL
 EMBED_API_KEY = _env("EMBED_API_KEY") or LLM_API_KEY
 

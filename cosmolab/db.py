@@ -465,10 +465,12 @@ def search(query: str, limit: int = 10) -> list[dict]:
     - paper_file: 0.0 (UNINDEXED)
     - title: 10.0 (Core paper topic)
     - abstract: 5.0 (High summary value)
-    - full_text: 1.0 (Raw paper body)
-    - thesis: 10.0 (Extracted core thesis)
-    - argument_type: 3.0 (Domain classification)
-    - premises: 8.0 (Formal dialectical propositions)
+    - full_text: 3.0 (Raw paper body)
+    - thesis: 4.0 (AI summary, not verified)
+    - argument_type: 1.0 (AI classification)
+    - premises: 3.0 (AI summary, not verified)
+    The paper's own text outweighs what the AI wrote about it: a wrong analysis
+    should not lift a paper up the list.
     """
     config.ensure_dirs()
     if not config.DB_FILE.exists():
@@ -497,7 +499,7 @@ def search(query: str, limit: int = 10) -> list[dict]:
                 a.argument_type, a.supports_or_critiques, a.thesis, a.conclusion,
                 a.key_objection, a.key_defense, a.premises_json,
                 snippet(papers_fts, 3, '[b][yellow]', '[/yellow][/b]', '...', 25) as snippet,
-                bm25(papers_fts, 0.0, 10.0, 5.0, 1.0, 10.0, 3.0, 8.0) as rank
+                bm25(papers_fts, 0.0, 10.0, 5.0, 3.0, 4.0, 1.0, 3.0) as rank
             FROM papers_fts
             JOIN papers p ON p.file = papers_fts.paper_file
             LEFT JOIN analyses a ON a.paper_file = p.file

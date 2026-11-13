@@ -36,28 +36,13 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
     config.ensure_dirs()
     model = model or config.NINEROUTER_MODEL
 
-    # Retrieve candidate papers via Hybrid Search (FTS5 + Semantic Concept RRF)
-    console.print("[cyan]RETRIEVING CORPUS[/cyan] [dim](Hybrid FTS5 + Semantic RRF)...[/dim]")
-    candidates = retrieval.hybrid_search(question, limit=top_k * 3, expand_concepts=True, model=model)
-
-    # Re-rank candidates using LLM micro cross-attention
-    if candidates:
-        console.print(f"[cyan]RE-RANKING[/cyan] [dim]Evaluating {len(candidates)} candidates for dialectical precision...[/dim]")
-        results = retrieval.rerank_papers(question, candidates, top_k=top_k, model=model)
-    else:
-        results = []
-
-    if not results:
-        console.print("[yellow]Tidak ada paper yang cocok dengan pertanyaan.[/yellow]")
-        return "Tidak ditemukan di korpus ini untuk pertanyaan tersebut."
+    # Search, rerank, and keep only papers whose own text matches the question.
+    console.print("[cyan]RETRIEVING CORPUS[/cyan] [dim](Hybrid FTS5 + Semantic RRF, rerank, passages)...[/dim]")
+    results, found = retrieval.select_sources(question, top_k=top_k, model=model)
 
     # Build context from retrieved papers, including grounded verbatim passages
     context_blocks = []
     grounded_citations = []
-    found = retrieval.grounded_passages_batch([r.get("file") for r in results], question, top_k=2, model=model)
-    # A "fallback" passage is only the paper's opening, not a match. Papers without a match are left out.
-    found = {f: [psg for psg in (psgs or []) if not psg.get("fallback")] for f, psgs in found.items()}
-    results = [r for r in results if found.get(r.get("file"))]
     if not results:
         console.print("[yellow]Tidak ada paper yang teksnya cocok dengan pertanyaan.[/yellow]")
         return "Tidak ditemukan di korpus ini untuk pertanyaan tersebut."
