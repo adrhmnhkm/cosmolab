@@ -288,7 +288,10 @@ def get_persona(persona_id: str) -> dict:
 def get_dilemmas_by_faculty(faculty_id: str = None) -> list[dict]:
     if not faculty_id or faculty_id == "all":
         return SOCRATIC_DILEMMAS
-    return [d for d in SOCRATIC_DILEMMAS if d.get("faculty") == faculty_id]
+    from . import faculties as _faculties
+
+    wanted = _faculties.canonical_id(faculty_id)
+    return [d for d in SOCRATIC_DILEMMAS if _faculties.canonical_id(d.get("faculty")) == wanted]
 
 
 def get_dilemma(dilemma_id: str) -> dict | None:

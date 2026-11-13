@@ -60,7 +60,8 @@ def build_sidebar() -> AppContext:
         format_func=lambda x: faculty_labels.get(x, x),
     )
 
-    # Load DB papers
+    # Load DB papers (old philosophy field ids are classified again first)
+    db.migrate_faculties()
     all_papers = db.get_all_papers_with_analyses()
     if selected_faculty_id == "all":
         papers = all_papers

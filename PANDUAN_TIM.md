@@ -23,6 +23,8 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
 3. Dashboard terbuka di browser, di halaman **Beranda**. Nama proyek aktif tampil di kiri atas dan di Beranda. Pastikan namanya benar sebelum mulai.
    - **Perlu tindakan** di Beranda berisi pekerjaan yang menunggu: review yang komentarnya belum diputuskan, review yang Word-nya belum dibuat, dan paper yang belum dianalisis. Klik **Buka** untuk langsung ke halamannya.
    - Di bawahnya ada grafik isi koleksi: tahun terbit (berapa persen terbitan 5 tahun terakhir), jenis penelitian (empiris kuantitatif, kualitatif, kajian literatur, dan seterusnya), bidang ilmu, dan asal sumber. Grafik ini ikut filter **Bidang ilmu** di sidebar. Arahkan kursor ke grafik untuk melihat angkanya.
+   - **Bidang ilmu** bawaan: Agama & Filsafat, Hukum, Ekonomi & Bisnis, Pendidikan, Psikologi & Sosial, Sains & Teknologi, Kesehatan, Bahasa & Sastra, dan Lintas bidang & metodologi. Bidang paper ditebak dari judul dan isinya. Paper yang tidak cocok dengan bidang mana pun masuk Lintas bidang. Bidang khusus bisa dibuat di **Cari & tambah paper**, tab **Kelola bidang ilmu**.
+   - Contoh pertanyaan di **Tanya koleksi** mengikuti bidang yang dipilih di sidebar.
    - Pemilik yang menjalankan dashboard tanpa mode tim juga melihat status setup, semua proyek, dan pemakaian AI bulan ini.
    - Menu di sidebar mengikuti urutan kerja untuk satu klien:
      - **1 · Kumpulkan**: **Cari & tambah paper**. Termasuk tab **Ringkas dari DOI** untuk meringkas satu paper tanpa memasukkannya ke koleksi.

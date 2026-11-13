@@ -24,35 +24,45 @@ def render(ctx: AppContext):
     )
 
     fac_suggestions = {
-        "ilahiyyat": [
-            "Bagaimana para peneliti membantah klaim bahwa fluktuasi vakum kuantum membatalkan hukum kausalitas?",
-            "Apa bantahan matematika terhadap keberatan Hilbert's Hotel pada ketakterhinggaan waktu lampau?",
-            "Mengapa hipotesis Multiverse dianggap tidak menyelesaikan persoalan fine-tuning kosmos?"
+        "agama_filsafat": [
+            "Bagaimana para peneliti menafsirkan konsep ini, dan di mana tafsir mereka berbeda?",
+            "Pendekatan apa yang dipakai: tekstual, historis, atau filosofis? Apa kelebihan masing-masing?",
+            "Argumen apa yang paling sering dikritik, dan apa jawaban pendukungnya?",
         ],
-        "epistemologi": [
-            "Bagaimana Al-Ghazali dalam Al-Munqidh menyelesaikan keraguan terhadap pancaindra dan akal?",
-            "Apa perbedaan epistemologis antara silogisme Burhani dengan Jadal dalam pembuktian akidah?",
-            "Bagaimana Reformed Epistemology Alvin Plantinga membela rasionalitas iman tanpa bukti deduktif?"
+        "hukum": [
+            "Peraturan dan putusan apa saja yang dianalisis, dan apa kesimpulan masing-masing paper?",
+            "Di mana para peneliti melihat kekosongan atau pertentangan norma?",
+            "Pendekatan yuridis normatif dan empiris mana yang dipakai, dan apa bedanya hasilnya?",
         ],
-        "kausalitas": [
-            "Apa perbedaan mendasar antara doktrin Okasionalisme Al-Ghazali dengan Skeptisisme David Hume tentang sebab-akibat?",
-            "Bagaimana teori Kasb mazhab Asy'ari menjelaskan kebebasan memilih di bawah kedaulatan mutlak takdir?",
-            "Apakah indeterminisme fisika kuantum membuka ruang logis bagi tindakan Ilahi (Divine Action) di alam semesta?"
+        "ekonomi": [
+            "Variabel apa yang paling sering terbukti berpengaruh, dan seberapa konsisten temuannya?",
+            "Sampel, periode data, dan metode analisis apa yang dipakai tiap paper?",
+            "Temuan mana yang saling bertentangan, dan apa kemungkinan penyebabnya?",
         ],
-        "teodisi": [
-            "Bagaimana pembelaan Alvin Plantinga (Free Will Defense) menghadapi argumen logis kejahatan dari J.L. Mackie?",
-            "Apa respon teisme analitik terhadap problem penderitaan tanpa faedah (Gratuitous Evil) William Rowe?",
-            "Apa makna doktrin Al-Ghazali 'Laysa fi al-imkan abda' mimma kan' dalam konteks teodisi?"
+        "pendidikan": [
+            "Model atau media pembelajaran apa yang diuji, dan seberapa besar pengaruhnya pada hasil belajar?",
+            "Jenjang dan jumlah siswa berapa yang diteliti, dan apakah hasilnya bisa digeneralisasi?",
+            "Instrumen apa yang dipakai untuk mengukur hasil belajar?",
         ],
-        "falsafah_jiwa": [
-            "Bagaimana Argumen Manusia Terbang (The Flying Man) Ibn Sina membuktikan eksistensi jiwa immaterial?",
-            "Mengapa 'The Hard Problem of Consciousness' menjadi batu sandungan bagi materialisme dan fisikalisme?",
-            "Dapatkah kecerdasan buatan (AI) memiliki kesadaran sejati (qualia) menurut filsafat pikiran Islam?"
+        "psikologi_sosial": [
+            "Skala atau alat ukur apa yang dipakai, dan bagaimana validitas serta reliabilitasnya?",
+            "Faktor apa yang paling sering berhubungan dengan variabel ini?",
+            "Kelompok responden mana yang belum banyak diteliti?",
         ],
-        "nubuwwat": [
-            "Bagaimana tradisi teologi Islam merespons kritik probabilitas David Hume mengenai mukjizat?",
-            "Apa distingsi logis antara hal yang mustahil secara akal (Mustahil Aqli) vs mustahil secara kebiasaan (Mustahil 'Adi)?",
-            "Bagaimana hermeneutika Ibn Rushd (Fasl al-Maqal) menyelesaikan pertentangan teks wahyu dengan akal demonstratif?"
+        "sains_teknologi": [
+            "Metode atau model apa yang dibandingkan, dan mana yang hasilnya paling baik?",
+            "Dataset dan ukuran evaluasi apa yang dipakai?",
+            "Keterbatasan apa yang disebut penulis dan belum diselesaikan?",
+        ],
+        "kesehatan": [
+            "Intervensi apa yang diuji, pada populasi mana, dan seberapa besar efeknya?",
+            "Desain studi apa yang dipakai: potong lintang, kohort, atau uji klinis?",
+            "Faktor risiko apa yang paling konsisten ditemukan?",
+        ],
+        "bahasa_sastra": [
+            "Teori linguistik atau sastra apa yang dipakai sebagai pisau analisis?",
+            "Data bahasa atau karya sastra apa yang dianalisis, dan bagaimana cara mengumpulkannya?",
+            "Temuan mana yang bisa dipakai untuk pengajaran bahasa?",
         ],
     }
 

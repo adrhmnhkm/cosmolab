@@ -10,9 +10,11 @@ class TestCosmoLabUniversity(unittest.TestCase):
         all_facs = faculties.list_faculties()
         self.assertGreaterEqual(len(all_facs), 6)
         
-        expected_ids = {"ilahiyyat", "epistemologi", "kausalitas", "teodisi", "falsafah_jiwa", "nubuwwat"}
+        expected_ids = {"agama_filsafat", "hukum", "ekonomi", "pendidikan", "psikologi_sosial",
+                        "sains_teknologi", "kesehatan", "bahasa_sastra", "umum"}
         actual_ids = {f.id for f in all_facs}
         self.assertTrue(expected_ids.issubset(actual_ids))
+        self.assertFalse({"ilahiyyat", "teodisi"} & actual_ids)  # merged into agama_filsafat
 
         for f in all_facs:
             self.assertTrue(len(f.default_queries) >= 3)
@@ -49,25 +51,25 @@ class TestCosmoLabUniversity(unittest.TestCase):
         fac_causal = faculties.detect_faculty_from_text(
             "Al-Ghazali and Hume on Causality and Occasionalism"
         )
-        self.assertEqual(fac_causal, "kausalitas")
+        self.assertEqual(fac_causal, "agama_filsafat")
 
         # Teodisi
         fac_evil = faculties.detect_faculty_from_text(
             "The Evidential Problem of Evil and Gratuitous Suffering"
         )
-        self.assertEqual(fac_evil, "teodisi")
+        self.assertEqual(fac_evil, "agama_filsafat")
 
         # Falsafah Jiwa
         fac_mind = faculties.detect_faculty_from_text(
             "Avicenna's Flying Man Argument and the Hard Problem of Consciousness"
         )
-        self.assertEqual(fac_mind, "falsafah_jiwa")
+        self.assertEqual(fac_mind, "agama_filsafat")
 
         # Nubuwwat
         fac_prophecy = faculties.detect_faculty_from_text(
             "Hume on Miracles and the Epistemology of Religious Prophecy"
         )
-        self.assertEqual(fac_prophecy, "nubuwwat")
+        self.assertEqual(fac_prophecy, "agama_filsafat")
 
         # Multidisiplin: Hukum
         fac_hukum = faculties.detect_faculty_from_text(
@@ -87,13 +89,40 @@ class TestCosmoLabUniversity(unittest.TestCase):
         )
         self.assertEqual(fac_pendidikan, "pendidikan")
 
+        self.assertEqual(faculties.detect_faculty_from_text(
+            "Alih Kode dan Campur Kode dalam Percakapan Siswa: Kajian Sosiolinguistik"), "bahasa_sastra")
+        self.assertEqual(faculties.detect_faculty_from_text("Time and causality in quantum gravity"), "sains_teknologi")
+        # Short keywords match whole words only: "ai" is not found inside "said" or "rain"
+        self.assertEqual(faculties.detect_faculty_from_text("She said the rain was heavy"), "umum")
+
+    def test_old_field_ids(self):
+        self.assertEqual(faculties.get_faculty("teodisi").id, "agama_filsafat")
+        self.assertEqual(faculties.canonical_id("ekonomi"), "ekonomi")
+        self.assertEqual(faculties.resolve_faculty("ekonomi", "Quantum gravity"), "ekonomi")  # current id kept
+        self.assertEqual(faculties.resolve_faculty("kausalitas", "Time and causality in quantum gravity"),
+                         "sains_teknologi")
+        self.assertEqual(faculties.resolve_faculty("", "Fine-tuning and the existence of God"), "agama_filsafat")
+
+    def test_old_field_ids_migrate_in_db(self):
+        import sqlite3
+
+        con = sqlite3.connect(":memory:")
+        db.init_db(con)
+        con.execute("INSERT INTO papers (file, title, faculty) VALUES ('a.pdf', 'Quantum gravity and time', 'kausalitas')")
+        con.execute("INSERT INTO papers (file, title, faculty) VALUES ('b.pdf', 'The Kalam Cosmological Argument', 'ilahiyyat')")
+        con.execute("INSERT INTO papers (file, title, faculty) VALUES ('c.pdf', 'Islamic banking', 'ekonomi')")
+        db.init_db(con)
+        got = dict(con.execute("SELECT file, faculty FROM papers").fetchall())
+        self.assertEqual(got, {"a.pdf": "sains_teknologi", "b.pdf": "agama_filsafat", "c.pdf": "ekonomi"})
+        self.assertEqual(db._migrate_legacy_faculties(con), 0)  # nothing left to move
+
     @needs_corpus
     def test_database_faculty_filtering(self):
         """Test retrieving papers filtered by faculty from SQLite."""
-        papers = db.get_papers_by_faculty("ilahiyyat")
+        papers = db.get_papers_by_faculty("agama_filsafat")
         self.assertIsInstance(papers, list)
         for p in papers:
-            self.assertEqual(p.get("faculty"), "ilahiyyat")
+            self.assertEqual(p.get("faculty"), "agama_filsafat")
 
         dist = db.get_faculty_distribution()
         self.assertIsInstance(dist, dict)
@@ -117,8 +146,8 @@ class TestCosmoLabUniversity(unittest.TestCase):
         self.assertGreaterEqual(len(dilemmas), 10)
         
         # Test faculty dilemma filtering
-        ilahiyyat_dilemmas = sparring.get_dilemmas_by_faculty("ilahiyyat")
-        self.assertTrue(len(ilahiyyat_dilemmas) >= 2)
+        self.assertTrue(len(sparring.get_dilemmas_by_faculty("agama_filsafat")) >= 2)
+        self.assertTrue(len(sparring.get_dilemmas_by_faculty("ilahiyyat")) >= 2)  # old id still works
 
     def test_curriculum_roadmaps(self):
         """Test that progressive roadmaps are generated for each faculty."""

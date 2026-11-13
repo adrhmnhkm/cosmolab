@@ -707,7 +707,7 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
                     "abstract": item["abstract"],
                     "source": source,
                     "arxiv_id": item["arxiv_id"],
-                    "faculty": item.get("faculty", "ilahiyyat"),
+                    "faculty": item.get("faculty") or "",
                     "authors": item.get("authors") or [],
                     **({"journal": item["journal"]} if item.get("journal") else {}),
                     **({"issn": item["issn"]} if item.get("issn") else {}),

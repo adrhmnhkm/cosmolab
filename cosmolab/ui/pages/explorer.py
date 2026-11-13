@@ -123,7 +123,7 @@ def render(ctx: AppContext):
                 arg_t = p.get("argument_type") or "unclassified"
                 stn = p.get("supports_or_critiques") or "neutral"
                 source = p.get("source") or "web"
-                p_faculty = p.get("faculty") or "ilahiyyat"
+                p_faculty = p.get("faculty") or "umum"
                 fac_info = _faculties.get_faculty(p_faculty)
                 fac_icon = fac_info.icon if fac_info else ""
                 fac_name = fac_info.name if fac_info else p_faculty

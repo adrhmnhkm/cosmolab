@@ -22,12 +22,14 @@ def render(ctx: AppContext):
 
     with tab_art1:
         topic_presets = {
-            "ilahiyyat": "Menemukan Kembali Awal Mula: Dialektika Singularitas Kosmologi dan Argumen Kalam",
-            "kausalitas": "Teka-teki Sebab-Akibat: Mempertemukan Api Al-Ghazali, Skeptisisme Hume, dan Ketidakpastian Kuantum",
-            "teodisi": "Di Balik Tirai Penderitaan: Menimbang Keadilan Ilahi Antara Logika Mackie dan Teodisi Hikmah",
-            "falsafah_jiwa": "Manusia yang Melayang di Ruang Hampa: Mengapa Kesadaran Menolak Reduksi Materialistik",
-            "epistemologi": "Skeptisisme Radikal dan Batas Akal: Dari Al-Munqidh Al-Ghazali ke Cogito Descartes",
-            "nubuwwat": "Ketika Hukum Alam Terdiam: Menimbang Rasionalitas Mukjizat di Hadapan Keraguan Hume",
+            "agama_filsafat": "Moderasi beragama di ruang digital: apa kata penelitian terbaru",
+            "hukum": "Perlindungan data pribadi setelah UU PDP: celah yang masih terbuka",
+            "ekonomi": "Literasi keuangan dan perilaku menabung generasi muda",
+            "pendidikan": "Pembelajaran berbasis proyek: bukti dari penelitian di sekolah Indonesia",
+            "psikologi_sosial": "Kesehatan mental mahasiswa tingkat akhir: faktor risiko dan dukungan",
+            "sains_teknologi": "Kecerdasan buatan dalam pendidikan tinggi: peluang dan risikonya",
+            "kesehatan": "Pencegahan stunting: intervensi yang terbukti berhasil",
+            "bahasa_sastra": "Alih kode dalam percakapan anak muda di media sosial",
         }
         default_preset = topic_presets.get(selected_faculty_id, "")
 

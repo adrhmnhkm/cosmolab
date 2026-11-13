@@ -21,6 +21,31 @@ def get_connection() -> sqlite3.Connection:
     return con
 
 
+def _migrate_legacy_faculties(con: sqlite3.Connection) -> int:
+    """Papers still on an old philosophy field id get a field detected again from their text. Returns how many."""
+    olds = tuple(_faculties.LEGACY_IDS)
+    rows = con.execute(f"SELECT file, title, abstract, full_text FROM papers WHERE faculty IN ({','.join('?' * len(olds))})",
+                       olds).fetchall()
+    for file, title, abstract, full_text in rows:
+        con.execute("UPDATE papers SET faculty = ? WHERE file = ?",
+                    (_faculties.detect_faculty_from_text(title or "", abstract or "", full_text or ""), file))
+    return len(rows)
+
+
+def migrate_faculties() -> int:
+    """Apply the field merge to the active database. Cheap once done, so the dashboard calls it on every run."""
+    if not config.DB_FILE.exists():
+        return 0
+    con = get_connection()
+    try:
+        with con:
+            return _migrate_legacy_faculties(con)
+    except sqlite3.OperationalError:  # no papers table yet
+        return 0
+    finally:
+        con.close()
+
+
 def init_db(con: sqlite3.Connection | None = None) -> None:
     """Initialize SQLite database with relational tables and FTS5 search index."""
     close_con = False
@@ -42,7 +67,7 @@ def init_db(con: sqlite3.Connection | None = None) -> None:
                 arxiv_id TEXT,
                 abstract TEXT,
                 full_text TEXT,
-                faculty TEXT DEFAULT 'ilahiyyat',
+                faculty TEXT DEFAULT 'umum',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -52,13 +77,14 @@ def init_db(con: sqlite3.Connection | None = None) -> None:
             cursor = con.execute("PRAGMA table_info(papers)")
             columns = [row[1] for row in cursor.fetchall()]
             if "faculty" not in columns:
-                con.execute("ALTER TABLE papers ADD COLUMN faculty TEXT DEFAULT 'ilahiyyat'")
+                con.execute("ALTER TABLE papers ADD COLUMN faculty TEXT DEFAULT 'umum'")
             if "authors" not in columns:
                 con.execute("ALTER TABLE papers ADD COLUMN authors TEXT DEFAULT '[]'")
             if "authors_source" not in columns:
                 con.execute("ALTER TABLE papers ADD COLUMN authors_source TEXT DEFAULT ''")
         except Exception:
             pass
+        _migrate_legacy_faculties(con)
 
         # 2. Analyses table
         con.execute("""
@@ -191,9 +217,7 @@ def sync_all() -> dict:
                 # Unwind inverted index if present
                 abstract = str(abstract)
 
-            faculty = rec.get("faculty")
-            if not faculty:
-                faculty = _faculties.detect_faculty_from_text(rec.get("title") or "", abstract, full_text)
+            faculty = _faculties.resolve_faculty(rec.get("faculty"), rec.get("title") or "", abstract, full_text)
 
             # Upsert paper
             con.execute("""
@@ -341,9 +365,7 @@ def sync_one(file_name: str) -> dict:
     if isinstance(abstract, dict):
         abstract = str(abstract)
 
-    faculty = rec.get("faculty")
-    if not faculty:
-        faculty = _faculties.detect_faculty_from_text(rec.get("title") or "", abstract, full_text)
+    faculty = _faculties.resolve_faculty(rec.get("faculty"), rec.get("title") or "", abstract, full_text)
 
     with con:
         # Upsert paper
@@ -607,6 +629,7 @@ def get_paper_knowledge_summary(file_name: str) -> dict | None:
 def get_papers_by_faculty(faculty_id: str | None = None, limit: int = 100) -> list[dict]:
     """Retrieve papers belonging to a specific faculty."""
     con = get_connection()
+    faculty_id = _faculties.canonical_id(faculty_id) if faculty_id != "all" else faculty_id
     if faculty_id and faculty_id != "all":
         cur = con.execute("""
             SELECT 
@@ -639,7 +662,7 @@ def update_paper_faculty(file_name: str, faculty_id: str) -> bool:
     """Manually update or override a paper's assigned faculty."""
     con = get_connection()
     with con:
-        con.execute("UPDATE papers SET faculty = ? WHERE file = ?", (faculty_id, file_name))
+        con.execute("UPDATE papers SET faculty = ? WHERE file = ?", (_faculties.canonical_id(faculty_id), file_name))
     con.close()
     return True
 
@@ -648,7 +671,7 @@ def get_faculty_distribution() -> dict[str, int]:
     """Get paper counts across all faculties."""
     con = get_connection()
     cur = con.execute("SELECT faculty, COUNT(*) as cnt FROM papers GROUP BY faculty")
-    dist = {row["faculty"] or "ilahiyyat": row["cnt"] for row in cur.fetchall()}
+    dist = {row["faculty"] or _faculties.DEFAULT_FACULTY: row["cnt"] for row in cur.fetchall()}
     con.close()
     return dist
 

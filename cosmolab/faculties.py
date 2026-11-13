@@ -1,8 +1,6 @@
 """
-CosmoLab University: Knowledge Architecture & Faculty Catalog
-Defines the core philosophy & theology faculties,
-expanded multidisciplinary faculties (Hukum, Ekonomi, Pendidikan, Sains/Teknologi, Psikologi, Kesehatan),
-and a dynamic custom faculty engine for any university department or research niche.
+Fields of study (bidang ilmu): the built-in general fields plus custom fields
+made by the team. Each paper gets one field, detected from its text or set by hand.
 """
 
 import json
@@ -25,236 +23,46 @@ class Faculty:
     modern_references: List[str] = field(default_factory=list)
     key_debates: List[str] = field(default_factory=list)
     is_custom: bool = False
-    category: str = "Filosofis & Teologis"
+    category: str = "Bidang umum"
 
 
 CORE_FACULTIES: Dict[str, Faculty] = {
-    # -------------------------------------------------------------
-    # 1. Fondasi Filosofis & Teologis Klasik
-    # -------------------------------------------------------------
-    "ilahiyyat": Faculty(
-        id="ilahiyyat",
-        name="Ilahiyyat & Kosmologi Rasional",
-        icon="🌌",
-        short_desc="Eksistensi Tuhan, Argumen Kosmologis, Teleologis, Wajib al-Wujud & Awal Mula Alam.",
-        full_desc=(
-            "Mengkaji argumen rasional tentang pembuktian adanya Pencipta: Dalil Huduts (Kalam), "
-            "Dalil Imkan / Kontingensi (Ibn Sina & Leibniz), Dalil Inayah/Hikmah (Teleologis/Fine-Tuning), "
-            "status ontologis Wajib al-Wujud, dan benturan dengan model kosmologi fisika modern (Multiverse, Singularitas, Vakum Kuantum)."
-        ),
-        default_queries=[
-            "kalam cosmological argument",
-            "contingency cosmological argument",
-            "fine-tuning teleological argument",
-            "ibn sina burhan al-siddiqin",
-            "actual infinity hilbert paradox cosmology",
-        ],
-        classic_references=[
-            "Al-Ghazali - Tahafut al-Falasifah (Mas'alah 1: Qidam al-'Alam)",
-            "Ibn Sina - Al-Isyarat wa al-Tanbihat (Namat 4: Al-Wujud wa 'Ilaluh)",
-            "Fakhr al-Din al-Razi - Al-Matalib al-'Aliyah min al-'Ilm al-Ilahi",
-            "Sa'aduddin at-Taftazani - Syarh al-Aqa'id an-Nasafiyyah",
-        ],
-        modern_references=[
-            "William Lane Craig - The Kalam Cosmological Argument",
-            "Alexander Pruss - The Principle of Sufficient Reason",
-            "Robin Collins - The Teleological Argument: An Exploration of the Fine-Tuning",
-            "Graham Oppy - Arguing about Gods",
-        ],
-        key_debates=[
-            "Ketakterhinggaan Waktu Lampau (Tahallul vs Cantorian Actual Infinity)",
-            "Fluktuasi Kuantum Ruang Hampa vs Prinsip Kausalitas",
-            "Prinsip Alasan Cukup (PSR) vs Kosmos sebagai Fakta Mentah (Brute Fact)",
-        ],
-        category="Filosofis & Teologis",
-    ),
-    "epistemologi": Faculty(
-        id="epistemologi",
-        name="Epistemologi & Mantiq (Teori Pengetahuan)",
-        icon="🏛️",
-        short_desc="Validitas Akal, Sumber Pengetahuan, Silogisme Burhani, Skeptisisme & Relativisme.",
-        full_desc=(
-            "Fondasi metodologis penalaran akidah: Teori ilmu dalam Kalam, sumber pengetahuan (Khabar Shadiq/Otoritas, "
-            "Pancaindra, Akal Murni, dan Ilham/Kasyaf), pembedaan antara nalar demonstratif (Burhan) vs dialektika (Jadal) "
-            "vs retorika (Khitabah), serta penyelesaian skeptisisme radikal."
-        ),
-        default_queries=[
-            "islamic epistemology theory of knowledge kalam",
-            "al-ghazali skepticism al-munqidh min al-dalal",
-            "burhan demonstrative syllogism islamic philosophy",
-            "epistemic justification foundationalism coherentism",
-            "reformed epistemology alvin plantinga",
-        ],
-        classic_references=[
-            "Al-Ghazali - Al-Mustasfa (Muqaddimah Mantiqiyyah) & Al-Munqidh min al-Dalal",
-            "Al-Farabi - Kitab al-Burhan",
-            "Ibn Hazm - Al-Taqrib li-Hadd al-Mantiq",
-            "Qadhi Abdul Jabbar - Al-Mughni fi Abwab al-Tawhid wa al-'Adl",
-        ],
-        modern_references=[
-            "Alvin Plantinga - Warrant and Proper Function",
-            "Seyyed Hossein Nasr - Knowledge and the Sacred",
-            "Ernest Sosa - A Virtue Epistemology",
-            "Richard Swinburne - Faith and Reason",
-        ],
-        key_debates=[
-            "Apakah akal mandiri menentukan kebenaran teologis sebelum datangnya wahyu?",
-            "Skeptisisme Indrawi Al-Ghazali vs Fondasionalisme Cogito Descartes",
-            "Status epistemologis mukjizat sebagai bukti kebenaran kabar",
-        ],
-        category="Filosofis & Teologis",
-    ),
-    "kausalitas": Faculty(
-        id="kausalitas",
-        name="Kausalitas, Takdir & Kehendak Bebas",
-        icon="⚡",
-        short_desc="Sebab-Akibat, Okasionalisme, Determinisme, Kasb Asy'ari vs Ikhtiyar Mu'tazili.",
-        full_desc=(
-            "Penyelidikan mendalam tentang hukum sebab-akibat: Apakah alam semesta beroperasi dengan keniscayaan kausal esensial "
-            "(Aristoteles/Ibn Sina) ataukah sekadar korelasi kebiasaan konstan yang terus diciptakan Tuhan (Okasionalisme Al-Ghazali / Hume)? "
-            "Dilanjutkan dengan diskursus kehendak bebas manusia, tanggung jawab moral, dan ilmu Tuhan yang mendahului masa depan (Divine Foreknowledge)."
-        ),
-        default_queries=[
-            "occasionalism al-ghazali causality tahafut",
-            "hume causality induction constant conjunction",
-            "divine foreknowledge human free will compatibility",
-            "asharite theory of kasb acquisition",
-            "quantum indeterminism divine action free will",
-        ],
-        classic_references=[
-            "Al-Ghazali - Tahafut al-Falasifah (Mas'alah 17: Al-Sababiyyah)",
-            "Ibn Rushd - Tahafut al-Tahafut (Sanggahan Kausalitas)",
-            "Al-Baqillani - Kitab al-Tamhid",
-            "Al-Jurjani - Syarh al-Mawaqif fi 'Ilm al-Kalam",
-        ],
-        modern_references=[
-            "David Hume - An Enquiry Concerning Human Understanding (Section IV & VII)",
-            "Walter Fred - Occasionalism: Causation Among the Cartesians",
-            "Peter van Inwagen - An Essay on Free Will",
-            "Eleonore Stump - Aquina's Account of Free Will",
-        ],
-        key_debates=[
-            "Apakah api membakar kapas karena esensinya sendiri atau karena kehendak Ilahi yang menciptakan pembakaran?",
-            "Teori Kasb: Sintesis brilian antara kemahakuasaan Tuhan dan tanggung jawab manusia ataukah ilusi kompatibilisme?",
-            "Pengetahuan Tuhan atas masa depan: Apakah menutup kemungkinan pilihan bebas manusia?",
-        ],
-        category="Filosofis & Teologis",
-    ),
-    "teodisi": Faculty(
-        id="teodisi",
-        name="Teodisi & Problem of Evil (Al-Syurur wa al-'Adl)",
-        icon="⚖️",
-        short_desc="Keadilan Ilahi, Eksistensi Penderitaan, Hikmah Bencana, Problem Logis & Bukti Kejahatan.",
-        full_desc=(
-            "Salah satu tantangan terberat bagi teisme: Jika Tuhan Maha Kuasa, Maha Mengetahui, dan Maha Pengasih, "
-            "mengapa kejahatan dan penderitaan ada di dunia? Membedah perspektif Teodisi Asy'ariyah (kedaulatan mutlak Ilahi di luar konsep kewajiban moral manusia), "
-            "Maturidiyah (prinsip Hikmah di balik setiap ciptaan), Mu'tazilah (keharusan berbuat adil), dan pembelaan kehendak bebas kontemporer."
-        ),
-        default_queries=[
-            "problem of evil philosophy of religion",
-            "theodicy divine justice suffering kalam",
-            "alvin plantinga free will defense evil",
-            "evidential problem of evil william rowe",
-            "al-ghazali best of all possible worlds laysa fi al-imkan",
-        ],
-        classic_references=[
-            "Al-Ghazali - Ihya' 'Ulum al-Din (Kitab al-Tawhid wa al-Tawakkul: Konsep Dunia Terbaik)",
-            "Al-Maturidi - Kitab al-Tawhid (Bab Hikmah wa al-Ibtila')",
-            "Abu Bakr al-Razi vs Ahmad bin Hamdan - Al-Munazarat",
-            "Ibn al-Qayyim - Syifa' al-'Alil fi Masa'il al-Qadha' wa al-Qadar wa al-Hikmah",
-        ],
-        modern_references=[
-            "J.L. Mackie - Evil and Omnipotence",
-            "Alvin Plantinga - God, Freedom, and Evil",
-            "William Rowe - The Problem of Evil and Some Varieties of Atheism",
-            "Marilyn McCord Adams - Horrendous Evils and the Goodness of God",
-        ],
-        key_debates=[
-            "Kejahatan Tanpa Manfaat Nyata (Gratuitous Evil): Apakah penderitaan hewan di alam liar menggugurkan teisme?",
-            "Apakah konsep 'Kebaikan' Tuhan setara dengan konsep kebaikan moral manusia (Analogi vs Equivocation)?",
-            "Pernyataan Al-Ghazali: 'Laysa fi al-imkan abda' mimma kan' (Tidak ada dalam kemungkinan yang lebih indah dari apa yang telah diciptakan).",
-        ],
-        category="Filosofis & Teologis",
-    ),
-    "falsafah_jiwa": Faculty(
-        id="falsafah_jiwa",
-        name="Falsafah Jiwa & Pikiran (Ilm an-Nafs)",
-        icon="🧠",
-        short_desc="Hakekat Nafs & Ruh, Dualisme Jiwa-Raga, Hard Problem of Consciousness, AI & Jiwa.",
-        full_desc=(
-            "Penyelidikan hakekat eksistensi manusia: Apakah kesadaran hanyalah aktivitas elektrokimia otak fisik (Fisikalisme/Materialisme) "
-            "ataukah jiwa adalah substansi immaterial non-fisik (Dualisme Substansi Ibn Sina / Descartes)? "
-            "Menghubungkan argumen klasik Manusia Terbang (The Flying Man) dengan misteri kesadaran modern (Qualia) dan batas kecerdasan artifisial."
-        ),
-        default_queries=[
-            "islamic philosophy mind nafs soul avicenna",
-            "ibn sina flying man argument dualism",
-            "hard problem of consciousness physicalism qualia",
-            "substance dualism cartesian mind body problem",
-            "artificial intelligence consciousness soul philosophy",
-        ],
-        classic_references=[
-            "Ibn Sina - Kitab al-Syifa (Al-Nafs / De Anima & Argumen Manusia Terbang)",
-            "Al-Ghazali - Ma'arij al-Quds fi Madarij Ma'rifat al-Nafs",
-            "Ibn al-Nafis - Al-Risalah al-Kamiliyyah fi al-Sirah al-Nabawiyyah",
-            "Mulla Sadra - Al-Hikmah al-Muta'aliyah (Harakah Jawhariyyah an-Nafs)",
-        ],
-        modern_references=[
-            "David Chalmers - The Conscious Mind: In Search of a Fundamental Theory",
-            "Daniel Dennett - Consciousness Explained (Kritik Ilusionisme)",
-            "Thomas Nagel - What Is It Like to Be a Bat?",
-            "Richard Swinburne - The Evolution of the Soul",
-        ],
-        key_debates=[
-            "Argumen Manusia Terbang Ibn Sina: Bukti independensi jiwa atau sekadar eksperimen pikiran spekulatif?",
-            "Misteri Kesadaran (Qualia): Dapatkah sains materialis menjelaskan rasa sakit atau persepsi subjektif warna?",
-            "Kecerdasan Buatan (AI): Apakah mesin komputasi super canggih dapat memiliki jiwa dan kesadaran sejati?",
-        ],
-        category="Filosofis & Teologis",
-    ),
-    "nubuwwat": Faculty(
-        id="nubuwwat",
-        name="Nubuwwat, Mukjizat & Hukum Alam",
+    "agama_filsafat": Faculty(
+        id="agama_filsafat",
+        name="Agama & Filsafat",
         icon="📜",
-        short_desc="Rasionalitas Kenabian, Definisi Mukjizat (Kharq al-'Adah), Akal vs Wahyu, Hermeneutika.",
+        short_desc="Studi agama, tafsir dan hadis, kalam dan tasawuf, filsafat, dan etika.",
         full_desc=(
-            "Kajian rasional atas fenomena kenabian: Bukti urgensi pengutusan nabi bagi peradaban, status mukjizat sebagai perombakan hukum kebiasaan "
-            "(Kharq al-'Adah), distingsi logis antara kemustahilan nalar (Mustahil Aqli) vs kemustahilan pengalaman empiris (Mustahil 'Adi), "
-            "serta prinsip hermeneutika ketika wahyu tampak bertentangan dengan sains/logika (Qanun al-Kulli)."
+            "Kajian teks dan pemikiran keagamaan (tafsir, hadis, kalam, tasawuf), agama dan masyarakat, "
+            "filsafat (epistemologi, metafisika, etika, filsafat pikiran), serta hubungan agama dan sains."
         ),
         default_queries=[
-            "philosophy of prophecy islamic theology nubuwwat",
-            "hume on miracles criticism philosophy of religion",
-            "miracles kharq al-adah islamic epistemology",
-            "faith and reason revelation rationalism al-ghazali",
-            "ibn rushd fasl al-maqal harmony of religion and philosophy",
+            "islamic studies quranic exegesis hadith",
+            "philosophy of religion existence of god",
+            "islamic philosophy kalam epistemology",
+            "religion and society religious moderation",
+            "ethics moral philosophy virtue",
         ],
         classic_references=[
-            "Al-Ghazali - Qanun al-Ta'wil & Tahafut al-Falasifah",
-            "Ibn Rushd - Fasl al-Maqal fi ma bayna al-Hikmah wa al-Syari'ah min al-Ittisal",
-            "Fakhr al-Din al-Razi - Al-Nubuwwat wa ma Yata'allaqu biha",
-            "Al-Qadhi Iyad - Al-Syifa bi Ta'rif Huquq al-Mustafa",
+            "Al-Ghazali - Tahafut al-Falasifah",
+            "Ibn Rusyd - Fasl al-Maqal",
+            "Ibn Sina - Al-Isyarat wa al-Tanbihat",
         ],
         modern_references=[
-            "David Hume - Of Miracles (An Enquiry Concerning Human Understanding, Part X)",
-            "Richard Swinburne - The Concept of Miracle",
-            "C.S. Lewis - Miracles: A Preliminary Study",
-            "Oliver Leaman - An Introduction to Classical Islamic Philosophy",
+            "Fazlur Rahman - Islam and Modernity",
+            "Alvin Plantinga - Warranted Christian Belief",
+            "Charles Taylor - A Secular Age",
         ],
         key_debates=[
-            "Kritik David Hume: Apakah kesaksian manusia tentang mukjizat selalu kalah kredibel dibandingkan keteraturan hukum alam?",
-            "Mustahil Aqli vs Mustahil 'Adi: Apakah tongkat menjadi ular itu kontradiksi logis (seperti lingkaran bersudut) atau sekadar perubahan materi super cepat?",
-            "Harmoni Akal dan Teks: Siapa penentu akhir jika teks lahiriah bertentangan dengan temuan akal demonstratif?",
+            "Akal dan wahyu dalam epistemologi Islam",
+            "Agama dan sains modern",
+            "Moderasi beragama di ruang publik",
         ],
-        category="Filosofis & Teologis",
+        category="Bidang umum",
     ),
-
-    # -------------------------------------------------------------
-    # 2. Multidisiplin & Keilmuan Terapan
-    # -------------------------------------------------------------
     "hukum": Faculty(
         id="hukum",
-        name="Ilmu Hukum, Tata Negara & Syariah",
+        name="Hukum",
         icon="⚖️",
         short_desc="Hukum Tata Negara, Pidana, Perdata, Maqasid Syariah & Yurisprudensi Perbandingan.",
         full_desc=(
@@ -283,11 +91,11 @@ CORE_FACULTIES: Dict[str, Faculty] = {
             "Formalisme Tekstual Fikih vs Fleksibilitas Maqasid al-Syariah",
             "Independensi Lembaga Yudisial di Era Demokrasi Digital",
         ],
-        category="Multidisiplin & Terapan",
+        category="Bidang umum",
     ),
     "ekonomi": Faculty(
         id="ekonomi",
-        name="Ekonomi, Bisnis & Manajemen",
+        name="Ekonomi & Bisnis",
         icon="📈",
         short_desc="Manajemen Strategis, Keuangan Syariah, Akuntansi, Pemasaran & Perilaku Konsumen.",
         full_desc=(
@@ -316,11 +124,11 @@ CORE_FACULTIES: Dict[str, Faculty] = {
             "Teori Pasar Efisien (EMH) vs Irrasionalitas Investor (Behavioral Finance)",
             "Disrupsi FinTech terhadap Ketahanan Perbankan Tradisional",
         ],
-        category="Multidisiplin & Terapan",
+        category="Bidang umum",
     ),
     "pendidikan": Faculty(
         id="pendidikan",
-        name="Ilmu Pendidikan, Pedagogi & Kurikulum",
+        name="Pendidikan",
         icon="🎓",
         short_desc="Model Pembelajaran Abad 21, Evaluasi Pendidikan, EdTech & Manajemen Sekolah.",
         full_desc=(
@@ -349,11 +157,11 @@ CORE_FACULTIES: Dict[str, Faculty] = {
             "Standarisasi Ujian Nasional vs Asesmen Formatif Holistik",
             "Pendidikan Vokasi Terapan vs Pembentukan Karakter & Literasi Kritis",
         ],
-        category="Multidisiplin & Terapan",
+        category="Bidang umum",
     ),
     "psikologi_sosial": Faculty(
         id="psikologi_sosial",
-        name="Psikologi & Ilmu Sosial-Humaniora",
+        name="Psikologi & Sosial",
         icon="🧠",
         short_desc="Kesehatan Mental, Dinamika Sosial, Komunikasi, Sosiologi & Perilaku.",
         full_desc=(
@@ -382,11 +190,11 @@ CORE_FACULTIES: Dict[str, Faculty] = {
             "Dampak Algoritma Media Sosial terhadap Gelembung Filter (Echo Chambers)",
             "Budaya Hustle & Burnout Kerja di Kalangan Generasi Z",
         ],
-        category="Multidisiplin & Terapan",
+        category="Bidang umum",
     ),
     "sains_teknologi": Faculty(
         id="sains_teknologi",
-        name="Sains, Teknologi & Rekayasa Terapan",
+        name="Sains & Teknologi",
         icon="🔬",
         short_desc="Artificial Intelligence, Software Engineering, Energi Terbarukan & Data Science.",
         full_desc=(
@@ -415,11 +223,11 @@ CORE_FACULTIES: Dict[str, Faculty] = {
             "Komputasi Awan (Cloud) Sentral vs Edge Computing & Privasi Data",
             "Transisi Baterai EV vs Keterbatasan Pasokan Logam Langka",
         ],
-        category="Multidisiplin & Terapan",
+        category="Bidang umum",
     ),
     "kesehatan": Faculty(
         id="kesehatan",
-        name="Kedokteran & Kesehatan Masyarakat",
+        name="Kesehatan",
         icon="🩺",
         short_desc="Epidemiologi, Manajemen RS, Farmakologi Klinis, Gizi & Promosi Kesehatan.",
         full_desc=(
@@ -448,9 +256,100 @@ CORE_FACULTIES: Dict[str, Faculty] = {
             "Telemedicine vs Diagnosis Tatap Muka Langsung",
             "Intervensi Spesifik Gizi vs Sensitif Sosial dalam Penurunan Stunting",
         ],
-        category="Multidisiplin & Terapan",
+        category="Bidang umum",
+    ),
+    "bahasa_sastra": Faculty(
+        id="bahasa_sastra",
+        name="Bahasa & Sastra",
+        icon="📚",
+        short_desc="Linguistik, pengajaran bahasa, penerjemahan, analisis wacana, dan kajian sastra.",
+        full_desc=(
+            "Linguistik (pragmatik, sosiolinguistik, morfologi, sintaksis), pengajaran bahasa Indonesia, Inggris, "
+            "dan Arab, penerjemahan, analisis wacana, serta kritik dan kajian sastra."
+        ),
+        default_queries=[
+            "english language teaching efl speaking writing skill",
+            "sociolinguistics code switching bilingual",
+            "pragmatics speech acts politeness",
+            "critical discourse analysis media",
+            "literary criticism postcolonial literature",
+        ],
+        classic_references=[
+            "Ferdinand de Saussure - Course in General Linguistics",
+            "Abd al-Qahir al-Jurjani - Dala'il al-I'jaz",
+            "Mikhail Bakhtin - The Dialogic Imagination",
+        ],
+        modern_references=[
+            "Norman Fairclough - Critical Discourse Analysis",
+            "Stephen Krashen - Principles and Practice in Second Language Acquisition",
+            "Penelope Brown & Stephen Levinson - Politeness",
+        ],
+        key_debates=[
+            "Pembelajaran bahasa komunikatif vs tata bahasa",
+            "Penerjemahan mesin vs penerjemah manusia",
+            "Bahasa daerah di tengah bahasa nasional dan global",
+        ],
+        category="Bidang umum",
+    ),
+    "umum": Faculty(
+        id="umum",
+        name="Lintas bidang & metodologi",
+        icon="🧭",
+        short_desc="Metodologi riset, dan paper yang belum cocok dengan bidang lain.",
+        full_desc=(
+            "Metodologi penelitian, penulisan ilmiah, statistik terapan, dan paper lintas bidang. "
+            "Paper yang tidak cocok dengan bidang lain masuk ke sini sampai dipindah manual."
+        ),
+        default_queries=[
+            "systematic literature review methodology",
+            "mixed methods research design",
+            "structural equation modeling pls-sem",
+            "qualitative research thematic analysis",
+            "research ethics academic integrity",
+        ],
+        classic_references=[
+            "John W. Creswell - Research Design",
+            "Robert K. Yin - Case Study Research",
+            "Wayne C. Booth et al. - The Craft of Research",
+        ],
+        modern_references=[
+            "Joseph F. Hair et al. - A Primer on PLS-SEM",
+            "Virginia Braun & Victoria Clarke - Thematic Analysis",
+            "Matthew J. Page et al. - PRISMA 2020 Statement",
+        ],
+        key_debates=[
+            "Kuantitatif, kualitatif, atau metode campuran",
+            "Krisis replikasi dan praktik sains terbuka",
+            "Penggunaan AI dalam penulisan ilmiah",
+        ],
+        category="Bidang umum",
     ),
 }
+
+# The six philosophy and theology fields of the first version were merged into
+# agama_filsafat (13 Nov 2026). Papers still carrying an old id are classified
+# again from their text (see resolve_faculty and db.init_db).
+LEGACY_IDS = {
+    "ilahiyyat": "agama_filsafat",
+    "epistemologi": "agama_filsafat",
+    "kausalitas": "agama_filsafat",
+    "teodisi": "agama_filsafat",
+    "falsafah_jiwa": "agama_filsafat",
+    "nubuwwat": "agama_filsafat",
+}
+DEFAULT_FACULTY = "umum"
+
+
+def canonical_id(faculty_id: Optional[str]) -> str:
+    """Current id for a faculty id, mapping the old philosophy ids to agama_filsafat."""
+    return LEGACY_IDS.get(faculty_id or "", faculty_id or "")
+
+
+def resolve_faculty(faculty_id: Optional[str], title: str = "", abstract: str = "", full_text: str = "") -> str:
+    """Faculty to store for a paper: a current id is kept; an old or missing one is detected from the text."""
+    if faculty_id and faculty_id not in LEGACY_IDS:
+        return faculty_id
+    return detect_faculty_from_text(title, abstract, full_text)
 
 # Dynamic storage pointer. None = follow the active project (config.ROOT).
 CUSTOM_FACULTIES_FILE = None
@@ -576,6 +475,7 @@ def get_faculty(faculty_id: str) -> Optional[Faculty]:
     If it's an ad-hoc unregistered name, returns a graceful dynamic Faculty object.
     """
     all_facs = _get_all_faculties_dict()
+    faculty_id = canonical_id(faculty_id)
     if faculty_id in all_facs:
         return all_facs[faculty_id]
 
@@ -608,47 +508,61 @@ def detect_faculty_from_text(title: str, abstract: str = "", full_text: str = ""
     """
     text = f"{title} {abstract} {full_text[:3000]}".lower()
 
-    # Keywords for standard faculties
+    # Keywords per field. A keyword matches at the start of a word; keywords of
+    # four letters or fewer must match the whole word (so "ai" does not match "said").
     keywords: Dict[str, List[str]] = {
-        # Filosofis & Teologis
-        "epistemologi": ["epistemic", "epistemology", "knowledge", "burhan", "demonstration", "skepticism", "mantiq", "syllogism", "justification", "foundationalism"],
-        "ilahiyyat": ["cosmological", "fine-tuning", "contingency", "kalam", "multiverse", "big bang", "infinity", "cantor", "creator", "god's existence", "wajib al-wujud", "first cause", "ilahiyyat"],
-        "kausalitas": ["causality", "causal", "occasionalism", "hume", "constant conjunction", "free will", "determinism", "foreknowledge", "kasb", "predestination"],
-        "teodisi": ["problem of evil", "evil", "suffering", "theodicy", "divine justice", "syurur", "hikmah", "gratuitous", "plantinga", "rowe", "omnipoten"],
-        "falsafah_jiwa": ["mind", "soul", "nafs", "consciousness", "qualia", "dualism", "physicalism", "flying man", "brain", "ilm an-nafs"],
-        "nubuwwat": ["prophecy", "prophet", "miracle", "kharq", "revelation", "fasl al-maqal", "ta'wil", "hermeneutics", "nubuwwat", "scripture and reason"],
-
-        # Multidisiplin & Terapan
+        "agama_filsafat": [
+            "teologi", "theolog", "tafsir", "exegesis", "hadis", "hadith", "quran", "qur'an", "al-qur",
+            "akidah", "aqidah", "kalam", "kalām", "tasawuf", "sufi", "dakwah", "moderasi beragama", "religious",
+            "religion", "keagamaan", "filsafat", "philosoph", "metaphysic", "ontolog", "epistemolog",
+            "moral philosophy", "existence of god", "god's existence", "cosmological argument", "fine-tuning",
+            "wajib al-wujud", "ilahiyyat", "occasionalism", "free will", "determinism", "predestination",
+            "takdir", "problem of evil", "theodicy", "teodisi", "divine", "soul", "nafs", "consciousness",
+            "qualia", "dualism", "physicalism", "prophecy", "prophet", "nabi", "miracle", "mukjizat",
+            "revelation", "wahyu", "hermeneutic", "syllogism", "mantiq", "skepticism", "hume", "ghazali",
+            "ibn sina", "avicenna",
+        ],
         "hukum": [
-            "hukum", "law", "legal", "syariah", "shariah", "fiqh", "jurisprudence", "constitutional",
+            "hukum", "yuridis", "rule of law", "criminal law", "civil law", "islamic law", "legal", "syariah", "shariah", "fiqh", "jurisprudence", "constitutional",
             "hak asasi", "pidana", "perdata", "yurisprudensi", "peradilan", "undang-undang", "regulatif",
-            "regulasi", "perlindungan data", "cyber law", "uu pdp", "hak cipta", "kebijakan publik", "advokasi"
+            "regulasi", "perlindungan data", "cyber law", "uu pdp", "hak cipta", "kebijakan publik", "advokasi",
         ],
         "ekonomi": [
             "ekonomi", "economic", "finance", "financial", "banking", "manajemen", "management", "bisnis",
             "business", "akuntansi", "accounting", "pemasaran", "marketing", "saham", "murabahah", "fintech",
             "laba", "profitability", "umkm", "pembiayaan", "modal", "kredit", "investasi", "msme", "sme",
-            "usaha mikro", "perbankan syariah", "kinerja keuangan"
+            "usaha mikro", "perbankan syariah", "kinerja keuangan",
         ],
         "pendidikan": [
-            "pendidikan", "education", "pedagogy", "pedagogis", "curriculum", "kurikulum", "pembelajaran",
+            "pendidikan", "education", "pedagog", "curriculum", "kurikulum", "pembelajaran",
             "learning", "siswa", "student", "teacher", "guru", "sekolah", "edtech", "didaktik", "hasil belajar",
-            "modul ajar", "media pembelajaran", "evaluasi pembelajaran"
+            "modul ajar", "media pembelajaran", "evaluasi pembelajaran",
         ],
         "psikologi_sosial": [
             "psikologi", "psychology", "mental health", "kecemasan", "anxiety", "depression", "depresi",
             "resilience", "burnout", "sociology", "sosiologi", "komunikasi", "social behavior", "perilaku",
-            "kesejahteraan subjektif", "interaksi sosial"
+            "kesejahteraan subjektif", "interaksi sosial",
         ],
         "sains_teknologi": [
             "machine learning", "deep learning", "artificial intelligence", "algorithm", "software",
             "cloud computing", "iot", "sensor", "cybersecurity", "teknik", "rekayasa", "renewable energy",
-            "solar cell", "ai", "etika ai", "data pribadi", "privasi", "siber", "informatika", "komputasi"
+            "solar cell", "ai", "etika ai", "data pribadi", "privasi", "siber", "informatika", "komputasi",
+            "distributed", "optimization", "network", "quantum", "physics", "fisika", "relativity", "gravity",
+            "gravitation", "thermodynamic", "entanglement", "cosmology", "astrophysic", "mathematic",
+            "matematika", "dynamical system",
         ],
         "kesehatan": [
             "kesehatan", "health", "hospital", "rumah sakit", "clinical", "klinis", "epidemiology",
             "epidemiologi", "patient", "pasien", "stunting", "gizi", "nutrition", "pharmacology", "farmasi",
-            "kedokteran", "faskes", "bpjs kesehatan", "keperawatan", "rekam medis"
+            "kedokteran", "faskes", "bpjs kesehatan", "keperawatan", "rekam medis",
+        ],
+        "bahasa_sastra": [
+            "linguistik", "linguistic", "sastra", "literary", "puisi", "poetry", "cerpen", "pragmatik",
+            "pragmatics", "semantik", "sintaksis", "morfologi", "fonologi", "sosiolinguistik",
+            "sociolinguistic", "wacana", "discourse", "penerjemahan", "translation studies", "efl", "esl",
+            "english language teaching", "bahasa inggris", "bahasa arab", "bahasa indonesia",
+            "speaking skill", "writing skill", "reading comprehension", "keterampilan menulis",
+            "keterampilan berbicara", "code switching", "alih kode",
         ],
     }
 
@@ -662,14 +576,15 @@ def detect_faculty_from_text(title: str, abstract: str = "", full_text: str = ""
 
     scores = {f_id: 0 for f_id in keywords.keys()}
 
+    title_l = (title or "").lower()
     for f_id, kws in keywords.items():
         for kw in kws:
-            if kw in text:
+            pattern = re.compile(r"\b" + re.escape(kw) + (r"\b" if len(kw) <= 4 else ""))
+            if pattern.search(text):
                 # Give higher weight to matches in the title
-                weight = 3 if kw in title.lower() else 1
-                scores[f_id] += weight
+                scores[f_id] += 3 if pattern.search(title_l) else 1
 
     best_faculty = max(scores, key=scores.get)
     if scores[best_faculty] == 0:
-        return "ilahiyyat"
+        return DEFAULT_FACULTY
     return best_faculty

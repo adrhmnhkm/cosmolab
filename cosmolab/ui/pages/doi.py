@@ -1,12 +1,24 @@
 """Summarize one paper from its DOI without adding it. Shown as a tab in Cari & tambah paper."""
 
 import streamlit as st
+from cosmolab import faculties as _faculties
 from cosmolab import db
 from cosmolab import inspector as _inspector
 from cosmolab.ui.components import _e
 from cosmolab.ui.components import _safe_url
 from cosmolab.ui.components import render_hero
 from cosmolab.ui.context import AppContext
+
+
+# One well-known paper per field (DOIs checked on Crossref).
+EXAMPLE_DOIS = [
+    ("Ekonomi", "10.2307/1914185"),                     # Kahneman & Tversky, Prospect Theory
+    ("Pendidikan", "10.1080/0969595980050102"),         # Black & Wiliam, Assessment and Classroom Learning
+    ("Kesehatan", "10.1371/journal.pmed.0020124"),      # Ioannidis, Why Most Published Research Findings Are False
+    ("Sains & teknologi", "10.1038/nature14539"),       # LeCun, Bengio & Hinton, Deep learning
+    ("Bahasa", "10.1093/applin/1.1.1"),                 # Canale & Swain, communicative approaches
+    ("Metodologi", "10.1177/1609406917733847"),         # Nowell et al., Thematic Analysis
+]
 
 
 def render(ctx: AppContext):
@@ -24,21 +36,16 @@ def render_body():
         st.session_state["inspector_doi_input"] = ""
 
     st.markdown("##### Contoh DOI")
-    col_ex1, col_ex2, col_ex3 = st.columns(3)
-    if col_ex1.button("Psikologi kognitif", use_container_width=True):
-        st.session_state["inspector_doi_input"] = "10.1016/j.concog.2020.102980"
-        st.rerun()
-    if col_ex2.button("Matematika", use_container_width=True):
-        st.session_state["inspector_doi_input"] = "10.1007/s00283-022-10224-8"
-        st.rerun()
-    if col_ex3.button("Filsafat", use_container_width=True):
-        st.session_state["inspector_doi_input"] = "10.1093/mind/fzv156"
-        st.rerun()
+    cols = st.columns(3)
+    for i, (label, doi) in enumerate(EXAMPLE_DOIS):
+        if cols[i % 3].button(label, key=f"doi_example_{i}", use_container_width=True):
+            st.session_state["inspector_doi_input"] = doi
+            st.rerun()
 
     doi_val = st.text_input(
         "DOI atau URL paper",
         value=st.session_state["inspector_doi_input"],
-        placeholder="Contoh: 10.1016/j.concog.2020.102980 atau https://doi.org/10.1007/...",
+        placeholder="Contoh: 10.2307/1914185 atau https://doi.org/10.2307/1914185",
         help="Mendukung format DOI murni (10.xxxx/...) atau link https://doi.org/...",
     )
 
@@ -162,7 +169,7 @@ def render_body():
                         res["url"],
                         "doi_inspector",
                         res.get("abstract", ""),
-                        "ilahiyyat"
+                        _faculties.detect_faculty_from_text(res.get("title") or "", res.get("abstract") or ""),
                     ))
                     con.commit()
                     con.close()

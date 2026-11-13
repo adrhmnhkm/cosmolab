@@ -418,7 +418,7 @@ def render(ctx: AppContext):
             col_cat, col_fac = st.columns([1, 2])
             cat_filter = col_cat.selectbox(
                 "Kategori",
-                ["Semua Kategori", "Multidisiplin & Terapan", "Filosofis & Teologis", "Kustom Peneliti"],
+                ["Semua Kategori", "Bidang umum", "Kustom Peneliti"],
                 key="h_cat_filter"
             )
 
@@ -525,7 +525,7 @@ def render(ctx: AppContext):
             new_dept_icon = col_cf_form2.text_input("Ikon", value="", key="reg_fac_icon")
 
             col_cf_meta1, col_cf_meta2 = st.columns(2)
-            new_dept_category = col_cf_meta1.selectbox("Kategori", ["Multidisiplin & Terapan", "Kustom Peneliti", "Sains & Humaniora"], key="reg_fac_cat")
+            new_dept_category = col_cf_meta1.selectbox("Kategori", ["Kustom Peneliti", "Bidang umum"], key="reg_fac_cat")
             new_dept_short = col_cf_meta2.text_input("Deskripsi singkat", placeholder="Contoh: Mutu faskes, akreditasi RS, kepuasan pasien BPJS", key="reg_fac_short")
 
             new_dept_queries = st.text_area(
@@ -691,7 +691,7 @@ def render(ctx: AppContext):
                 for u_idx, up in enumerate(unanalyzed_all, 1):
                     with st.container(border=True):
                         col_ui1, col_ui2 = st.columns([3, 1])
-                        u_fac = _faculties.get_faculty(up.get("faculty") or "ilahiyyat")
+                        u_fac = _faculties.get_faculty(up.get("faculty") or "umum")
                         u_icon = u_fac.icon if u_fac else ""
                         u_fname = u_fac.name if u_fac else (up.get("faculty") or "Umum")
                         with col_ui1:

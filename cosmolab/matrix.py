@@ -28,7 +28,7 @@ def build_literature_matrix(faculty_id: str = "all") -> list[dict]:
 
     matrix = []
     for idx, p in enumerate(papers, 1):
-        p_fac_id = p.get("faculty") or "ilahiyyat"
+        p_fac_id = p.get("faculty") or "umum"
         fac_obj = _faculties.get_faculty(p_fac_id)
         fac_label = f"{fac_obj.icon} {fac_obj.name}" if fac_obj else p_fac_id.title()
 

@@ -36,7 +36,7 @@ terhadap teks paper aslinya** sebelum hasilnya sampai ke klien.
 
 - **Satu alat, satu alur.** Cari, unduh, ekstrak, analisis, tanya, tulis, kirim.
 - **Bisa dilacak.** Setiap kalimat bersitasi dicek terhadap halaman paper yang dirujuk.
-- **Lintas bidang.** Filsafat, agama, hukum, ekonomi, pendidikan, psikologi, sosial, sains, teknologi, kesehatan.
+- **Lintas bidang.** Agama & filsafat, hukum, ekonomi & bisnis, pendidikan, psikologi & sosial, sains & teknologi, kesehatan, bahasa & sastra, plus bidang khusus buatan tim.
 - **Bahasa Indonesia jadi warga kelas satu.** Tanya dalam bahasa Indonesia, cari di korpus berbahasa Inggris.
 - **Siap untuk firma riset.** Proyek per klien, akses tim lewat Tailscale, catatan biaya AI, dokumen Word/PDF berkop firma.
 

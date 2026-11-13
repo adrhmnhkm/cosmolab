@@ -37,17 +37,17 @@ def _detect_query_intent(question: str) -> dict:
     q_lower = question.lower()
     
     # Detect faculty domain
-    faculty = "ilahiyyat"
+    faculty = "umum"
     if any(k in q_lower for k in ("epistemol", "mantiq", "tahu", "pengetahuan", "skeptis", "burhan", "silogisme", "justifik")):
-        faculty = "epistemologi"
+        faculty = "agama_filsafat"
     elif any(k in q_lower for k in ("sebab", "kausal", "akibat", "takdir", "kasb", "kehendak bebas", "free will", "determinism", "occasionalism", "hume", "iqtiran")):
-        faculty = "kausalitas"
+        faculty = "agama_filsafat"
     elif any(k in q_lower for k in ("evil", "kejahatan", "penderitaan", "teodisi", "theodicy", "adil", "keberatan jahat", "derita")):
-        faculty = "teodisi"
+        faculty = "agama_filsafat"
     elif any(k in q_lower for k in ("jiwa", "ruh", "nafs", "pikiran", "mind", "consciousness", "kesadaran", "qualia", "otak", "manusia terbang", "flying man", "ai")):
-        faculty = "falsafah_jiwa"
+        faculty = "agama_filsafat"
     elif any(k in q_lower for k in ("nabi", "kenabian", "prophe", "nubuwwat", "mukjizat", "miracle", "wahyu", "kharq")):
-        faculty = "nubuwwat"
+        faculty = "agama_filsafat"
 
     # Detect specific argument type
     arg_type = None

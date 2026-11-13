@@ -51,8 +51,7 @@ def _is_argument_paper(p: dict) -> bool:
     """Philosophy/theology papers and reasoning-type analyses get a formal premise view."""
     if (p.get("argument_type") or "") in ARGUMENT_TYPES:
         return True
-    fac = _faculties.get_faculty(p.get("faculty") or "ilahiyyat")
-    return bool(fac and fac.category == "Filosofis & Teologis")
+    return _faculties.canonical_id(p.get("faculty")) == "agama_filsafat"
 
 
 STANCE_TONES = {"supports": "good", "critiques": "bad", "mixed": "mix", "neutral": "muted"}
