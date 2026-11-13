@@ -27,14 +27,36 @@ SIM_TONES = {_similarity.NO_CITATION: "bad", _similarity.WRONG_SOURCE: "warn", _
 CHOICES = [_review.ACCEPT, _review.EDIT, _review.DROP]
 
 
+def _uploaded_md(uploaded) -> str:
+    """The uploaded draft as Markdown. Kept per file so the estimate does not reread it on every click."""
+    key = ("_review_draft_md", uploaded.name, uploaded.size)
+    cached = st.session_state.get("_review_draft_md")
+    if cached and cached[0] == key:
+        return cached[1]
+    suffix = Path(uploaded.name).suffix.lower()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / f"draf{suffix}"
+        path.write_bytes(uploaded.getvalue())
+        md = _review.read_draft(path)
+    st.session_state["_review_draft_md"] = (key, md)
+    return md
+
+
+def _estimate_caption(uploaded, pasted: str, online: bool, feedback: bool, similarity: bool):
+    try:
+        md = _uploaded_md(uploaded) if uploaded is not None else pasted
+    except Exception as e:
+        st.caption(f"Draf belum bisa dibaca: {_e(str(e))}")
+        return
+    if md.strip():
+        st.caption(_e(_review.estimate_text(_review.estimate(md, online=online, feedback=feedback,
+                                                               similarity=similarity))))
+
+
 def _run(uploaded, pasted: str, title: str, level: str, online: bool, feedback: bool, similarity: bool,
          progress_cb=None) -> dict:
     if uploaded is not None:
-        suffix = Path(uploaded.name).suffix.lower()
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / f"draf{suffix}"
-            path.write_bytes(uploaded.getvalue())
-            md = _review.read_draft(path)
+        md = _uploaded_md(uploaded)
         name = title or Path(uploaded.name).stem.replace("_", " ")
         source = uploaded.name
     else:
@@ -397,6 +419,7 @@ def render(ctx: AppContext):
                                      help="Matikan untuk pemeriksaan sitasi dan kemiripan saja, tanpa biaya AI.")
             sim_on = col5.checkbox("Cek kemiripan", value=True,
                                    help="Bandingkan setiap kalimat dengan koleksi proyek dan abstrak sumber yang dikutip.")
+            _estimate_caption(uploaded, pasted, online, feedback, sim_on)
             go = st.button("Review draf", type="primary", use_container_width=True)
 
         if go and uploaded is None and not pasted.strip():

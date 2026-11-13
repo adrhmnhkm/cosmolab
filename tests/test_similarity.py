@@ -203,6 +203,22 @@ class TestReviewIntegration(unittest.TestCase):
         self.assertTrue(plog.label.startswith("Komentar AI"))
         self.assertEqual(review.fmt_duration(75), "1:15 mnt")
 
+    def test_estimate(self):
+        est = review.estimate(DRAFT, online=False, feedback=True)
+        self.assertEqual((est["paragraphs"], est["references"], est["batches"]), (6, 1, 1))
+        self.assertEqual(review.estimate_text(est), "6 paragraf, 1 entri pustaka. Perkiraan 1–2 menit dengan "
+                                                    "komentar AI (1 batch); kurang dari 1 menit tanpa komentar AI.")
+        off = review.estimate_text(review.estimate(DRAFT, online=False, feedback=False))
+        self.assertIn("Perkiraan kurang dari 1 menit tanpa komentar AI; 1–2 menit dengan", off)
+
+        long_draft = "\n\n".join([f"Paragraf {i}. " + "kata " * 600 for i in range(100)]
+                                 + ["DAFTAR PUSTAKA"] + [f"Penulis{i}, A. (2020). Judul {i}." for i in range(200)])
+        est = review.estimate(long_draft, online=True)
+        self.assertGreater(est["batches"], 10)
+        self.assertGreater(est["with_ai"][0], est["without_ai"][1])
+        self.assertIn("Cek Crossref memakan", review.estimate_text(est))
+        self.assertEqual(review.estimate_text(review.estimate("")), "Belum ada paragraf isi yang bisa direview.")
+
     def test_both_off_is_refused(self):
         with self.assertRaises(ValueError):
             review.review_text(DRAFT, online=False, feedback=False, similarity=False)

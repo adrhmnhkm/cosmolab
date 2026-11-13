@@ -23,6 +23,7 @@ Steps:
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 from datetime import datetime
@@ -278,6 +279,56 @@ def _dedupe(items: list[str]) -> list[str]:
 def fmt_duration(seconds: float) -> str:
     s = int(round(seconds))
     return f"{s} dtk" if s < 60 else f"{s // 60}:{s % 60:02d} mnt"
+
+
+# Rough timings in seconds (low, high) for the estimate shown before a review starts.
+SEC_PER_REF_ONLINE = (0.25, 0.75)   # Crossref lookup per entry; 4 entries run at a time
+SEC_PER_BATCH = (20.0, 60.0)        # one AI call per batch of about 12,000 characters
+SEC_PER_CITED_ABSTRACT = (0.3, 1.0)  # OpenAlex abstract per entry (about 4 in 5 entries have a DOI)
+SEC_COMPARE = (5.0, 30.0)           # comparing every sentence with the collection
+
+
+def _fmt_range(lo: float, hi: float) -> str:
+    if hi < 60:
+        return "kurang dari 1 menit"
+    lo_m = max(1, round(lo / 60))
+    hi_m = max(lo_m, math.ceil(hi / 60))
+    return f"sekitar {lo_m} menit" if lo_m == hi_m else f"{lo_m}–{hi_m} menit"
+
+
+def estimate(md: str, online: bool = True, feedback: bool = True, similarity: bool = True) -> dict:
+    """Size of a draft and a rough duration range for the review, with and without AI comments."""
+    md = mark_reference_heading(md)
+    paragraphs = split_paragraphs(md)
+    refs = len(verify.split_reference_section(md)[1])
+    batches = len(_batches(paragraphs))
+
+    def span(per, n):
+        return per[0] * n, per[1] * n
+
+    crossref = span(SEC_PER_REF_ONLINE, refs) if online else (0.0, 0.0)
+    sim = (0.0, 0.0)
+    if similarity:
+        abstracts = span(SEC_PER_CITED_ABSTRACT, refs) if online else (0.0, 0.0)
+        sim = (abstracts[0] + SEC_COMPARE[0], abstracts[1] + SEC_COMPARE[1])
+    ai = span(SEC_PER_BATCH, batches)
+    without_ai = (crossref[0] + sim[0], crossref[1] + sim[1])
+    with_ai = (without_ai[0] + ai[0], without_ai[1] + ai[1])
+    return {"paragraphs": len(paragraphs), "references": refs, "batches": batches, "online": online,
+            "feedback": feedback, "crossref": crossref, "with_ai": with_ai, "without_ai": without_ai}
+
+
+def estimate_text(est: dict) -> str:
+    if not est["paragraphs"]:
+        return "Belum ada paragraf isi yang bisa direview."
+    head = f"{est['paragraphs']} paragraf, {est['references']} entri pustaka."
+    with_ai = f"{_fmt_range(*est['with_ai'])} dengan komentar AI ({est['batches']} batch)"
+    without_ai = f"{_fmt_range(*est['without_ai'])} tanpa komentar AI"
+    first, second = (with_ai, without_ai) if est["feedback"] else (without_ai, with_ai)
+    text = f"{head} Perkiraan {first}; {second}."
+    if est["online"] and est["crossref"][1] >= 60:
+        text += f" Cek Crossref memakan {_fmt_range(*est['crossref'])} dari waktu itu."
+    return text
 
 
 class _Stages:

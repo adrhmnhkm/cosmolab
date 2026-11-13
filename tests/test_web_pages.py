@@ -120,6 +120,8 @@ class TestWebPages(unittest.TestCase):
             at.run()
             at.text_area[0].input(DRAFT)
             [t for t in at.toggle if t.label == "Cek sitasi ke Crossref"][0].set_value(False)
+            at.run()
+            self.assertTrue([c for c in at.caption if "paragraf" in c.value and "Perkiraan" in c.value])
             [b for b in at.button if b.label == "Review draf"][0].click()
             at.run()
             self.assertEqual([e.value for e in at.exception], [])

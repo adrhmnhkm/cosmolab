@@ -951,6 +951,9 @@ def review_draft(
         raise typer.Exit(1)
     plog = _review.ProgressLog()
     try:
+        est = _review.estimate(_review.read_draft(Path(path)), online=not offline, feedback=not tanpa_komentar,
+                               similarity=not tanpa_kemiripan)
+        console.print(_review.estimate_text(est), highlight=False)
         with Progress(console=console) as progress:
             task = progress.add_task("[cyan]Mereview draf...", total=1.0)
 
