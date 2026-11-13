@@ -30,6 +30,7 @@ import requests
 
 from . import authors as _authors
 from . import config, verify
+from .utils import fire_cb
 
 SHINGLE = 6           # words per overlapping run
 MIN_SENTENCE_WORDS = 8
@@ -168,19 +169,23 @@ def _openalex_abstract(doi: str) -> str:
     return _flatten_inverted_abstract(r.json().get("abstract_inverted_index") or {})
 
 
-def cited_sources(citations: dict, corpus: list[dict], fetch=None) -> tuple[list[dict], int]:
+def cited_sources(citations: dict, corpus: list[dict], fetch=None, progress_cb=None) -> tuple[list[dict], int]:
     """Abstracts of cited works that are not already in the collection.
 
     Returns (sources, how many lookups found nothing).
     """
     fetch = fetch or _cached_abstract
     have = {s["doi"].lower() for s in corpus if s.get("doi")}
-    out, missed = [], 0
+    todo = []
     for ref in (citations or {}).get("references", []):
         doi = (ref.get("doi") or "").lower()
         if not doi or doi in have or ref.get("status") == verify.OK_CORPUS:
             continue
         have.add(doi)
+        todo.append((ref, doi))
+    out, missed = [], 0
+    for n, (ref, doi) in enumerate(todo, 1):
+        fire_cb(progress_cb, "item", f"abstrak sumber dikutip {n}/{len(todo)}", {"done": n - 1, "total": len(todo)})
         try:
             text = fetch(doi)
         except requests.RequestException:
@@ -303,14 +308,15 @@ def weak_note_student(sim: dict) -> str:
 
 
 def check(paragraphs: list[dict], citations: dict | None = None, online: bool = True,
-          sources: list[dict] | None = None, fetch=None) -> dict:
+          sources: list[dict] | None = None, fetch=None, progress_cb=None) -> dict:
     """Compare every sentence of the draft with the sources.
 
     paragraphs: [{"n", "text"}] as from review.split_paragraphs.
     sources: override the collection (tests); otherwise the project corpus.
+    progress_cb(kind, msg, data): "item" events while abstracts are fetched and sources compared.
     """
     corpus = corpus_sources() if sources is None else sources
-    cited, missed = cited_sources(citations, corpus, fetch) if online and citations else ([], 0)
+    cited, missed = cited_sources(citations, corpus, fetch, progress_cb) if online and citations else ([], 0)
     all_sources = corpus + cited
 
     sentences = []
@@ -322,7 +328,10 @@ def check(paragraphs: list[dict], citations: dict | None = None, online: bool = 
     # source index -> shingles it shares with the draft. Only draft shingles are
     # kept, so memory stays small however large the collection is.
     shared: dict[int, set[str]] = {}
+    total = len(all_sources)
     for idx, src in enumerate(all_sources):
+        if idx % 10 == 0:
+            fire_cb(progress_cb, "item", f"membandingkan dengan sumber {idx}/{total}", {"done": idx, "total": total})
         hits = wanted.intersection(_shingles(words(src["text"])))
         if hits:
             shared[idx] = hits

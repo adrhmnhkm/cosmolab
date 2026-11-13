@@ -24,10 +24,12 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 
 from . import config, similarity as _similarity, verify
+from .utils import fire_cb
 
 LEVELS = {"s1": "skripsi (S1)", "s2": "tesis (S2)", "s3": "disertasi (S3)"}
 
@@ -231,14 +233,17 @@ def _clean_comment(raw: dict, texts: dict[int, str]) -> dict | None:
     }
 
 
-def llm_feedback(paragraphs: list[dict], level: str = "s2", model: str | None = None, chat=None) -> dict:
+def llm_feedback(paragraphs: list[dict], level: str = "s2", model: str | None = None, chat=None,
+                 progress_cb=None) -> dict:
     """Supervisor comments for every paragraph batch, merged into one result."""
     from .analyze import _parse_response
 
     chat = chat or _default_chat
     system = FEEDBACK_PROMPT.format(level=LEVELS.get(level, LEVELS["s2"]))
     comments, strengths, priorities = [], [], []
-    for batch in _batches(paragraphs):
+    batches = list(_batches(paragraphs))
+    for b, batch in enumerate(batches, 1):
+        fire_cb(progress_cb, "item", f"batch {b}/{len(batches)}", {"done": b - 1, "total": len(batches)})
         user = "\n\n".join(
             f"P{p['n']}" + (f" [bagian: {p['section']}]" if p["section"] else "") + f"\n{p['text']}" for p in batch
         )
@@ -267,29 +272,112 @@ def _dedupe(items: list[str]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Progress
+# ---------------------------------------------------------------------------
+
+def fmt_duration(seconds: float) -> str:
+    s = int(round(seconds))
+    return f"{s} dtk" if s < 60 else f"{s // 60}:{s % 60:02d} mnt"
+
+
+class _Stages:
+    """Sends review stages to a progress callback.
+
+    Events: ("stage", label, {stage, n, of}) when a stage starts, ("item", msg,
+    {done, total, ...}) inside it, and ("stage_done", summary, {stage, seconds}).
+    """
+
+    def __init__(self, cb, keys: list[str]):
+        self.cb, self.keys, self.key, self.t0 = cb, keys, "", 0.0
+
+    def _pos(self) -> dict:
+        return {"stage": self.key, "n": self.keys.index(self.key) + 1, "of": len(self.keys)}
+
+    def start(self, key: str, label: str):
+        self.key, self.t0 = key, time.monotonic()
+        fire_cb(self.cb, "stage", label, self._pos())
+
+    def item(self, kind: str, msg: str, data: dict | None = None):
+        fire_cb(self.cb, "item", msg, {**(data or {}), **self._pos()})
+
+    def done(self, summary: str):
+        fire_cb(self.cb, "stage_done", summary, {**self._pos(), "seconds": round(time.monotonic() - self.t0, 1)})
+
+
+class ProgressLog:
+    """Folds review progress events into what a progress display shows.
+
+    Feed it every event (handle), then read label (current stage), now (latest
+    step), fraction (0..1 for the whole review), finished ([(summary, seconds)])
+    and elapsed. When a stage fails, label still names it.
+    """
+
+    def __init__(self):
+        self.t0 = time.monotonic()
+        self.label, self.now = "Memulai", ""
+        self.n, self.of, self.frac = 0, 1, 0.0
+        self.finished: list[tuple[str, float]] = []
+
+    def handle(self, kind: str, msg: str, data: dict | None = None):
+        data = data or {}
+        if kind == "stage":
+            self.label = self.now = msg
+            self.n, self.of, self.frac = data.get("n", self.n + 1), data.get("of", self.of), 0.0
+        elif kind == "item":
+            self.now = msg
+            if data.get("total"):
+                self.frac = max(self.frac, min(1.0, data["done"] / data["total"]))
+        elif kind == "stage_done":
+            self.finished.append((msg, float(data.get("seconds", 0.0))))
+            self.frac = 1.0
+
+    @property
+    def fraction(self) -> float:
+        return 0.0 if not self.n else min(1.0, (self.n - 1 + self.frac) / max(1, self.of))
+
+    @property
+    def elapsed(self) -> float:
+        return time.monotonic() - self.t0
+
+
+# ---------------------------------------------------------------------------
 # Whole review
 # ---------------------------------------------------------------------------
 
 def review_text(md: str, title: str = "", level: str = "s2", online: bool = True, model: str | None = None,
-                chat=None, source: str = "", feedback: bool = True, similarity: bool = True) -> dict:
+                chat=None, source: str = "", feedback: bool = True, similarity: bool = True,
+                progress_cb=None) -> dict:
     """Run the citation check, the supervisor feedback, and the similarity check on a draft.
 
     feedback=False skips the AI comments (no AI cost); similarity=False skips the
-    similarity check. At least one of the two must run.
+    similarity check. At least one of the two must run. progress_cb gets the
+    stage events described in _Stages; ProgressLog turns them into a display.
     """
     if not (feedback or similarity):
         raise ValueError("Pilih minimal satu: komentar pembimbing atau cek kemiripan.")
     from . import audit
 
+    stages = _Stages(progress_cb, ["baca", "sitasi"] + (["komentar"] if feedback else [])
+                     + (["kemiripan"] if similarity else []))
+    stages.start("baca", "Membaca draf")
     level = level if level in LEVELS else "s2"
     md = mark_reference_heading(md)
     paragraphs = split_paragraphs(md)
     if not paragraphs:
         raise ValueError("Draf kosong atau tidak ada paragraf isi yang bisa direview.")
+    n_refs = len(verify.split_reference_section(md)[1])
+    stages.done(f"Membaca draf: {len(paragraphs)} paragraf, {n_refs} entri pustaka")
 
-    cites = verify.verify_markdown(md, source=source, online=online)
-    fb = (llm_feedback(paragraphs, level=level, model=model, chat=chat) if feedback
-          else {"comments": [], "strengths": [], "priorities": []})
+    stages.start("sitasi", "Cek daftar pustaka ke Crossref" if online else "Cek daftar pustaka (tanpa Crossref)")
+    cites = verify.verify_markdown(md, source=source, online=online, progress_cb=stages.item)
+    stages.done(f"Cek daftar pustaka: {len(cites.references)} entri, {len(cites.citations)} sitasi dalam teks")
+
+    if feedback:
+        stages.start("komentar", f"Komentar AI ({len(list(_batches(paragraphs)))} batch)")
+        fb = llm_feedback(paragraphs, level=level, model=model, chat=chat, progress_cb=stages.item)
+        stages.done(f"Komentar AI: {len(fb['comments'])} komentar")
+    else:
+        fb = {"comments": [], "strengths": [], "priorities": []}
 
     report = {
         "title": title or Path(source).stem or "Draf",
@@ -307,15 +395,20 @@ def review_text(md: str, title: str = "", level: str = "s2", online: bool = True
         # Kept so the similarity check can run again later. Internal only.
         "draft_md": md,
     }
-    report["similarity"] = (_similarity.check(paragraphs, report["citations"], online=online)
-                            if similarity else None)
+    report["similarity"] = None
+    if similarity:
+        stages.start("kemiripan", "Cek kemiripan")
+        sim = _similarity.check(paragraphs, report["citations"], online=online, progress_cb=stages.item)
+        report["similarity"] = sim
+        stages.done(f"Cek kemiripan: {sim['score']}%, {len(sim['findings'])} kalimat ditandai, "
+                    f"{sim['sources']['korpus']} paper koleksi dan {sim['sources']['dikutip']} abstrak")
     report["summary"] = summarize(report)
     audit.log("review_draf", file=source or report["title"], model=report["model"], level=level,
               comments=len(report["comments"]), similarity=report["summary"]["similarity_score"])
     return report
 
 
-def run_similarity(report: dict, online: bool = True) -> dict:
+def run_similarity(report: dict, online: bool = True, progress_cb=None) -> dict:
     """Run (or rerun) the similarity check on a saved review. Hidden findings stay hidden."""
     md = report.get("draft_md")
     if not md:
@@ -324,7 +417,7 @@ def run_similarity(report: dict, online: bool = True) -> dict:
 
     old = report.get("similarity") or {}
     hidden = {(f["sentence"], f["source"]["title"]) for f in old.get("findings", []) if f.get("hidden")}
-    sim = _similarity.check(split_paragraphs(md), report["citations"], online=online)
+    sim = _similarity.check(split_paragraphs(md), report["citations"], online=online, progress_cb=progress_cb)
     for f in sim["findings"]:
         f["hidden"] = (f["sentence"], f["source"]["title"]) in hidden
     report["similarity"] = sim
@@ -340,7 +433,7 @@ def fill_sources(report: dict, online: bool = True, progress_cb=None) -> dict:
     if not report.get("draft_md"):
         raise ValueError("Review ini dibuat sebelum cek kemiripan ada. Unggah ulang drafnya.")
     coverage.fill(report, progress_cb=progress_cb)
-    return run_similarity(report, online=online)
+    return run_similarity(report, online=online, progress_cb=progress_cb)
 
 
 def add_source_upload(report: dict, index: int, file_bytes: bytes, filename: str) -> dict:
@@ -352,10 +445,11 @@ def add_source_upload(report: dict, index: int, file_bytes: bytes, filename: str
 
 
 def review_file(path: Path, level: str = "s2", online: bool = True, model: str | None = None, chat=None,
-                feedback: bool = True, similarity: bool = True) -> dict:
+                feedback: bool = True, similarity: bool = True, progress_cb=None) -> dict:
     path = Path(path)
     return review_text(read_draft(path), title=path.stem.replace("_", " "), level=level, online=online,
-                       model=model, chat=chat, source=str(path), feedback=feedback, similarity=similarity)
+                       model=model, chat=chat, source=str(path), feedback=feedback, similarity=similarity,
+                       progress_cb=progress_cb)
 
 
 def summarize(report: dict) -> dict:

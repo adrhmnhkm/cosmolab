@@ -173,6 +173,36 @@ class TestReviewIntegration(unittest.TestCase):
         self.assertTrue([f for f in again["similarity"]["findings"] if f["sentence"] == first["sentence"]][0]["hidden"])
         self.assertTrue(review.export_docx(again, "Konsultan Uji").exists())
 
+    def test_progress_stages(self):
+        events = []
+        plog = review.ProgressLog()
+
+        def cb(kind, msg, data=None):
+            events.append((kind, msg, data))
+            plog.handle(kind, msg, data)
+            self.assertLessEqual(plog.fraction, 1.0)
+
+        review.review_text(DRAFT, title="Draf Uji", online=False, feedback=True, progress_cb=cb,
+                           chat=lambda *a, **k: '{"comments": [], "strengths": [], "priorities": []}')
+        stages = [d["stage"] for k, _, d in events if k == "stage"]
+        self.assertEqual(stages, ["baca", "sitasi", "komentar", "kemiripan"])
+        self.assertEqual([d["stage"] for k, _, d in events if k == "stage_done"], stages)
+        self.assertIn("Membaca draf: 6 paragraf, 1 entri pustaka", [m for m, _ in plog.finished])
+        self.assertIn("batch 1/1", [m for k, m, _ in events if k == "item"])
+        self.assertTrue(plog.finished[-1][0].startswith("Cek kemiripan:"))
+        self.assertEqual(plog.fraction, 1.0)
+
+        # A failing stage stays named in the log.
+        plog = review.ProgressLog()
+
+        def boom(*a, **k):
+            raise RuntimeError("API mati")
+
+        with self.assertRaises(RuntimeError):
+            review.review_text(DRAFT, online=False, progress_cb=plog.handle, chat=boom)
+        self.assertTrue(plog.label.startswith("Komentar AI"))
+        self.assertEqual(review.fmt_duration(75), "1:15 mnt")
+
     def test_both_off_is_refused(self):
         with self.assertRaises(ValueError):
             review.review_text(DRAFT, online=False, feedback=False, similarity=False)

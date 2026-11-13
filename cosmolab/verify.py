@@ -16,7 +16,7 @@ marked for a manual check and blocks delivery until a reviewer signs off.
 import json
 import re
 import unicodedata
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -26,6 +26,7 @@ import requests
 
 from . import config
 from . import db
+from .utils import fire_cb
 
 # Reference statuses
 OK_CORPUS = "ok_corpus"
@@ -358,16 +359,29 @@ def check_citation(cite: Citation, refs: list[Reference], corpus: list[dict]) ->
 # Public API
 # ---------------------------------------------------------------------------
 
-def verify_markdown(md: str, source: str = "", online: bool = True, corpus: list[dict] | None = None) -> VerificationReport:
+def verify_markdown(md: str, source: str = "", online: bool = True, corpus: list[dict] | None = None,
+                    progress_cb=None) -> VerificationReport:
+    """progress_cb(kind, msg, data) gets an "item" event after every reference entry."""
     corpus = _load_corpus() if corpus is None else corpus
     body, raw_refs = split_reference_section(md)
     refs = [parse_reference(r) for r in raw_refs]
+    total = len(refs)
 
-    if online and len(refs) > 1:
+    def step(n):
+        fire_cb(progress_cb, "item", f"{n}/{total} entri pustaka", {"done": n, "total": total})
+
+    if online and total > 1:
         with ThreadPoolExecutor(max_workers=4) as pool:
-            refs = list(pool.map(lambda r: check_reference(r, corpus, online), refs))
+            futures = [pool.submit(check_reference, r, corpus, online) for r in refs]
+            for n, _ in enumerate(as_completed(futures), 1):
+                step(n)
+            refs = [f.result() for f in futures]
     else:
-        refs = [check_reference(r, corpus, online) for r in refs]
+        checked = []
+        for n, r in enumerate(refs, 1):
+            checked.append(check_reference(r, corpus, online))
+            step(n)
+        refs = checked
 
     cites = [check_citation(c, refs, corpus) for c in extract_citations(body)]
     return VerificationReport(

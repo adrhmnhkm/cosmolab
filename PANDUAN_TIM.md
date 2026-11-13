@@ -52,6 +52,7 @@ Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar sepert
 2. Unggah draf (.docx, .md, atau .txt), atau tempel teksnya. Ikutkan daftar pustaka supaya sitasi ikut diperiksa.
 3. Pilih jenjang (S1, S2, atau S3), lalu klik **Review draf**.
    - Matikan **Komentar pembimbing (AI)** kalau hanya perlu cek sitasi dan kemiripan. Cara ini tidak memakai kuota AI.
+   - Selama review berjalan, kotak proses menampilkan tahap yang sedang dikerjakan, tahap yang sudah selesai beserta durasinya, dan waktu berjalan. Kalau gagal, kotak itu menyebut tahap tempat review berhenti.
    - **Cek kemiripan** menyala secara bawaan.
 4. Baca hasilnya:
    - **Prioritas perbaikan**: hal terpenting untuk dikerjakan mahasiswa.

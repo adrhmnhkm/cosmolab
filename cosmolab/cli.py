@@ -949,14 +949,25 @@ def review_draft(
     if jenjang not in _review.LEVELS:
         console.print("[red]--jenjang harus s1, s2, atau s3.[/red]")
         raise typer.Exit(1)
+    plog = _review.ProgressLog()
     try:
-        with Progress() as progress:
-            task = progress.add_task("[cyan]Mereview draf...", total=None)
+        with Progress(console=console) as progress:
+            task = progress.add_task("[cyan]Mereview draf...", total=1.0)
+
+            def on_progress(kind, msg, data=None):
+                plog.handle(kind, msg, data)
+                if kind == "stage_done":
+                    progress.console.print(f"  [green]selesai[/green] {msg} ({_review.fmt_duration(plog.finished[-1][1])})")
+                now = f" · {plog.now}" if plog.now != plog.label else ""
+                progress.update(task, completed=plog.fraction, description=f"[cyan]{plog.label}{now}")
+
             report = _review.review_file(Path(path), level=jenjang, online=not offline, model=model,
-                                         feedback=not tanpa_komentar, similarity=not tanpa_kemiripan)
-            progress.update(task, completed=1, description="[green]Review selesai")
+                                         feedback=not tanpa_komentar, similarity=not tanpa_kemiripan,
+                                         progress_cb=on_progress)
+            progress.update(task, completed=1.0,
+                            description=f"[green]Review selesai dalam {_review.fmt_duration(plog.elapsed)}")
     except (FileNotFoundError, ValueError) as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]Gagal saat {plog.label}: {e}[/red]")
         raise typer.Exit(1)
     paths = _review.save(report)
     s = report["summary"]

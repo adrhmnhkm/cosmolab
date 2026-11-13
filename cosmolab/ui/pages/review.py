@@ -11,6 +11,7 @@ consultant hides them.
 """
 
 import tempfile
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -26,7 +27,8 @@ SIM_TONES = {_similarity.NO_CITATION: "bad", _similarity.WRONG_SOURCE: "warn", _
 CHOICES = [_review.ACCEPT, _review.EDIT, _review.DROP]
 
 
-def _run(uploaded, pasted: str, title: str, level: str, online: bool, feedback: bool, similarity: bool) -> dict:
+def _run(uploaded, pasted: str, title: str, level: str, online: bool, feedback: bool, similarity: bool,
+         progress_cb=None) -> dict:
     if uploaded is not None:
         suffix = Path(uploaded.name).suffix.lower()
         with tempfile.TemporaryDirectory() as tmp:
@@ -38,7 +40,40 @@ def _run(uploaded, pasted: str, title: str, level: str, online: bool, feedback: 
     else:
         md, name, source = pasted, title or "Draf", "teks ditempel"
     return _review.review_text(md, title=name, level=level, online=online, source=source,
-                               feedback=feedback, similarity=similarity)
+                               feedback=feedback, similarity=similarity, progress_cb=progress_cb)
+
+
+def _run_with_log(*args) -> dict | None:
+    """Run the review inside a status box: progress bar, finished stages with durations, elapsed time."""
+    plog = _review.ProgressLog()
+    with st.status("Memulai review...", expanded=True) as box:
+        bar = st.progress(0.0)
+        log = st.empty()
+
+        def lines(extra: str = "") -> str:
+            out = [f"- {_e(msg)} · {_review.fmt_duration(sec)}" for msg, sec in plog.finished]
+            return "\n".join(out + ([extra] if extra else []))
+
+        def cb(kind, msg, data=None):
+            plog.handle(kind, msg, data)
+            box.update(label=f"{plog.label} · {_review.fmt_duration(plog.elapsed)} berjalan")
+            bar.progress(plog.fraction, text=_e(plog.now))
+            log.markdown(lines())
+
+        try:
+            report = _run(*args, progress_cb=cb)
+            t = time.monotonic()
+            _review.save(report)
+            plog.finished.append(("Menyimpan hasil", time.monotonic() - t))
+        except Exception as e:
+            box.update(label=f"Gagal saat: {plog.label}", state="error", expanded=True)
+            log.markdown(lines(f"- **Gagal saat {_e(plog.label)}:** {_e(str(e))}"))
+            return None
+        bar.progress(1.0, text="Selesai")
+        log.markdown(lines())
+        box.update(label=f"Review selesai dalam {_review.fmt_duration(plog.elapsed)}", state="complete",
+                   expanded=False)
+    return report
 
 
 def _wkey(key: str, stem: str, cid: str, part: str) -> str:
@@ -369,13 +404,9 @@ def render(ctx: AppContext):
         elif go and not (feedback or sim_on):
             st.warning("Pilih minimal satu: komentar pembimbing atau cek kemiripan.")
         elif go:
-            try:
-                with st.spinner("Membaca draf dan menyusun komentar. Draf panjang bisa beberapa menit..."):
-                    report = _run(uploaded, pasted, title, level, online, feedback, sim_on)
-                    _review.save(report)
+            report = _run_with_log(uploaded, pasted, title, level, online, feedback, sim_on)
+            if report:
                 st.session_state["review_current"] = report["stem"]
-            except Exception as e:
-                st.error(f"Review gagal: {e}")
 
         current = st.session_state.get("review_current")
         if current:
