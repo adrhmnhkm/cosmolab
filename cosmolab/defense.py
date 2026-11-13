@@ -52,6 +52,10 @@ kontribusi (kebaruan, keterbatasan, implikasi).
 Aturan wajib:
 - Setiap pertanyaan harus berangkat dari isi draf. Sertakan "quote": potongan 5-25 kata yang disalin PERSIS dari draf
   (huruf dan tanda baca sama), yaitu bagian yang kamu tanyakan. Jangan memparafrasekan kutipan.
+- Kutipan harus memuat hal yang ditanyakan. Kalau pertanyaan menyebut angka, periode, istilah, atau nama, kutipan harus
+  berisi angka, periode, istilah, atau nama itu. Jangan memakai kalimat lain dari bagian yang sama sebagai kutipan.
+- Pertanyaan hanya boleh menyebut hal yang ada di draf. Jangan menambahkan platform, peristiwa, data, atau teori yang
+  tidak disebut draf.
 - Pertanyaan harus menuntut penjelasan atau pembelaan, bukan jawaban ya/tidak. Satu pertanyaan, satu hal.
 - "looks_for": 1-2 kalimat tentang apa yang ingin didengar penguji dari jawaban yang baik (kriteria, bukan jawabannya).
 - Sesuaikan kedalaman dengan jenjang {level}. Tulis dalam bahasa Indonesia.
@@ -69,11 +73,17 @@ Aturan wajib:
   jawabannya sendiri. Tugasmu menunjukkan apa yang sudah kuat, apa yang belum terjawab, dan apa yang perlu disiapkan.
 - Nilai hanya dari jawaban dan bagian draf yang diberikan. Kalau jawaban menyebut hal yang tidak ada di draf, katakan
   bahwa penguji akan meminta buktinya.
+- Jangan menyebut platform, peristiwa, data, angka, teori, atau nama yang tidak ada di pertanyaan, bagian draf, atau
+  jawaban. Kalau sesuatu perlu dicari mahasiswa, tunjuk ke drafnya sendiri ("bab metode", "bagian yang dikutip"),
+  bukan ke contoh yang kamu karang.
+- "strengths" hanya berisi hal yang benar-benar tertulis di jawaban. Jawaban umum yang bisa dipakai untuk draf apa pun
+  (misalnya "sesuai tujuan penelitian", "sudah banyak dipakai") bukan kekuatan. Kalau tidak ada yang kuat, isi [].
+- Nilai "kuat" hanya kalau jawaban menjawab inti pertanyaan dengan alasan yang spesifik pada draf ini.
 - Tulis dalam bahasa Indonesia, langsung dan sopan.
 
 Balas HANYA JSON:
 {{"score": "kuat"|"cukup"|"lemah",
-  "strengths": ["yang sudah baik dari jawaban, maksimal 2"],
+  "strengths": ["yang sudah baik dari jawaban, maksimal 2, boleh kosong"],
   "gaps": ["yang belum terjawab atau lemah, maksimal 3"],
   "prepare": ["yang perlu disiapkan atau dibaca lagi sebelum sidang, maksimal 2"],
   "follow_up": "satu pertanyaan lanjutan yang kemungkinan diajukan penguji"}}"""
