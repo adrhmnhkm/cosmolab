@@ -1,10 +1,14 @@
-"""Dashboard page: Studio Artikel Siap Baca."""
+"""Dashboard page: Tulis artikel, for the firm's own content (blog, webinar, class material).
+
+Not for client work: writing a student's text for them is what the firm does not do,
+so this page has no client delivery and is open to the owner and admins only.
+"""
 
 import streamlit as st
 from cosmolab import config
+from cosmolab import home as _home
 from cosmolab import writer as _writer
 from cosmolab.ui.components import render_hero
-from cosmolab.ui.components import render_client_delivery
 from cosmolab.ui.context import AppContext
 
 
@@ -14,22 +18,28 @@ def render(ctx: AppContext):
     selected_faculty_id = ctx.selected_faculty_id
     render_hero(
         title="Tulis Artikel",
-        subtitle="AI menulis draf artikel dari paper di koleksi. Draf wajib diperiksa peneliti sebelum dikirim ke klien.",
+        subtitle="AI menulis draf artikel dari paper di koleksi untuk konten firma sendiri: blog, materi webinar, "
+                 "atau bahan kelas.",
         icon="",
     )
+    if not _home.is_owner():
+        st.info("Halaman ini khusus admin. Tulis artikel hanya dipakai untuk konten firma, bukan untuk pekerjaan klien.")
+        return
+    st.warning("Hanya untuk konten firma. Jangan dipakai untuk menulis skripsi, tesis, disertasi, atau artikel atas nama "
+               "mahasiswa. Untuk klien, pakai Tinjauan pustaka, Review draf, dan Latihan sidang.")
 
-    tab_art1, tab_art2 = st.tabs(["Tulis baru", "Artikel tersimpan & kirim ke klien"])
+    tab_art1, tab_art2 = st.tabs(["Tulis baru", "Artikel tersimpan"])
 
     with tab_art1:
         topic_presets = {
             "agama_filsafat": "Moderasi beragama di ruang digital: apa kata penelitian terbaru",
-            "hukum": "Perlindungan data pribadi setelah UU PDP: celah yang masih terbuka",
-            "ekonomi": "Literasi keuangan dan perilaku menabung generasi muda",
-            "pendidikan": "Pembelajaran berbasis proyek: bukti dari penelitian di sekolah Indonesia",
-            "psikologi_sosial": "Kesehatan mental mahasiswa tingkat akhir: faktor risiko dan dukungan",
-            "sains_teknologi": "Kecerdasan buatan dalam pendidikan tinggi: peluang dan risikonya",
+            "hukum": "Perlindungan data pribadi setelah UU PDP: yang perlu diketahui peneliti",
+            "ekonomi": "Lima temuan riset tentang literasi keuangan generasi muda",
+            "pendidikan": "Pembelajaran berbasis proyek: apa kata bukti penelitian",
+            "psikologi_sosial": "Kesehatan mental mahasiswa tingkat akhir: ringkasan riset untuk webinar",
+            "sains_teknologi": "Kecerdasan buatan di pendidikan tinggi: peluang dan risikonya",
             "kesehatan": "Pencegahan stunting: intervensi yang terbukti berhasil",
-            "bahasa_sastra": "Alih kode dalam percakapan anak muda di media sosial",
+            "bahasa_sastra": "Alih kode di media sosial: pengantar untuk kelas metodologi",
         }
         default_preset = topic_presets.get(selected_faculty_id, "")
 
@@ -93,7 +103,7 @@ def render(ctx: AppContext):
             # Action Toolbar inside a border container
             with st.container(border=True):
                 st.success(f"Draf selesai: sekitar {curr.get('reading_time_min', 5)} menit baca. "
-                           "Untuk mengirim ke klien, buka tab **Artikel tersimpan & kirim ke klien**.")
+                           "Periksa isi dan rujukannya sebelum diterbitkan.")
                 col_tb3, col_tb4 = st.columns(2)
                 
                 with col_tb3:
@@ -143,14 +153,13 @@ def render(ctx: AppContext):
             html_partner = articles_dir / f"{art_path.stem}.html"
             html_partner_data = html_partner.read_text(encoding="utf-8") if html_partner.exists() else _writer.format_article_html({"title": art_path.stem, "content_md": art_text})
 
-            render_client_delivery(art_path, key=f"art_{art_path.stem}")
-
-            with st.expander("Unduhan internal (Markdown / HTML, bukan untuk klien)"):
-                col_ar1, col_ar2 = st.columns(2)
-                with col_ar1:
-                    st.download_button("Unduh .md", data=art_text, file_name=selected_art_file, mime="text/markdown", use_container_width=True)
-                with col_ar2:
-                    st.download_button("Unduh .html", data=html_partner_data, file_name=f"{art_path.stem}.html", mime="text/html", use_container_width=True)
+            col_ar1, col_ar2 = st.columns(2)
+            with col_ar1:
+                st.download_button("Unduh .md", data=art_text, file_name=selected_art_file, mime="text/markdown",
+                                   use_container_width=True, on_click="ignore")
+            with col_ar2:
+                st.download_button("Unduh .html", data=html_partner_data, file_name=f"{art_path.stem}.html",
+                                   mime="text/html", use_container_width=True, on_click="ignore")
 
             st.markdown("#### Pratinjau")
             if hasattr(st, "iframe"):

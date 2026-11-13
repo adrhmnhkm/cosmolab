@@ -30,7 +30,7 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
      - **1 · Kumpulkan**: **Cari & tambah paper**. Termasuk tab **Ringkas dari DOI** untuk meringkas satu paper tanpa memasukkannya ke koleksi.
      - **2 · Pahami**: **Koleksi paper** (daftar, matriks literatur, cari di naskah, ekspor daftar pustaka .bib/.ris) dan **Tanya koleksi**.
      - **3 · Hasil untuk klien**: **Tinjauan pustaka & celah riset**, **Review draf mahasiswa**, dan **Latihan sidang**.
-     - **Lainnya**: Tulis artikel, Periksa akurasi.
+     - **Admin** (hanya pemilik dan akun admin): Periksa akurasi, dan Tulis artikel untuk konten firma sendiri (blog, materi webinar, bahan kelas). Tulis artikel tidak dipakai untuk pekerjaan klien.
    - Analisis AI setiap paper berisi tujuan riset, metode, sampel dan data, temuan, keterbatasan, dan saran riset lanjutan. Matriks literatur di **Koleksi paper** memakai kolom yang sama, dan pencari celah riset memakai keterbatasan serta saran riset lanjutan sebagai bahan. Paper filsafat dan teologi juga mendapat premis, keberatan, dan pembelaan.
    - **Pertanyaan riset** di Beranda: isi topik, pertanyaan riset mahasiswa, dan hipotesisnya (boleh kosong). Setelah itu tekan **Nilai paper**. AI menilai setiap paper yang sudah dianalisis: mendukung, menolak, campuran, atau tidak berkaitan, dengan satu kalimat alasan. Penilaian memakai ringkasan analisis, bukan naskah penuh, jadi murah (8 paper per panggilan AI). Hasilnya tampil sebagai grafik di Beranda, lencana dan alasan di detail paper, dan kolom di matriks literatur. Kalau pertanyaan atau hipotesis diubah, penilaian lama tidak dipakai dan paper perlu dinilai ulang. Penilaian AI ini bahan awal: baca alasannya sebelum dipakai.
    - Paper yang dianalisis sebelum 13 Nov 2026 belum punya tujuan, sampel, keterbatasan, dan saran. Lengkapi di **Cari & tambah paper**, tab **Analisis paper**, bagian **Perlu dilengkapi**. Biaya AI-nya sama dengan analisis baru. Koreksi peneliti pada kalimat yang berubah ditandai usang, jadi periksa ulang paper yang pernah dikoreksi.
@@ -108,7 +108,7 @@ AI tidak menuliskan jawaban untuk mahasiswa. Pertanyaan dan penilaian ini bahan 
 
 Klien hanya menerima file Word atau PDF berkop firma, bukan file Markdown atau HTML.
 
-1. Buka hasil kerja di dashboard: **Tulis artikel** (tab Arsip) atau **Tinjauan pustaka & celah riset**.
+1. Buka hasil kerja di dashboard: **Tinjauan pustaka & celah riset**.
 2. Di bagian **Kirim ke Klien**, klik **Periksa Sitasi**. CosmoLab mencocokkan setiap rujukan dengan koleksi proyek dan Crossref.
 3. Baca tabel hasilnya:
    - **Terverifikasi**: aman.

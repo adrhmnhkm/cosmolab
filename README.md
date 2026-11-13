@@ -73,7 +73,7 @@ terhadap teks paper aslinya** sebelum hasilnya sampai ke klien.
 - **Gatekeeper klaim**: setiap kalimat bersitasi dinilai *didukung*, *sebagian*, atau *tidak didukung*.
 - **Review draf mahasiswa** (S1–S3): komentar ala pembimbing per paragraf, plus cek sitasi. Setiap komentar AI wajib mengutip kalimat draf (dicek otomatis) dan harus diterima, diedit, atau dibuang konsultan sebelum dikirim.
 - **Cek kemiripan pra-submit** (tanpa AI): setiap kalimat draf dibandingkan dengan teks lengkap koleksi proyek dan abstrak sumber yang dikutip. Kalimat yang mirip diberi label: tanpa sitasi, sitasi ke karya lain, atau terlalu dekat dengan sumber. Skornya perkiraan, bukan skor Turnitin. Tombol **Lengkapi pembanding** mengunduh teks lengkap sumber yang dikutip (hanya yang legal dan terbuka: DOI, judul, URL OJS) dan menyusun daftar sumber yang perlu dikirim mahasiswa.
-- **Studio artikel**: esai, tinjauan jurnal, atau monograf.
+- **Tulis artikel** untuk konten firma sendiri (blog, materi webinar, bahan kelas). Khusus admin, bukan untuk pekerjaan klien.
 - **Tinjauan pustaka & celah riset** dari seluruh koleksi, plus matriks literatur.
 
 </td>

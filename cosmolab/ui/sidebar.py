@@ -2,6 +2,7 @@
 
 import streamlit as st
 from cosmolab import config
+from cosmolab import home as _home
 from cosmolab import team as _team
 from cosmolab import db
 from cosmolab import faculties as _faculties
@@ -108,9 +109,13 @@ def build_sidebar() -> AppContext:
     render_nav_item("Review draf mahasiswa", "Review Draf Mahasiswa", icon=":material/rate_review:")
     render_nav_item("Latihan sidang", "Latihan Sidang", icon=":material/record_voice_over:")
 
-    st.sidebar.markdown("<div class='nav-cluster-header'>Lainnya</div>", unsafe_allow_html=True)
-    render_nav_item("Tulis artikel", "Studio Artikel Siap Baca", icon=":material/edit_note:")
-    render_nav_item("Periksa akurasi", "Pusat Akurasi", icon=":material/verified:")
+    # Admin tools: the owner's local dashboard, or an admin account in team mode.
+    if _home.is_owner():
+        st.sidebar.markdown("<div class='nav-cluster-header'>Admin</div>", unsafe_allow_html=True)
+        render_nav_item("Periksa akurasi", "Pusat Akurasi", icon=":material/verified:")
+        render_nav_item("Tulis artikel (konten firma)", "Studio Artikel Siap Baca", icon=":material/edit_note:")
+    elif st.session_state.get("active_nav_menu") in ("Pusat Akurasi", "Studio Artikel Siap Baca"):
+        st.session_state["active_nav_menu"] = "Beranda"
 
     menu = st.session_state["active_nav_menu"]
 
