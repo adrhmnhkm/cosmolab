@@ -1,6 +1,7 @@
 """Dashboard page: Cari & tambah paper (menu key "Panen Paper Ilmiah")."""
 
 import html
+import json
 from datetime import datetime
 import streamlit as st
 from cosmolab import config
@@ -649,10 +650,43 @@ def render(ctx: AppContext):
         st.progress(len(analyzed_all) / len(all_papers) if all_papers else 0.0,
                     text=f"{len(analyzed_all)} dari {len(all_papers)} paper sudah dianalisis")
 
-        tab_sub1, tab_sub2 = st.tabs([
+        def _raw(p):
+            try:
+                return json.loads(p.get("raw_json") or "{}")
+            except (TypeError, ValueError):
+                return {}
+
+        incomplete_all = [p for p in analyzed_all if _analyze.needs_lit_fields(_raw(p))]
+
+        tab_sub1, tab_sub_lit, tab_sub2 = st.tabs([
             f"Belum dianalisis ({len(unanalyzed_all)})",
+            f"Perlu dilengkapi ({len(incomplete_all)})",
             "Analisis ulang"
         ])
+
+        with tab_sub_lit:
+            if not incomplete_all:
+                st.success("Semua analisis sudah memuat tujuan riset, sampel, keterbatasan, dan saran riset lanjutan.")
+            else:
+                with st.container(border=True):
+                    st.caption("Paper ini dianalisis dengan versi lama. Analisis ulang menambahkan tujuan riset, sampel dan "
+                               "data, keterbatasan, dan saran riset lanjutan. Setiap paper dianalisis penuh lagi, jadi "
+                               "biaya AI sama dengan analisis baru, sekitar 1 menit per paper. Koreksi peneliti pada kalimat "
+                               "yang berubah ditandai usang dan tidak dipakai lagi, jadi periksa ulang paper yang pernah dikoreksi.")
+                    col_l1, col_l2 = st.columns([2, 1])
+                    lit_lang = col_l1.selectbox("Bahasa hasil", ["id", "en"], key="lit_lang_opt",
+                                                format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English")
+                    lit_workers = col_l2.slider("Paper sekaligus", min_value=1, max_value=6, value=3, key="lit_workers_opt")
+                    lit_map = {p.get("file"): f"{p.get('title') or p.get('file')} ({p.get('year', 'n.d.')})"
+                               for p in incomplete_all}
+                    lit_chosen = st.multiselect("Pilih paper (kosongkan untuk semua)", options=list(lit_map),
+                                                format_func=lambda x: lit_map.get(x, x), key="lit_chosen_targets")
+                    lit_targets = lit_chosen or list(lit_map)
+                    if st.button(f"Lengkapi {len(lit_targets)} paper", type="primary", key="btn_run_lit_batch",
+                                 use_container_width=True):
+                        run_live_analyze_process(target_files=lit_targets, model=config.LLM_MODEL, lang=lit_lang,
+                                                 workers=lit_workers)
+                        st.rerun()
 
         with tab_sub1:
             if not unanalyzed_all:

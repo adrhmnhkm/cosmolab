@@ -27,8 +27,9 @@ WRONG = "salah"
 EDITED = "diedit"
 LABELS = {CORRECT: "Benar (dicek peneliti)", WRONG: "Salah (dibuang)", EDITED: "Diedit peneliti"}
 
-LIST_FIELDS = {"premises", "key_findings", "notable_concepts"}
-TEXT_FIELDS = {"thesis", "conclusion", "key_objection", "key_defense", "research_method"}
+LIST_FIELDS = {"premises", "key_findings", "notable_concepts", "limitations", "future_research"}
+TEXT_FIELDS = {"thesis", "conclusion", "key_objection", "key_defense", "research_method", "research_question",
+               "sample_data"}
 
 
 def key_of(field: str, index: int | None = None) -> str:

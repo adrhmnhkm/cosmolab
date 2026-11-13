@@ -86,6 +86,12 @@ def synthesize(model: str = None, lang: str = "en") -> dict:
         payload.append({
             "title": m.get("title"), "year": m.get("year"),
             "argument_type": a.get("argument_type"),
+            "research_question": a.get("research_question"),
+            "method": a.get("research_method"),
+            "sample_data": a.get("sample_data"),
+            "key_findings": a.get("key_findings"),
+            "limitations": a.get("limitations"),
+            "future_research": a.get("future_research"),
             "stance": a.get("supports_or_critiques"),
             "premises": a.get("premises"),
             "key_objection": a.get("key_objection"),

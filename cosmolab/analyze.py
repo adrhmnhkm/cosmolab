@@ -39,11 +39,15 @@ class Quote(BaseModel):
 class PaperAnalysis(BaseModel):
     thesis: str | None = None
     argument_type: str | None = None
+    research_question: str | None = None
     research_method: str | None = None
+    sample_data: str | None = None
     premises: list[str] = []
     conclusion: str | None = None
     supports_or_critiques: str | None = None
     key_findings: list[str] = []
+    limitations: list[str] = []
+    future_research: list[str] = []
     key_objection: str | None = None
     key_defense: str | None = None
     notable_concepts: list[str] = []
@@ -71,16 +75,26 @@ CRITICAL INSTRUCTIONS — FULL-TEXT CORPUS DISSECTION:
    - Formulate 4-7 structured premises in English reflecting the logical derivation of the thesis.
 6. ARGUMENT TYPE:
    - Select closest match: "empiris_kuantitatif"|"kualitatif_studi_kasus"|"yuridis_normatif"|"kajian_literatur"|"filosofis_rasional"|"konseptual_teoretis"|"komparatif"|"other".
+7. LITERATURE REVIEW FIELDS (what a consultant needs to compare papers):
+   - 'research_question': the research question or aim as the authors state it, in one or two sentences.
+   - 'sample_data': who or what was studied: sample size and population, data source, period, location, or the texts and regulations analysed. Null if the paper has no data (purely conceptual).
+   - 'limitations': 1-4 limitations the authors acknowledge. If they state none, give at most 2 evident ones and start each with "(not stated by the authors)".
+   - 'future_research': 1-3 suggestions for further research made by the authors. Empty list if they make none.
+8. OBJECTION AND DEFENSE ('key_objection', 'key_defense'): fill these only for philosophical, theological, or conceptual argument papers. Use null for empirical, legal, and review papers.
 
 Return STRICT JSON matching this schema:
 {
   "thesis": str,
   "argument_type": str,
+  "research_question": str|null,
   "research_method": str|null,
+  "sample_data": str|null,
   "premises": [str],
   "conclusion": str,
   "supports_or_critiques": "supports"|"critiques"|"neutral"|"mixed",
   "key_findings": [str],
+  "limitations": [str],
+  "future_research": [str],
   "key_objection": str|null,
   "key_defense": str|null,
   "notable_concepts": [str],
@@ -109,16 +123,26 @@ PENTING — PRINSIP ANALISIS MENYELURUH (DEEP CORPUS EXTRACTION):
    - Rumuskan 4-7 premis logis dalam Bahasa Indonesia yang mencerminkan alur pembuktian lengkap dari data dan analisis di pembahasan.
 6. ARGUMENT TYPE:
    - Pilih salah satu: "empiris_kuantitatif", "kualitatif_studi_kasus", "yuridis_normatif", "kajian_literatur", "filosofis_rasional", "konseptual_teoretis", "komparatif", atau "other".
+7. ISIAN TINJAUAN PUSTAKA (yang dibutuhkan konsultan untuk membandingkan paper):
+   - 'research_question': pertanyaan atau tujuan penelitian seperti dinyatakan penulis, satu atau dua kalimat.
+   - 'sample_data': apa atau siapa yang diteliti: jumlah dan populasi sampel, sumber data, periode, lokasi, atau teks dan peraturan yang dianalisis. Null kalau paper tidak memakai data (murni konseptual).
+   - 'limitations': 1-4 keterbatasan yang diakui penulis. Kalau penulis tidak menyebut satu pun, beri paling banyak 2 keterbatasan yang jelas dan awali masing-masing dengan "(tidak disebut penulis)".
+   - 'future_research': 1-3 saran penelitian lanjutan dari penulis. Daftar kosong kalau tidak ada.
+8. KEBERATAN DAN PEMBELAAN ('key_objection', 'key_defense'): isi hanya untuk paper argumen filsafat, teologi, atau konseptual. Isi null untuk paper empiris, hukum, dan kajian literatur.
 
 Kembalikan STRICT JSON dengan skema ini:
 {
   "thesis": str,
   "argument_type": str,
+  "research_question": str|null,
   "research_method": str|null,
+  "sample_data": str|null,
   "premises": [str],
   "conclusion": str,
   "supports_or_critiques": "supports"|"critiques"|"neutral"|"mixed",
   "key_findings": [str],
+  "limitations": [str],
+  "future_research": [str],
   "key_objection": str|null,
   "key_defense": str|null,
   "notable_concepts": [str],
@@ -130,6 +154,16 @@ PROMPTS = {
     "en": PROMPT_EN,
     "id": PROMPT_ID,
 }
+
+
+# Fields added for literature-review style analysis (13 Nov 2026). Analyses made
+# before that lack these keys and are listed as "perlu dilengkapi".
+LIT_FIELDS = ("research_question", "sample_data", "limitations", "future_research")
+
+
+def needs_lit_fields(analysis: dict | None) -> bool:
+    """True for an analysis made before the literature-review fields existed."""
+    return bool(analysis) and not all(k in analysis for k in LIT_FIELDS)
 
 
 def _strip_references(text: str) -> str:

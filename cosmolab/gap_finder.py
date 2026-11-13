@@ -50,15 +50,25 @@ def find_research_gaps(faculty_id: str = "all", custom_focus: str = "", model: s
         title = p.get("title") or "Untitled"
         year = p.get("year") or "n.d."
         thesis = p.get("thesis") or "Tidak ada data tesis"
-        obj = p.get("key_objection") or "Tidak ada data objeksi"
-        defense = p.get("key_defense") or "Tidak ada data tanggapan"
-        stance = p.get("supports_or_critiques") or "neutral"
-        corpus_items.append(
-            f"- [{year}] {title} (Stance: {stance})\n"
-            f"  Tesis: {thesis}\n"
-            f"  Objeksi: {obj}\n"
-            f"  Tanggapan: {defense}"
-        )
+        try:
+            raw = json.loads(p.get("raw_json") or "{}")
+        except (TypeError, ValueError):
+            raw = {}
+        lines = [f"- [{year}] {title}", f"  Tesis: {thesis}"]
+        for label, key in (("Tujuan", "research_question"), ("Metode", "research_method"), ("Sampel/data", "sample_data")):
+            if raw.get(key):
+                lines.append(f"  {label}: {raw[key]}")
+        # What authors admit is missing is the best evidence of a research gap.
+        for label, key in (("Temuan", "key_findings"), ("Keterbatasan", "limitations"),
+                           ("Saran riset lanjutan", "future_research")):
+            items = [x for x in (raw.get(key) or []) if isinstance(x, str) and x.strip()]
+            if items:
+                lines.append(f"  {label}: " + "; ".join(items))
+        if p.get("key_objection"):
+            lines.append(f"  Keberatan: {p['key_objection']}")
+        if p.get("key_defense"):
+            lines.append(f"  Tanggapan: {p['key_defense']}")
+        corpus_items.append("\n".join(lines))
 
     corpus_digest = "\n".join(corpus_items)
 

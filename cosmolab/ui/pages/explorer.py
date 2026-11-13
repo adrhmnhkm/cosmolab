@@ -235,7 +235,8 @@ def render(ctx: AppContext):
         _export.render_citation_export()
 
     with tab_pe2:
-        st.caption("Ringkasan semua paper dalam satu tabel: penulis, tahun, inti paper, premis, dan keberatan.")
+        st.caption("Semua paper dalam satu tabel untuk tinjauan pustaka: tujuan, metode, sampel, temuan, keterbatasan, "
+                   "dan saran riset lanjutan. Unduhan CSV juga memuat premis dan keberatan untuk paper filsafat.")
 
         matrix_data = _matrix.build_literature_matrix(selected_faculty_id)
 
@@ -281,17 +282,22 @@ def render(ctx: AppContext):
                     st.markdown(f"**Kebaruan pustaka:** {_EMOJI_RE.sub('', str(recency['status_label'])).strip()}")
                     st.caption(recency['message'])
 
+            old = sum(1 for r in matrix_data if r["old_analysis"])
+            if old:
+                st.info(f"{old} paper dianalisis dengan versi lama, jadi kolom tujuan, sampel, keterbatasan, dan saran "
+                        "masih kosong. Lengkapi di menu Cari & tambah paper, tab Analisis paper, bagian Perlu dilengkapi.")
             display_rows = []
             for r in matrix_data:
                 display_rows.append({
                     "No": r["no"],
                     "Penulis & Tahun": f"{r['author']} ({r['year']})",
                     "Judul": r["title"],
-                    "Fakultas": r["faculty"],
-                    "Sikap": r["stance"],
-                    "Tesis": r["thesis"],
-                    "Premis Inti": r["premises"],
-                    "Objeksi": r["key_objection"],
+                    "Tujuan riset": r["research_question"],
+                    "Metode": r["method"],
+                    "Sampel dan data": r["sample"],
+                    "Temuan": r["findings"],
+                    "Keterbatasan": r["limitations"],
+                    "Saran riset lanjutan": r["future_research"],
                 })
             with st.container(border=True):
                 render_table(display_rows, height=520)

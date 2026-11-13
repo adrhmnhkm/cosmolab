@@ -31,6 +31,8 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
      - **2 · Pahami**: **Koleksi paper** (daftar, matriks literatur, cari di naskah, ekspor daftar pustaka .bib/.ris) dan **Tanya koleksi**.
      - **3 · Hasil untuk klien**: **Tinjauan pustaka & celah riset** dan **Review draf mahasiswa**.
      - **Lainnya**: Tulis artikel, Latihan debat, Periksa akurasi.
+   - Analisis AI setiap paper berisi tujuan riset, metode, sampel dan data, temuan, keterbatasan, dan saran riset lanjutan. Matriks literatur di **Koleksi paper** memakai kolom yang sama, dan pencari celah riset memakai keterbatasan serta saran riset lanjutan sebagai bahan. Paper filsafat dan teologi juga mendapat premis, keberatan, dan pembelaan.
+   - Paper yang dianalisis sebelum 13 Nov 2026 belum punya tujuan, sampel, keterbatasan, dan saran. Lengkapi di **Cari & tambah paper**, tab **Analisis paper**, bagian **Perlu dilengkapi**. Biaya AI-nya sama dengan analisis baru. Koreksi peneliti pada kalimat yang berubah ditandai usang, jadi periksa ulang paper yang pernah dikoreksi.
 4. Selesai bekerja: tutup jendela hitam (command prompt). Dashboard ikut mati.
 
 ## 3. Aturan proyek klien

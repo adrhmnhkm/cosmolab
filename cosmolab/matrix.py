@@ -14,6 +14,9 @@ from . import db
 from . import faculties as _faculties
 from . import citations
 
+# Same keys as analyze.LIT_FIELDS (not imported: analyze pulls in the LLM client).
+LIT_KEYS = ("research_question", "sample_data", "limitations", "future_research")
+
 
 def build_literature_matrix(faculty_id: str = "all") -> list[dict]:
     """
@@ -52,6 +55,15 @@ def build_literature_matrix(faculty_id: str = "all") -> list[dict]:
         }
         stance_str = stance_map.get(stance_raw, stance_raw.title())
 
+        try:
+            raw = json.loads(p.get("raw_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            raw = {}
+
+        def _joined(key):
+            items = [x for x in (raw.get(key) or []) if isinstance(x, str) and x.strip()]
+            return " | ".join(items) if items else "-"
+
         apa_cite = citations.format_apa(p)
         in_text = citations.format_in_text_apa(p)
 
@@ -68,6 +80,14 @@ def build_literature_matrix(faculty_id: str = "all") -> list[dict]:
             "thesis": p.get("thesis") or "Tidak dinyatakan eksplisit",
             "premises": premises_text,
             "conclusion": p.get("conclusion") or "-",
+            "research_question": raw.get("research_question") or "-",
+            "method": raw.get("research_method") or "-",
+            "sample": raw.get("sample_data") or "-",
+            "findings": _joined("key_findings"),
+            "limitations": _joined("limitations"),
+            "future_research": _joined("future_research"),
+            "analyzed": bool(p.get("thesis")),
+            "old_analysis": bool(p.get("thesis")) and not all(k in raw for k in LIT_KEYS),
             "key_objection": p.get("key_objection") or "-",
             "key_defense": p.get("key_defense") or "-",
             "doi": p.get("doi") or "",
@@ -92,21 +112,10 @@ def export_matrix_csv(matrix: list[dict], out_path: Path | None = None) -> Path:
     out_path = out_path or (matrix_dir / f"matriks_sintesis_literatur_{timestamp}.csv")
 
     headers = [
-        "No",
-        "Penulis",
-        "Tahun",
-        "Judul Paper",
-        "Fakultas",
-        "Sikap (Stance)",
-        "Tipe Argumen",
-        "Tesis Utama",
-        "Rekonstruksi Premis",
-        "Kesimpulan Logis",
-        "Objeksi Terkuat",
-        "Pertahanan Penulis",
-        "Sitasi APA",
-        "DOI",
-        "Tautan PDF"
+        "No", "Penulis", "Tahun", "Judul", "Bidang", "Jenis penelitian",
+        "Tujuan riset", "Metode", "Sampel dan data", "Temuan", "Keterbatasan", "Saran riset lanjutan",
+        "Kesimpulan", "Inti paper", "Premis", "Keberatan", "Pembelaan",
+        "Sitasi APA", "DOI", "Tautan",
     ]
 
     with open(out_path, mode="w", newline="", encoding="utf-8-sig") as f:
@@ -114,21 +123,10 @@ def export_matrix_csv(matrix: list[dict], out_path: Path | None = None) -> Path:
         writer.writerow(headers)
         for r in matrix:
             writer.writerow([
-                r["no"],
-                r["author"],
-                r["year"],
-                r["title"],
-                r["faculty"],
-                r["stance"],
-                r["argument_type"],
-                r["thesis"],
-                r["premises"],
-                r["conclusion"],
-                r["key_objection"],
-                r["key_defense"],
-                r["citation_apa"],
-                r["doi"],
-                r["url"]
+                r["no"], r["author"], r["year"], r["title"], r["faculty"], r["argument_type"],
+                r["research_question"], r["method"], r["sample"], r["findings"], r["limitations"], r["future_research"],
+                r["conclusion"], r["thesis"], r["premises"], r["key_objection"], r["key_defense"],
+                r["citation_apa"], r["doi"], r["url"],
             ])
 
     return out_path
@@ -144,22 +142,20 @@ def export_matrix_markdown(matrix: list[dict], out_path: Path | None = None) -> 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = out_path or (matrix_dir / f"matriks_sintesis_literatur_{timestamp}.md")
 
-    md_lines = [
-        f"# 📊 Matriks Sintesis Literatur (State of the Art Mapping)",
-        f"> *Dihasilkan secara otomatis oleh CosmoLab University Dialectical Engine pada {datetime.now().strftime('%d %B %Y')}*\n",
-        f"Total Literatur Dianalisis: **{len(matrix)} paper**\n",
-        "| No | Penulis & Tahun | Judul Paper | Fakultas | Sikap | Tesis Utama | Premis Inti | Objeksi Terkuat |",
-        "|---|---|---|---|---|---|---|---|"
-    ]
+    def cell(text: str, limit: int = 160) -> str:
+        text = str(text or "-").replace("|", "/").replace("\n", " ")
+        return text if len(text) <= limit else text[:limit] + "..."
 
+    md_lines = [
+        "# Matriks Literatur",
+        f"Dibuat CosmoLab pada {datetime.now().strftime('%d %B %Y')}. Jumlah paper: **{len(matrix)}**.\n",
+        "| No | Penulis & Tahun | Judul | Tujuan riset | Metode | Sampel dan data | Temuan | Keterbatasan |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
     for r in matrix:
-        safe_title = r['title'].replace("|", "/")
-        safe_thesis = r['thesis'].replace("|", "/").replace("\n", " ")[:150] + "..." if len(r['thesis']) > 150 else r['thesis']
-        safe_prems = r['premises'].replace("|", "/").replace("\n", " ")[:120] + "..." if len(r['premises']) > 120 else r['premises']
-        safe_obj = r['key_objection'].replace("|", "/").replace("\n", " ")[:120] + "..." if len(r['key_objection']) > 120 else r['key_objection']
-        
         md_lines.append(
-            f"| {r['no']} | {r['author']} ({r['year']}) | **{safe_title}** | {r['faculty']} | {r['stance']} | {safe_thesis} | {safe_prems} | {safe_obj} |"
+            f"| {r['no']} | {cell(r['author'], 60)} ({r['year']}) | **{cell(r['title'], 120)}** | {cell(r['research_question'])} "
+            f"| {cell(r['method'], 80)} | {cell(r['sample'], 120)} | {cell(r['findings'], 200)} | {cell(r['limitations'])} |"
         )
 
     out_path.write_text("\n".join(md_lines), encoding="utf-8")

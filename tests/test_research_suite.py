@@ -53,7 +53,7 @@ class TestResearchSuite(unittest.TestCase):
             matrix.export_matrix_markdown(mat, out_md)
             self.assertTrue(out_md.exists())
             md_text = out_md.read_text(encoding="utf-8")
-            self.assertIn("Matriks Sintesis Literatur", md_text)
+            self.assertIn("# Matriks Literatur", md_text)
             self.assertIn("| No |", md_text)
 
         # Recency compliance audit test

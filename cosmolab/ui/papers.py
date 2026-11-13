@@ -9,6 +9,7 @@ from cosmolab import faculties as _faculties
 from cosmolab import authors as _authors
 from cosmolab import entail as _entail
 from cosmolab import analysis_check as _acheck
+from cosmolab import analyze as _analyze
 from cosmolab import corrections as _corrections
 from cosmolab import metadata as _metadata
 from cosmolab import sinta as _sinta
@@ -87,8 +88,10 @@ def paper_badges(p: dict) -> str:
     analyzed = bool(p.get("thesis"))
     out.append(_badge("Sudah dianalisis", "muted") if analyzed else _badge("Belum dianalisis", "warn"))
     if analyzed:
-        stn = p.get("supports_or_critiques") or "neutral"
-        out.append(_badge(STANCE_LABELS.get(stn, stn), STANCE_TONES.get(stn, "muted")))
+        # Stance only means something for argument papers (philosophy, theology).
+        if _is_argument_paper(p):
+            stn = p.get("supports_or_critiques") or "neutral"
+            out.append(_badge(STANCE_LABELS.get(stn, stn), STANCE_TONES.get(stn, "muted")))
         arg_t = p.get("argument_type") or ""
         if arg_t and arg_t not in ("other", "unclassified"):
             out.append(_badge(TYPE_LABELS.get(arg_t, arg_t), _type_tone(arg_t)))
@@ -126,6 +129,9 @@ def _numbered_list(items: list, prefix: str = "") -> str:
     return f"<ol class='an-list'>{rows}</ol>"
 
 
+WIDE_FACTS = {"Tujuan riset", "Metode riset", "Sampel dan data"}
+
+
 def render_analysis_detail(p: dict):
     """Analysis of one paper, laid out by paper kind: argument papers show premises,
     empirical papers show method and findings."""
@@ -143,6 +149,8 @@ def render_analysis_detail(p: dict):
         quotes = []
     method = raw.get("research_method")
     findings = [f for f in (raw.get("key_findings") or []) if isinstance(f, str) and f.strip()]
+    limitations = [x for x in (raw.get("limitations") or []) if isinstance(x, str) and x.strip()]
+    future = [x for x in (raw.get("future_research") or []) if isinstance(x, str) and x.strip()]
     is_arg = _is_argument_paper(p)
     arg_t = p.get("argument_type") or ""
 
@@ -153,19 +161,24 @@ def render_analysis_detail(p: dict):
         return
 
     facts = []
+    if raw.get("research_question"):
+        facts.append(("Tujuan riset", raw["research_question"]))
     if method:
         facts.append(("Metode riset", method))
+    if raw.get("sample_data"):
+        facts.append(("Sampel dan data", raw["sample_data"]))
     if arg_t and arg_t != "other":
         facts.append(("Jenis kajian", _badge(TYPE_LABELS.get(arg_t, arg_t), _type_tone(arg_t))))
-    stn = p.get("supports_or_critiques") or "neutral"
-    facts.append(("Sikap terhadap topik", _badge(STANCE_LABELS.get(stn, "Netral"), STANCE_TONES.get(stn, "muted"))))
+    if is_arg:
+        stn = p.get("supports_or_critiques") or "neutral"
+        facts.append(("Sikap terhadap topik", _badge(STANCE_LABELS.get(stn, "Netral"), STANCE_TONES.get(stn, "muted"))))
     if p.get("doi"):
         facts.append(("DOI", p["doi"]))
     else:
         facts.append(("DOI", _badge("Tidak ada DOI, cek sumber sebelum dikutip", "warn")))
     st.markdown(
         "<div class='an-facts'>" + "".join(
-            f"<div class='an-fact{' wide' if k == 'Metode riset' else ''}'><div class='an-fact-label'>{_e(k)}</div>"
+            f"<div class='an-fact{' wide' if k in WIDE_FACTS else ''}'><div class='an-fact-label'>{_e(k)}</div>"
             f"<div class='an-fact-value'>{v if str(v).startswith('<span') else _e(str(v))}</div></div>"
             for k, v in facts) + "</div>",
         unsafe_allow_html=True,
@@ -187,6 +200,15 @@ def render_analysis_detail(p: dict):
     if p.get("conclusion"):
         st.markdown(f"<div class='an-section'>Kesimpulan</div><div class='an-conclusion'>{_e(p['conclusion'])}</div>",
                     unsafe_allow_html=True)
+    if limitations:
+        st.markdown("<div class='an-section'>Keterbatasan</div>" + _numbered_list(limitations), unsafe_allow_html=True)
+    if future:
+        st.markdown("<div class='an-section'>Saran riset lanjutan</div>"
+                    "<div class='an-section-note'>Bahan untuk mencari celah riset.</div>" + _numbered_list(future),
+                    unsafe_allow_html=True)
+    if _analyze.needs_lit_fields(raw):
+        st.caption("Analisis versi lama: tujuan riset, sampel, keterbatasan, dan saran riset lanjutan belum ada. "
+                   "Lengkapi di Cari & tambah paper, tab Analisis paper, bagian Perlu dilengkapi.")
 
     boxes = []
     if p.get("key_objection"):

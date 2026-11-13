@@ -25,9 +25,13 @@ from . import config
 # Fields checked, in display order: (key, label, is_list)
 FIELDS = [
     ("thesis", "Tesis", False),
+    ("research_question", "Tujuan riset", False),
+    ("sample_data", "Sampel dan data", False),
     ("conclusion", "Kesimpulan", False),
     ("premises", "Premis", True),
     ("key_findings", "Temuan", True),
+    ("limitations", "Keterbatasan", True),
+    ("future_research", "Saran riset lanjutan", True),
     ("key_objection", "Keberatan utama", False),
     ("key_defense", "Pembelaan", False),
 ]
