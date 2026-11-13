@@ -178,5 +178,32 @@ class TestReview(unittest.TestCase):
             review.read_draft(p)
 
 
+class TestCitationFindings(unittest.TestCase):
+    def test_heading_above_a_citation_is_not_part_of_the_name(self):
+        from cosmolab import verify
+
+        body = ("### 2.1 Pembelajaran Berbasis Proyek\n\nThomas (2000) menyebut lima kriteria.\n\n"
+                "## Kemampuan Berpikir Kritis\nEnnis (1993) menjelaskan penilaian. Krajcik dan Blumenfeld (2006) juga.")
+        names = {(c.name, c.year) for c in verify.extract_citations(body)}
+        self.assertEqual(names, {("Thomas", "2000"), ("Ennis", "1993"), ("Krajcik dan Blumenfeld", "2006")})
+
+    def test_manual_checks_are_counted_apart_from_errors(self):
+        from cosmolab import verify
+
+        report = {"citations": {
+            "references": [{"status": verify.OK_CROSSREF}, {"status": verify.NOT_FOUND}, {"status": verify.NOT_FOUND},
+                           {"status": verify.UNPARSED}, {"status": verify.YEAR_MISMATCH}],
+            "citations": [{"status": verify.CITE_OK}, {"status": verify.CITE_NO_REFERENCE}],
+        }}
+        self.assertEqual(review.citation_counts(report), {"citations_problem": 2, "references_manual": 3})
+        self.assertEqual(review.citation_counts({}), {"citations_problem": 0, "references_manual": 0})
+
+
+class TestConcurrencySetting(unittest.TestCase):
+    def test_llm_concurrency_value(self):
+        for value, expected in (("1", 1), ("0", 1), ("20", 8), ("abc", 4), ("", 4), ("4", 4)):
+            self.assertEqual(config._concurrency(value), expected, value)
+
+
 if __name__ == "__main__":
     unittest.main()

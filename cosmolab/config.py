@@ -171,6 +171,17 @@ FIRM_CONTACT = _env("COSMOLAB_FIRM_CONTACT")
 _logo = _env("COSMOLAB_FIRM_LOGO")
 FIRM_LOGO = (Path(_logo) if Path(_logo).is_absolute() else PROJECT_ROOT / _logo) if _logo else None
 
+# Papers analysed at the same time. 4 suits a paid API. A local model (llama.cpp) shares one
+# context across parallel requests, so set LLM_CONCURRENCY=1 there.
+def _concurrency(value: str) -> int:
+    try:
+        return max(1, min(int(value), 8))
+    except (TypeError, ValueError):
+        return 4
+
+
+LLM_CONCURRENCY = _concurrency(_env("LLM_CONCURRENCY", "4"))
+
 # Team access: password asked by the dashboard when started with `cosmolab ui --team`.
 TEAM_PASSWORD = _env("COSMOLAB_TEAM_PASSWORD")
 

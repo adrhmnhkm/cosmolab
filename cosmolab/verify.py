@@ -62,10 +62,15 @@ REF_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 YEAR = r"(?:1[5-9]|20)\d{2}"
-NAME = r"[A-Z][\w'’\-\.]*(?:\s+(?:al-|bin\s+|ibn\s+|van\s+|de\s+)?[A-Z][\w'’\-\.]*){0,3}"
-NAMES = NAME + r"(?:\s*(?:&|dan|and)\s*" + NAME + r")?(?:\s+(?:et\s+al\.?|dkk\.?))?"
+# Spaces inside a citation never cross a line break: otherwise a heading right above a paragraph
+# ("Pembelajaran Berbasis Proyek" then "Thomas (2000)") is read as part of the author's name.
+_S = r"[ \t ]"
+NAME = (r"[A-Z][\w'’\-\.]*(?:" + _S + r"+(?:al-|bin" + _S + r"+|ibn" + _S + r"+|van" + _S + r"+|de" + _S
+        + r"+)?[A-Z][\w'’\-\.]*){0,3}")
+NAMES = (NAME + r"(?:" + _S + r"*(?:&|dan|and)" + _S + r"*" + NAME + r")?(?:" + _S + r"+(?:et" + _S
+         + r"+al\.?|dkk\.?))?")
 PAREN_CITE_RE = re.compile(r"\((" + NAMES + r"),?\s+(" + YEAR + r")[a-z]?(?:\s*[,:;][^()]*)?\)")
-NARRATIVE_CITE_RE = re.compile(r"\b(" + NAMES + r")\s+\((" + YEAR + r")[a-z]?(?:\s*[,:][^()]*)?\)")
+NARRATIVE_CITE_RE = re.compile(r"\b(" + NAMES + r")" + _S + r"+\((" + YEAR + r")[a-z]?(?:\s*[,:][^()]*)?\)")
 BRACKET_CITE_RE = re.compile(r"\[([^\[\]\n]{3,200}?)\s*\((" + YEAR + r")[a-z]?\)\]")
 STOP_NAMES = {"lihat", "see", "cf", "bab", "chapter", "tahun", "abad", "sejak", "pada", "dalam", "the", "in"}
 

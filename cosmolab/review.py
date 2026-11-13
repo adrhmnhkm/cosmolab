@@ -503,6 +503,25 @@ def review_file(path: Path, level: str = "s2", online: bool = True, model: str |
                        progress_cb=progress_cb)
 
 
+REF_WRONG = {verify.YEAR_MISMATCH, verify.AUTHOR_MISMATCH}
+REF_MANUAL = {verify.NOT_FOUND, verify.UNPARSED, verify.SKIPPED}
+
+
+def citation_counts(report: dict) -> dict:
+    """Citation findings split by what they mean.
+
+    citations_problem: a real error (cited but not in the reference list, wrong year or author).
+    references_manual: not found online or not readable. Often a book or local journal; check by hand.
+    """
+    refs = (report.get("citations") or {}).get("references") or []
+    cites = (report.get("citations") or {}).get("citations") or []
+    return {
+        "citations_problem": (sum(1 for r in refs if r["status"] in REF_WRONG)
+                              + sum(1 for c in cites if c["status"] in verify.BLOCKING_CITE)),
+        "references_manual": sum(1 for r in refs if r["status"] in REF_MANUAL),
+    }
+
+
 def summarize(report: dict) -> dict:
     by_sev = {s: 0 for s in SEVERITIES}
     by_cat = {c: 0 for c in CATEGORIES}
@@ -521,6 +540,7 @@ def summarize(report: dict) -> dict:
         "references_flagged": sum(1 for r in refs if r["status"] in verify.BLOCKING_REF),
         "citations": len(cites),
         "citations_missing": sum(1 for c in cites if c["status"] in verify.BLOCKING_CITE),
+        **citation_counts(report),
         "similarity_score": (report.get("similarity") or {}).get("score"),
         "similarity_findings": len(_similarity.visible(report.get("similarity"))),
     }

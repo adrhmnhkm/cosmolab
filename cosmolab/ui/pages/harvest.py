@@ -320,15 +320,19 @@ def render(ctx: AppContext):
             except TypeError:
                 ext_stats = _extract.extract_all()
 
+            # Downloaded papers go into the database now, so they show up even when the analysis
+            # below fails or the page is closed before it ends.
+            db.sync_all()
+
             # Step 3: Analysis
             if auto_analyze and counters["downloaded"] > 0:
                 status_box.info(f"**AI ({config.LLM_MODEL}) sedang membedah naskah utuh (Metodologi, Temuan Pembahasan & Kesimpulan)...**")
                 try:
-                    an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id", progress_cb=_ui_cb, files=target_files if target_files else None)
+                    an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=config.LLM_CONCURRENCY, lang="id", progress_cb=_ui_cb, files=target_files if target_files else None)
                 except TypeError:
-                    an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id")
+                    an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=config.LLM_CONCURRENCY, lang="id")
 
-            # Sync DB
+            # Sync DB (again: adds the analyses)
             db.sync_all()
 
             progress_bar.progress(1.0, text="Seluruh tahapan panen, ekstraksi, dan analisis berhasil diselesaikan!")
@@ -387,6 +391,7 @@ def render(ctx: AppContext):
         try:
             status_box.info(f"Menyiapkan teks naskah untuk {total} berkas...")
             _extract.extract_all(progress_cb=_an_cb, files=target_files)
+            db.sync_all()
             status_box.info(f"Membedah {total} naskah dengan AI ({model})...")
             _analyze.analyze_all(model=model, concurrency=workers, lang=lang, force=True, progress_cb=_an_cb, files=target_files)
             db.sync_all()
@@ -676,7 +681,9 @@ def render(ctx: AppContext):
                     col_l1, col_l2 = st.columns([2, 1])
                     lit_lang = col_l1.selectbox("Bahasa hasil", ["id", "en"], key="lit_lang_opt",
                                                 format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English")
-                    lit_workers = col_l2.slider("Paper sekaligus", min_value=1, max_value=6, value=3, key="lit_workers_opt")
+                    lit_workers = col_l2.slider("Paper sekaligus", min_value=1, max_value=8,
+                                                 value=min(3, config.LLM_CONCURRENCY), key="lit_workers_opt",
+                                                 help="Untuk AI lokal (llama.cpp), pakai 1.")
                     lit_map = {p.get("file"): f"{p.get('title') or p.get('file')} ({p.get('year', 'n.d.')})"
                                for p in incomplete_all}
                     lit_chosen = st.multiselect("Pilih paper (kosongkan untuk semua)", options=list(lit_map),
@@ -697,7 +704,9 @@ def render(ctx: AppContext):
 
                     col_opt1, col_opt2, col_opt3 = st.columns([2, 1, 1])
                     studio_model = col_opt1.selectbox("Model AI", [config.LLM_MODEL, "gemini-3-8-flash", "gemini-2.5-flash"], index=0, key="studio_model_opt")
-                    studio_workers = col_opt2.slider("Paper sekaligus", min_value=1, max_value=6, value=4, key="studio_workers_opt")
+                    studio_workers = col_opt2.slider("Paper sekaligus", min_value=1, max_value=8,
+                                                     value=config.LLM_CONCURRENCY, key="studio_workers_opt",
+                                                     help="Untuk AI lokal (llama.cpp), pakai 1.")
                     studio_lang = col_opt3.selectbox("Bahasa hasil", ["id", "en"], format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English", key="studio_lang_opt")
 
                     # Multi-select options

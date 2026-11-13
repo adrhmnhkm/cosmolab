@@ -388,7 +388,13 @@ def _show(stem: str, key: str):
     c1.metric("Paragraf isi", s["paragraphs"])
     c2.metric("Komentar AI", total if with_ai else "-")
     c3.metric("Kutipan tidak cocok", s.get("ungrounded", 0) if with_ai else "-")
-    c4.metric("Sitasi bermasalah", s["references_flagged"] + s["citations_missing"])
+    cc = _review.citation_counts(report)  # computed here too: older saved reports lack these keys
+    c4.metric("Sitasi bermasalah", cc["citations_problem"],
+              delta=f"{cc['references_manual']} perlu cek manual" if cc["references_manual"] else None,
+              delta_color="off",
+              help="Bermasalah: dikutip tapi tidak ada di daftar pustaka, atau tahun/penulis tidak cocok. "
+                   "Cek manual: tidak ditemukan di koleksi maupun Crossref. Sering terjadi pada buku dan jurnal lokal; "
+                   "belum tentu salah.")
     c5.metric("Kemiripan (perkiraan)", f"{sim['score']}%" if sim else "-",
               help="Dibandingkan dengan koleksi proyek dan abstrak sumber yang dikutip. Bukan skor Turnitin.")
 

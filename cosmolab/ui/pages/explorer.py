@@ -94,7 +94,7 @@ def render(ctx: AppContext):
                     if col_ub2.button(f"Analisis semua ({len(unanalyzed_scope)})", type="primary", key="btn_batch_analyze_all", use_container_width=True):
                         with st.spinner(f"Sedang membedah {len(unanalyzed_scope)} naskah dengan AI ({config.LLM_MODEL})..."):
                             target_f = [p["file"] for p in unanalyzed_scope]
-                            _analyze.analyze_all(model=config.LLM_MODEL, concurrency=4, lang="id", files=target_f)
+                            _analyze.analyze_all(model=config.LLM_MODEL, concurrency=config.LLM_CONCURRENCY, lang="id", files=target_f)
                             db.sync_all()
                             st.success(f"Pembedahan {len(unanalyzed_scope)} naskah selesai!")
                             st.rerun()
