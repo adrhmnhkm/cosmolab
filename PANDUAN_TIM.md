@@ -22,8 +22,13 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
    - Biarkan kosong untuk memakai data utama (koleksi lama, bukan milik klien mana pun).
 3. Dashboard terbuka di browser, di halaman **Beranda**. Nama proyek aktif tampil di kiri atas dan di Beranda. Pastikan namanya benar sebelum mulai.
    - **Perlu tindakan** di Beranda berisi pekerjaan yang menunggu: review yang komentarnya belum diputuskan, review yang Word-nya belum dibuat, dan paper yang belum dianalisis. Klik **Buka** untuk langsung ke halamannya.
-   - Di bawahnya ada grafik isi koleksi: tahun terbit (berapa persen terbitan 5 tahun terakhir), posisi paper terhadap tesisnya (mendukung, campuran, mengkritik), bidang ilmu, dan asal sumber. Grafik ini ikut filter **Bidang ilmu** di sidebar. Arahkan kursor ke grafik untuk melihat angkanya.
+   - Di bawahnya ada grafik isi koleksi: tahun terbit (berapa persen terbitan 5 tahun terakhir), jenis penelitian (empiris kuantitatif, kualitatif, kajian literatur, dan seterusnya), bidang ilmu, dan asal sumber. Grafik ini ikut filter **Bidang ilmu** di sidebar. Arahkan kursor ke grafik untuk melihat angkanya.
    - Pemilik yang menjalankan dashboard tanpa mode tim juga melihat status setup, semua proyek, dan pemakaian AI bulan ini.
+   - Menu di sidebar mengikuti urutan kerja untuk satu klien:
+     - **1 · Kumpulkan**: **Cari & tambah paper**. Termasuk tab **Ringkas dari DOI** untuk meringkas satu paper tanpa memasukkannya ke koleksi.
+     - **2 · Pahami**: **Koleksi paper** (daftar, matriks literatur, cari di naskah, ekspor daftar pustaka .bib/.ris) dan **Tanya koleksi**.
+     - **3 · Hasil untuk klien**: **Tinjauan pustaka & celah riset** dan **Review draf mahasiswa**.
+     - **Lainnya**: Tulis artikel, Latihan debat, Periksa akurasi.
 4. Selesai bekerja: tutup jendela hitam (command prompt). Dashboard ikut mati.
 
 ## 3. Aturan proyek klien
@@ -35,11 +40,11 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
 
 ## 4. Jurnal Indonesia dan peringkat SINTA
 
-**Mencari paper dari jurnal Indonesia.** Di **Panen Paper**, tab **Cari topik**, centang **Khusus jurnal Indonesia**. Pakai kata kunci bahasa Indonesia. CosmoLab hanya mengambil jurnal Indonesia atau artikel berbahasa Indonesia yang punya DOI dan naskah terbuka. Jurnal tanpa DOI tidak ikut; cari manual di Garuda kalau perlu.
+**Mencari paper dari jurnal Indonesia.** Di **Cari & tambah paper**, tab **Cari topik**, centang **Khusus jurnal Indonesia**. Pakai kata kunci bahasa Indonesia. CosmoLab hanya mengambil jurnal Indonesia atau artikel berbahasa Indonesia yang punya DOI dan naskah terbuka. Jurnal tanpa DOI tidak ikut; cari manual di Garuda kalau perlu.
 
 **Label SINTA.** Paper dari jurnal yang ada di daftar SINTA tim mendapat label **SINTA 1** sampai **SINTA 6**. Di **Koleksi Paper**, buka **Filter lain** untuk menyaring, misalnya hanya SINTA 1–2.
 
-SINTA tidak menyediakan data untuk diambil otomatis, jadi tim mengisi daftarnya sendiri di **Panen Paper**, tab **Peringkat SINTA**:
+SINTA tidak menyediakan data untuk diambil otomatis, jadi tim mengisi daftarnya sendiri di **Cari & tambah paper**, tab **Peringkat SINTA**:
 
 1. Buka halaman jurnal di <https://sinta.kemdiktisaintek.go.id/journals>. Catat nama, ISSN cetak dan online, serta peringkatnya.
 2. Isi di **Tambah satu jurnal**, atau kumpulkan banyak jurnal di Excel lalu simpan sebagai CSV dan **Impor CSV**. Kolom yang dibutuhkan: `nama`, `issn`, `eissn`, `peringkat`.
@@ -87,7 +92,7 @@ Jangan menulis ulang bagian draf untuk mahasiswa. Perbaikan tetap dikerjakan mah
 
 Klien hanya menerima file Word atau PDF berkop firma, bukan file Markdown atau HTML.
 
-1. Buka hasil kerja di dashboard: **Studio Artikel** (tab Arsip) atau **Laporan Sintesis**.
+1. Buka hasil kerja di dashboard: **Tulis artikel** (tab Arsip) atau **Tinjauan pustaka & celah riset**.
 2. Di bagian **Kirim ke Klien**, klik **Periksa Sitasi**. CosmoLab mencocokkan setiap rujukan dengan koleksi proyek dan Crossref.
 3. Baca tabel hasilnya:
    - **Terverifikasi**: aman.

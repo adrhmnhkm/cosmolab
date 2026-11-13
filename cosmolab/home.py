@@ -29,20 +29,20 @@ EVENT_LABELS = {
     "cek_metadata": "Cek metadata",
     "evaluasi": "Evaluasi",
     "koreksi": "Koreksi",
-    "tanya": "Tanya korpus",
+    "tanya": "Tanya koleksi",
 }
 
 
 # usage.jsonl stores the module that called the AI; these are the names people know.
 FEATURE_LABELS = {
     "analyze": "Analisis paper",
-    "ask": "Tanya korpus",
-    "ask_agent": "Tanya korpus (agen)",
+    "ask": "Tanya koleksi",
+    "ask_agent": "Tanya koleksi (agen)",
     "authors": "Cari nama penulis",
     "entail": "Cek klaim terhadap sumber",
     "evaluate": "Evaluasi jawaban",
     "passages": "Kutipan dari paper",
-    "retrieval": "Pencarian di korpus",
+    "retrieval": "Pencarian di koleksi",
     "review": "Review draf",
     "writer": "Tulis artikel",
     "lainnya": "Lainnya",
@@ -127,7 +127,7 @@ def todo(papers: list[dict], root: Path | None = None) -> list[dict]:
     unanalyzed = sum(1 for p in papers if not p.get("thesis"))
     if unanalyzed:
         items.append({"kind": "analisis", "title": f"{unanalyzed} paper belum dianalisis",
-                      "detail": "Analisis dulu supaya bisa dipakai di Tanya Korpus, sintesis, dan cek kemiripan.",
+                      "detail": "Analisis dulu supaya bisa dipakai di Tanya koleksi, tinjauan pustaka, dan cek kemiripan.",
                       "stem": ""})
     return items
 
@@ -219,20 +219,20 @@ def setup_checks(now: datetime | None = None) -> list[dict]:
     age = (now - backed).days if backed else None
     return [
         {"label": "Kunci API AI", "ok": bool(config.LLM_API_KEY),
-         "detail": "Terisi." if config.LLM_API_KEY else "Belum diisi: analisis, komentar review, dan tanya korpus tidak "
+         "detail": "Terisi." if config.LLM_API_KEY else "Belum diisi: analisis, komentar review, dan tanya koleksi tidak "
                                                        "bisa jalan. Isi LLM_API_KEY di .env."},
         {"label": "Email untuk Crossref dan OpenAlex", "ok": config.EMAIL != "you@example.com",
          "detail": "Terisi." if config.EMAIL != "you@example.com" else
          "Masih contoh. Layanan bisa membatasi akses. Isi COSMOLAB_EMAIL di .env."},
         {"label": "Kunci CORE", "ok": bool(config.CORE_API_KEY),
          "detail": "Terisi." if config.CORE_API_KEY else
-         "Belum diisi: Panen Paper tidak mencari di CORE. Isi CORE_API_KEY di .env."},
+         "Belum diisi: Cari & tambah paper tidak mencari di CORE. Isi CORE_API_KEY di .env."},
         {"label": "Tarif AI", "ok": bool(_usage.pricing()),
          "detail": "Terisi." if _usage.pricing() else
          "Belum diisi: biaya hanya tampil sebagai jumlah token. Isi COSMOLAB_PRICING di .env."},
         {"label": "Daftar jurnal SINTA", "ok": n_sinta > 0,
          "detail": f"{n_sinta} jurnal." if n_sinta else
-         "Kosong: label SINTA tidak muncul. Isi di Panen Paper, tab Peringkat SINTA."},
+         "Kosong: label SINTA tidak muncul. Isi di Cari & tambah paper, tab Peringkat SINTA."},
         {"label": "Backup", "ok": age is not None and age <= BACKUP_MAX_DAYS,
          "detail": ("Belum pernah. Jalankan: cosmolab backup" if age is None else
                     f"Terakhir {backed:%d %b %Y}" + ("." if age <= BACKUP_MAX_DAYS else
@@ -291,7 +291,17 @@ def usage_by_feature(month: str | None = None) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 RECENT_YEARS = 5
-STANCE = [("supports", "Mendukung"), ("mixed", "Campuran"), ("critiques", "Mengkritik")]
+# Indonesian names for the analysis field `argument_type`.
+METHOD_LABELS = {
+    "empiris_kuantitatif": "Empiris kuantitatif",
+    "kualitatif_studi_kasus": "Kualitatif / studi kasus",
+    "kajian_literatur": "Kajian literatur",
+    "komparatif": "Komparatif",
+    "yuridis_normatif": "Yuridis normatif",
+    "konseptual_teoretis": "Konseptual / teoretis",
+    "filosofis_rasional": "Filosofis",
+    "other": "Lainnya",
+}
 SOURCE_LABELS = {"arxiv": "arXiv", "openalex": "OpenAlex", "doaj": "DOAJ", "crossref": "Crossref",
                  "semanticscholar": "Semantic Scholar", "core": "CORE", "lokal": "Unggahan lokal"}
 
@@ -326,10 +336,10 @@ def year_counts(papers: list[dict], now: datetime | None = None) -> dict:
     return {"rows": rows, "recent_share": recent / known if known else 0.0, "unknown": unknown}
 
 
-def stance_counts(papers: list[dict]) -> list[dict]:
-    """[{"Posisi", "Paper"}] in fixed order; papers not yet analyzed are left out."""
-    c = Counter(p.get("supports_or_critiques") for p in papers if p.get("thesis"))
-    return [{"Posisi": label, "Paper": c.get(key, 0)} for key, label in STANCE if c.get(key, 0)]
+def method_counts(papers: list[dict]) -> list[dict]:
+    """[{"Nama", "Paper"}] by type of research; papers not yet analyzed are left out."""
+    return ranked_counts([METHOD_LABELS.get(p.get("argument_type") or "other", "Lainnya")
+                          for p in papers if p.get("thesis")])
 
 
 def ranked_counts(values: list[str], top: int = 6) -> list[dict]:

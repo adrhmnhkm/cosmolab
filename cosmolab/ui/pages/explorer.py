@@ -1,4 +1,4 @@
-"""Dashboard page: Paper Explorer & Korpus."""
+"""Dashboard page: Koleksi paper (menu key "Paper Explorer & Korpus")."""
 
 import streamlit as st
 from cosmolab import config
@@ -39,14 +39,16 @@ def render(ctx: AppContext):
         icon="",
     )
 
-    tab_pe1, tab_pe2 = st.tabs([
+    tab_pe1, tab_pe2, tab_pe3, tab_pe4 = st.tabs([
         "Daftar paper",
-        "Matriks literatur"
+        "Matriks literatur",
+        "Cari di naskah",
+        "Ekspor daftar pustaka",
     ])
 
     with tab_pe1:
         if not papers:
-            st.warning(f"Belum ada paper di fakultas ini. Buka tab 'Panen Paper Ilmiah' untuk mengunduh literatur bidang {active_fac_name}.")
+            st.warning(f"Belum ada paper di fakultas ini. Buka menu 'Cari & tambah paper' untuk mengunduh literatur bidang {active_fac_name}.")
         else:
             with st.container(border=True):
                 col_f1, col_f2 = st.columns([3, 2])
@@ -56,7 +58,7 @@ def render(ctx: AppContext):
 
                 with st.expander("Filter lain", expanded=False):
                     arg_types = ["Semua"] + sorted(list({p.get("argument_type") for p in papers if p.get("argument_type")}))
-                    filter_type = st.selectbox("Jenis argumen", arg_types, format_func=lambda x: TYPE_LABELS.get(x, x))
+                    filter_type = st.selectbox("Jenis penelitian", arg_types, format_func=lambda x: TYPE_LABELS.get(x, x))
                     stance_keys = ["Semua", "supports", "critiques", "mixed", "neutral"]
                     filter_stance = st.pills(
                         "Sikap penulis",
@@ -65,7 +67,7 @@ def render(ctx: AppContext):
                         format_func=lambda x: "Semua" if x == "Semua" else STANCE_LABELS.get(x, x),
                     )
                     filter_sinta = st.selectbox("Peringkat jurnal SINTA", list(SINTA_FILTERS), format_func=SINTA_FILTERS.get,
-                                                help="Dicocokkan lewat ISSN dengan daftar SINTA tim (menu Panen Paper, tab Peringkat SINTA).")
+                                                help="Dicocokkan lewat ISSN dengan daftar SINTA tim (menu Cari & tambah paper, tab Peringkat SINTA).")
 
             filtered = papers
             if filter_q:
@@ -222,8 +224,18 @@ def render(ctx: AppContext):
                                         except Exception as err:
                                             st.error(f"Gagal membedah ulang: {err}")
 
+    with tab_pe3:
+        from cosmolab.ui.pages import fulltext as _fulltext
+
+        _fulltext.render_search()
+
+    with tab_pe4:
+        from cosmolab.ui.pages import export as _export
+
+        _export.render_citation_export()
+
     with tab_pe2:
-        st.caption("Ringkasan semua paper dalam satu tabel: penulis, tahun, tesis, premis, dan objeksi.")
+        st.caption("Ringkasan semua paper dalam satu tabel: penulis, tahun, inti paper, premis, dan keberatan.")
 
         matrix_data = _matrix.build_literature_matrix(selected_faculty_id)
 

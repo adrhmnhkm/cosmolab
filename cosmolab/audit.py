@@ -23,7 +23,7 @@ from . import config
 
 EVENT_LABELS = {
     "analisis": "Analisis paper",
-    "tanya": "Tanya Korpus",
+    "tanya": "Tanya koleksi",
     "cek_klaim": "Cek klaim jawaban",
     "cek_analisis": "Cek analisis ke PDF",
     "evaluasi": "Uji akurasi",

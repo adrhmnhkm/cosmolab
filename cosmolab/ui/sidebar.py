@@ -81,27 +81,25 @@ def build_sidebar() -> AppContext:
         st.session_state["active_nav_menu"] = "Beranda"
 
     render_nav_item("Beranda", "Beranda", icon=":material/home:")
-    # Menu follows the research workflow: collect, read, then ask and write.
-    st.sidebar.markdown("<div class='nav-cluster-header'>1 · Kumpulkan paper</div>", unsafe_allow_html=True)
-    render_nav_item("Cari & unduh paper", "Panen Paper Ilmiah", icon=":material/travel_explore:")
-    render_nav_item("Analisis dari DOI", "Bedah DOI Seketika", icon=":material/link:")
+    # Menu follows the work for one client: collect, understand, then deliver.
+    # Pages left out of the menu (Diagram argumen, Kurikulum, Ekspor, Bedah DOI,
+    # Cari di naskah) still exist in web.PAGES; DOI, search and export now live
+    # as tabs inside other pages. See REVIEW_APLIKASI.md.
+    st.sidebar.markdown("<div class='nav-cluster-header'>1 · Kumpulkan</div>", unsafe_allow_html=True)
+    render_nav_item("Cari & tambah paper", "Panen Paper Ilmiah", icon=":material/travel_explore:")
 
-    st.sidebar.markdown("<div class='nav-cluster-header'>2 · Baca & analisis</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div class='nav-cluster-header'>2 · Pahami</div>", unsafe_allow_html=True)
     render_nav_item("Koleksi paper", "Paper Explorer & Korpus", str(total_active), icon=":material/library_books:")
-    render_nav_item("Cari kata di naskah", "Full-Text Search", icon=":material/search:")
-    render_nav_item("Diagram argumen", "Diagram Argumen", icon=":material/account_tree:")
-    render_nav_item("Periksa akurasi", "Pusat Akurasi", icon=":material/verified:")
+    render_nav_item("Tanya koleksi", "Tanya Korpus & Sintesis", icon=":material/forum:")
 
-    st.sidebar.markdown("<div class='nav-cluster-header'>3 · Tanya & tulis</div>", unsafe_allow_html=True)
-    render_nav_item("Tanya Korpus (RAG)", "Tanya Korpus & Sintesis", icon=":material/forum:")
+    st.sidebar.markdown("<div class='nav-cluster-header'>3 · Hasil untuk klien</div>", unsafe_allow_html=True)
+    render_nav_item("Tinjauan pustaka & celah riset", "Laporan Sintesis", icon=":material/summarize:")
     render_nav_item("Review draf mahasiswa", "Review Draf Mahasiswa", icon=":material/rate_review:")
-    render_nav_item("Tulis artikel", "Studio Artikel Siap Baca", icon=":material/edit_note:")
-    render_nav_item("Laporan sintesis", "Laporan Sintesis", icon=":material/summarize:")
 
     st.sidebar.markdown("<div class='nav-cluster-header'>Lainnya</div>", unsafe_allow_html=True)
-    render_nav_item("Kurikulum belajar", "Roadmap Belajar & Kurikulum", icon=":material/school:")
+    render_nav_item("Tulis artikel", "Studio Artikel Siap Baca", icon=":material/edit_note:")
     render_nav_item("Latihan debat", "Arena Sparring Nalar", icon=":material/record_voice_over:")
-    render_nav_item("Ekspor data", "Ekspor Data & Flashcards", icon=":material/ios_share:")
+    render_nav_item("Periksa akurasi", "Pusat Akurasi", icon=":material/verified:")
 
     menu = st.session_state["active_nav_menu"]
 

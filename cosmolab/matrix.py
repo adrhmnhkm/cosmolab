@@ -224,7 +224,7 @@ def calculate_recency_compliance(matrix: list[dict], threshold_years: int = 5) -
         msg = f"Tersedia {recent_count} paper kontemporer dan beberapa naskah seminal/klasik. Disarankan menambah 2–4 paper terbitan {cutoff_year}+ untuk proposal S3/Scopus."
     else:
         status_label = f"🟠 Dominan Pustaka Klasik / Historis ({pct}% Terbit {cutoff_year}–{current_year})"
-        msg = f"Korpus ini kaya akan sumber klasik/historis. Gunakan tab 'Panen Paper' untuk memperkaya rujukan jurnal mutakhir (5 tahun terakhir)."
+        msg = f"Korpus ini kaya akan sumber klasik/historis. Gunakan menu 'Cari & tambah paper' untuk memperkaya rujukan jurnal mutakhir (5 tahun terakhir)."
 
     return {
         "total": total,

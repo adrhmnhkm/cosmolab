@@ -69,7 +69,7 @@ class TestHome(unittest.TestCase):
         (config.ROOT / "audit.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\nrusak\n", encoding="utf-8")
         got = home.recent(5)
         self.assertEqual([home.describe(r) for r in got],
-                         ["Review draf: tesis_adi.docx, 66 komentar", "Tanya korpus: Apa itu ateisme digital?"])
+                         ["Review draf: tesis_adi.docx, 66 komentar", "Tanya koleksi: Apa itu ateisme digital?"])
         self.assertEqual(home.when(got[0]["time"]), "13 Nov 11:24")
 
     def test_setup_checks_and_backup_age(self):
@@ -113,8 +113,9 @@ class TestHome(unittest.TestCase):
         self.assertAlmostEqual(years["recent_share"], 2 / 3)
         self.assertEqual(years["unknown"], 1)
 
-        self.assertEqual(home.stance_counts(papers), [{"Posisi": "Mendukung", "Paper": 2},
-                                                      {"Posisi": "Mengkritik", "Paper": 1}])
+        papers[0]["argument_type"] = papers[1]["argument_type"] = "empiris_kuantitatif"
+        self.assertEqual(home.method_counts(papers), [{"Nama": "Empiris kuantitatif", "Paper": 2},
+                                                      {"Nama": "Lainnya", "Paper": 1}])
         self.assertEqual(home.source_counts(papers)[0], {"Nama": "arXiv", "Paper": 2})
         many = home.ranked_counts([f"x{i}" for i in range(8)], top=6)
         self.assertEqual(many[-1], {"Nama": "Lainnya", "Paper": 2})

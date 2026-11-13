@@ -13,7 +13,7 @@ def render(ctx: AppContext):
     """Laporan Sintesis."""
     selected_faculty_id = ctx.selected_faculty_id
     render_hero(
-        title="Laporan Sintesis",
+        title="Tinjauan Pustaka & Celah Riset",
         subtitle="Tinjauan pustaka dari seluruh koleksi, serta celah riset dan usulan topik baru.",
         icon="",
     )

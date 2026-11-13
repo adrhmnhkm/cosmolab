@@ -30,7 +30,7 @@ DAY_NAMES = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
 START = [
     ("Review draf", "Review Draf Mahasiswa", ":material/rate_review:"),
     ("Cari paper", "Panen Paper Ilmiah", ":material/travel_explore:"),
-    ("Tanya korpus", "Tanya Korpus & Sintesis", ":material/forum:"),
+    ("Tanya koleksi", "Tanya Korpus & Sintesis", ":material/forum:"),
     ("Tulis artikel", "Studio Artikel Siap Baca", ":material/edit_note:"),
 ]
 
@@ -145,35 +145,6 @@ def _years_chart(papers: list[dict]):
             tooltip=[alt.Tooltip("Tahun:O"), alt.Tooltip("Paper:Q", title="Paper")],
         )
         _chart(chart, 210)
-
-
-def _stance_chart(papers: list[dict]):
-    with st.container(border=True):
-        st.markdown("##### Posisi paper terhadap tesisnya")
-        rows = _home.stance_counts(papers)
-        if not rows:
-            st.caption("Belum ada paper yang dianalisis.")
-            return
-        total = sum(r["Paper"] for r in rows)
-        order = [label for _, label in _home.STANCE]
-        df = pd.DataFrame([{**r, "Urut": order.index(r["Posisi"]), "Persen": r["Paper"] / total} for r in rows])
-        df["x1"] = df["Paper"].cumsum()
-        df["x0"] = df["x1"] - df["Paper"]
-        df["mid"] = (df["x0"] + df["x1"]) / 2
-        scale = alt.Scale(domain=order, range=[TEAL, GRAY, AMBER])
-        base = alt.Chart(df)
-        bars = base.mark_bar(cornerRadius=4, stroke="white", strokeWidth=2, height=40).encode(
-            x=alt.X("x0:Q", axis=None, scale=alt.Scale(domain=[0, total])), x2="x1:Q",
-            color=alt.Color("Posisi:N", scale=scale, legend=alt.Legend(orient="bottom", title=None, labelColor=INK)),
-            tooltip=["Posisi", "Paper", alt.Tooltip("Persen:Q", format=".0%")],
-        )
-        text = base.mark_text(fontWeight="bold", fontSize=13).encode(
-            x="mid:Q", text="Paper:Q",
-            color=alt.condition(alt.datum.Posisi == "Campuran", alt.value(INK), alt.value("white")),
-        )
-        _chart(bars + text, 90)
-        st.caption(" · ".join(f"{r['Paper']} {r['Posisi'].lower()}" for r in rows) + f" dari {total} paper teranalisis. "
-                   "Literatur yang seimbang memuat pendukung dan pengkritik.")
 
 
 def _ranked_chart(title: str, rows: list[dict], empty: str):
@@ -302,7 +273,7 @@ def render(ctx: AppContext):
     with col_y:
         _years_chart(ctx.papers)
     with col_p:
-        _stance_chart(ctx.papers)
+        _ranked_chart("Jenis penelitian", _home.method_counts(ctx.papers), "Belum ada paper yang dianalisis.")
     col_f, col_src = st.columns(2)
     with col_f:
         _ranked_chart("Bidang ilmu", _home.faculty_counts(ctx.papers, ctx.faculty_labels), "Belum ada paper.")

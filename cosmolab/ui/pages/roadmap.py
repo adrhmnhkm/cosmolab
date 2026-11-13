@@ -40,7 +40,7 @@ def render(ctx: AppContext):
                 st.markdown(f"#### **{lvl['title']}**")
                 st.info(lvl['description'])
                 if not lvl['papers']:
-                    st.caption("Belum ada paper di level ini dalam korpus lokal. Gunakan tab 'Panen Paper Ilmiah' untuk menambah paper.")
+                    st.caption("Belum ada paper di level ini dalam korpus lokal. Gunakan menu 'Cari & tambah paper' untuk menambah paper.")
                 else:
                     for p_idx, p in enumerate(lvl['papers'], 1):
                         col_p1, col_p2, col_p3 = st.columns([4, 1, 1])

@@ -297,7 +297,7 @@ def weak_message(sim: dict) -> str:
             f"Skor {sim['score']}% belum berarti aman, karena kalimat hanya bisa dicocokkan dengan sumber sebahasa "
             "dan setopik. "
             f"Lengkapi pembanding dari daftar pustaka, atau tambah paper berbahasa {lang} ke koleksi proyek"
-            + (" (Panen Paper, centang Khusus jurnal Indonesia)" if sim.get("lang") == "id" else "")
+            + (" (Cari & tambah paper, centang Khusus jurnal Indonesia)" if sim.get("lang") == "id" else "")
             + ", lalu jalankan ulang.")
 
 

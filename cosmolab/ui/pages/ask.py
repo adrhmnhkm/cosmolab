@@ -18,7 +18,7 @@ def render(ctx: AppContext):
     selected_faculty_id = ctx.selected_faculty_id
     active_fac_name = faculty_labels.get(selected_faculty_id, "Universal")
     render_hero(
-        title="Tanya Korpus & Sintesis",
+        title="Tanya Koleksi",
         subtitle=f"Ajukan pertanyaan riset. AI menjawab hanya dari paper di koleksi (bidang: <b>{active_fac_name}</b>) dan menyebutkan rujukannya.",
         icon="",
     )

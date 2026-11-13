@@ -8,17 +8,32 @@ from cosmolab.ui.components import render_hero
 from cosmolab.ui.context import AppContext
 
 
+def render_citation_export():
+    """Reference files for Zotero, Mendeley and LaTeX. Shown as a tab in Koleksi paper."""
+    st.caption("Daftar pustaka seluruh koleksi untuk diimpor ke Zotero, Mendeley, atau LaTeX.")
+    col_b, col_r = st.columns(2)
+    with col_b, st.container(border=True):
+        st.markdown("**BibTeX (.bib)**: Zotero dan LaTeX")
+        if st.button("Buat file .bib", key="koleksi_bib", width="stretch"):
+            st.session_state["koleksi_bib"] = export.export_bibtex().read_text(encoding="utf-8")
+        if st.session_state.get("koleksi_bib"):
+            st.download_button("Unduh references.bib", data=st.session_state["koleksi_bib"], file_name="references.bib",
+                               mime="text/plain", width="stretch", on_click="ignore")
+    with col_r, st.container(border=True):
+        st.markdown("**RIS (.ris)**: Zotero dan Mendeley")
+        if st.button("Buat file .ris", key="koleksi_ris", width="stretch"):
+            path = _citations.export_ris(db.get_all_papers_with_analyses())
+            st.session_state["koleksi_ris"] = path.read_text(encoding="utf-8")
+        if st.session_state.get("koleksi_ris"):
+            st.download_button("Unduh references.ris", data=st.session_state["koleksi_ris"], file_name="references.ris",
+                               mime="text/plain", width="stretch", on_click="ignore")
+
+
 def render(ctx: AppContext):
-    """Ekspor Data & Flashcards."""
+    """Old menu entry (no longer in the menu): every export, including Obsidian and Anki."""
     render_hero(
-        title="Ekspor Data & Kartu Active Recall",
-        subtitle="Integrasi korpus CosmoLab University ke Zotero, Mendeley, Obsidian Vault, dan Anki untuk alur riset berkelanjutan.",
-        icon="",
-        badges=[
-            {"icon": "", "text": "BibTeX & RIS Integration", "class": "hero-badge-primary"},
-            {"icon": "", "text": "Obsidian [[Wikilinks]]", "class": "hero-badge-accent"},
-            {"icon": "", "text": "Anki Active Recall", "class": "hero-badge-model"}
-        ]
+        title="Ekspor Data",
+        subtitle="Daftar pustaka untuk Zotero dan Mendeley, catatan untuk Obsidian, dan kartu hafalan untuk Anki.",
     )
 
     col_e1, col_e2, col_e3, col_e4 = st.columns(4)

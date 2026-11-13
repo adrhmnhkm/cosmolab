@@ -1,4 +1,4 @@
-"""Dashboard page: Panen Paper Ilmiah."""
+"""Dashboard page: Cari & tambah paper (menu key "Panen Paper Ilmiah")."""
 
 import html
 from datetime import datetime
@@ -196,7 +196,7 @@ def render(ctx: AppContext):
     faculty_list = ctx.faculty_list
     selected_faculty_id = ctx.selected_faculty_id
     render_hero(
-        title="Cari & Unduh Paper",
+        title="Cari & Tambah Paper",
         subtitle="Cari paper di 6 basis data akademik. CosmoLab hanya mengunduh naskah yang legal dan terbuka (open access).",
         icon="",
     )
@@ -394,15 +394,21 @@ def render(ctx: AppContext):
         except Exception as e:
             status_box.error(f"Terjadi kesalahan: {e}")
 
-    tab_h2, tab_h6, tab_h1, tab_h4, tab_h5, tab_h3, tab_h7 = st.tabs([
+    tab_h2, tab_h6, tab_h1, tab_h4, tab_h8, tab_h5, tab_h3, tab_h7 = st.tabs([
         "Cari topik",
         "Telusuri sitasi",
         "Per bidang ilmu",
         "Unggah PDF / DOI",
+        "Ringkas dari DOI",
         "Analisis paper",
         "Kelola bidang ilmu",
         "Peringkat SINTA",
     ])
+
+    with tab_h8:
+        from cosmolab.ui.pages import doi as _doi_page
+
+        _doi_page.render_body()
 
     with tab_h7:
         render_sinta_tab()

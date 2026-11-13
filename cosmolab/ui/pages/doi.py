@@ -1,4 +1,4 @@
-"""Dashboard page: Bedah DOI Seketika."""
+"""Summarize one paper from its DOI without adding it. Shown as a tab in Cari & tambah paper."""
 
 import streamlit as st
 from cosmolab import db
@@ -10,42 +10,40 @@ from cosmolab.ui.context import AppContext
 
 
 def render(ctx: AppContext):
-    """Bedah DOI Seketika."""
-    render_hero(
-        title="Bedah DOI Seketika (Smart Paper Inspector)",
-        subtitle="Masukkan <b>DOI artikel ilmiah</b> apa saja dari Elsevier, Springer, Nature, Wiley, atau jurnal mana pun. Sistem seketika mengekstrak <b>Latar Belakang, Metodologi, Temuan Kunci, Kesimpulan</b>, serta <b>Celah Riset untuk Skripsi/Tesis</b>.",
-        icon="",
-        badges=[
-            {"icon": "", "text": "AMRC Breakdown", "class": "hero-badge-primary"},
-            {"icon": "", "text": "Elsevier Style Highlights", "class": "hero-badge-accent"},
-            {"icon": "", "text": "Research Gap Finder", "class": "hero-badge-model"}
-        ]
-    )
+    """Old menu entry; the same tool is a tab in Cari & tambah paper."""
+    render_hero(title="Ringkas Paper dari DOI",
+                subtitle="Ringkasan satu paper dari DOI-nya, tanpa memasukkannya ke koleksi.")
+    render_body()
+
+
+def render_body():
+    st.caption("Masukkan DOI artikel dari penerbit mana pun. AI meringkas latar belakang, metode, temuan, kesimpulan, "
+               "dan celah riset. Paper tidak masuk koleksi kecuali Anda menyimpannya.")
 
     if "inspector_doi_input" not in st.session_state:
         st.session_state["inspector_doi_input"] = ""
 
-    st.markdown("##### Coba Contoh DOI Cepat:")
+    st.markdown("##### Contoh DOI")
     col_ex1, col_ex2, col_ex3 = st.columns(3)
-    if col_ex1.button("Elsevier (Kognisi & Memori)", use_container_width=True):
+    if col_ex1.button("Psikologi kognitif", use_container_width=True):
         st.session_state["inspector_doi_input"] = "10.1016/j.concog.2020.102980"
         st.rerun()
-    if col_ex2.button("Springer (Kalam & Matematika)", use_container_width=True):
+    if col_ex2.button("Matematika", use_container_width=True):
         st.session_state["inspector_doi_input"] = "10.1007/s00283-022-10224-8"
         st.rerun()
-    if col_ex3.button("Oxford Mind (Kausalitas)", use_container_width=True):
+    if col_ex3.button("Filsafat", use_container_width=True):
         st.session_state["inspector_doi_input"] = "10.1093/mind/fzv156"
         st.rerun()
 
     doi_val = st.text_input(
-        "Masukkan DOI atau URL Paper Ilmiah:",
+        "DOI atau URL paper",
         value=st.session_state["inspector_doi_input"],
         placeholder="Contoh: 10.1016/j.concog.2020.102980 atau https://doi.org/10.1007/...",
         help="Mendukung format DOI murni (10.xxxx/...) atau link https://doi.org/...",
     )
 
     col_btn1, col_btn2 = st.columns([1, 3])
-    run_inspect = col_btn1.button("Bedah Paper Sekarang", type="primary", use_container_width=True)
+    run_inspect = col_btn1.button("Ringkas paper", type="primary", use_container_width=True)
 
     if run_inspect and doi_val.strip():
         with st.spinner("Menghubungi Crossref, Semantic Scholar, OpenAlex & membedah dengan AI..."):
@@ -145,7 +143,7 @@ def render(ctx: AppContext):
 
             # Actions
             col_act1, col_act2 = st.columns(2)
-            if col_act1.button("Simpan Hasil Bedah ke Disk", use_container_width=True):
+            if col_act1.button("Simpan ringkasan", use_container_width=True):
                 saved_path = _inspector.save_inspection(res)
                 st.success(f"Berhasil disimpan di: `{saved_path}`")
             

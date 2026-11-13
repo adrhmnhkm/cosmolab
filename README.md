@@ -49,7 +49,7 @@ terhadap teks paper aslinya** sebelum hasilnya sampai ke klien.
 ### 1 · Kumpulkan paper
 - **Panen federasi** dari 6 sumber sekaligus: arXiv, OpenAlex, DOAJ, Semantic Scholar, CORE (butuh `CORE_API_KEY`), Crossref, dengan deduplikasi judul.
 - **Jurnal Indonesia**: mode `--indonesia` mencari hanya jurnal Indonesia / artikel berbahasa Indonesia lewat OpenAlex (jurnal Garuda/SINTA yang punya DOI). Paper diberi label **SINTA 1–6** dari daftar peringkat milik tim, dicocokkan lewat ISSN.
-- **Bedah DOI seketika**: masukkan DOI, dapat ringkasan Abstrak, Metode, Hasil, Kesimpulan, dan celah riset.
+- **Ringkas dari DOI**: masukkan DOI, dapat ringkasan latar belakang, metode, hasil, kesimpulan, dan celah riset.
 - **Snowballing sitasi**: telusuri rujukan (backward) dan paper yang mengutip (forward).
 - **Lengkapi metadata**: penulis, DOI, dan cek data bibliografi lewat Crossref/DataCite, termasuk status retraksi.
 
@@ -69,12 +69,12 @@ terhadap teks paper aslinya** sebelum hasilnya sampai ke klien.
 <td width="50%" valign="top">
 
 ### 3 · Tanya & tulis
-- **Tanya korpus (Agentic RAG)** dengan sitasi sampai nomor halaman.
+- **Tanya koleksi**: jawaban hanya dari paper di koleksi, dengan sitasi sampai nomor halaman.
 - **Gatekeeper klaim**: setiap kalimat bersitasi dinilai *didukung*, *sebagian*, atau *tidak didukung*.
 - **Review draf mahasiswa** (S1–S3): komentar ala pembimbing per paragraf, plus cek sitasi. Setiap komentar AI wajib mengutip kalimat draf (dicek otomatis) dan harus diterima, diedit, atau dibuang konsultan sebelum dikirim.
 - **Cek kemiripan pra-submit** (tanpa AI): setiap kalimat draf dibandingkan dengan teks lengkap koleksi proyek dan abstrak sumber yang dikutip. Kalimat yang mirip diberi label: tanpa sitasi, sitasi ke karya lain, atau terlalu dekat dengan sumber. Skornya perkiraan, bukan skor Turnitin. Tombol **Lengkapi pembanding** mengunduh teks lengkap sumber yang dikutip (hanya yang legal dan terbuka: DOI, judul, URL OJS) dan menyusun daftar sumber yang perlu dikirim mahasiswa.
 - **Studio artikel**: esai, tinjauan jurnal, atau monograf.
-- **Laporan sintesis**, matriks literatur, dan pencari celah riset.
+- **Tinjauan pustaka & celah riset** dari seluruh koleksi, plus matriks literatur.
 
 </td>
 <td width="50%" valign="top">
