@@ -4,6 +4,10 @@ A consultant uploads a student's draft and gets supervisor-style comments and
 a citation check. The page never shows rewritten text, only comments and
 guiding questions. The consultant accepts, edits, or drops every AI comment;
 only accepted and edited comments reach the student's Word file.
+
+The similarity check (no AI) marks sentences that are close to a paper in the
+collection or to a cited work. Its findings go to the student unless the
+consultant hides them.
 """
 
 import tempfile
@@ -11,15 +15,17 @@ from pathlib import Path
 
 import streamlit as st
 from cosmolab import review as _review
+from cosmolab import similarity as _similarity
 from cosmolab import verify as _verify
 from cosmolab.ui.components import _badge, _e, render_hero, render_table
 from cosmolab.ui.context import AppContext
 
 SEVERITY_TONES = {_review.PENTING: "bad", _review.SARAN: "warn", _review.CATATAN: "muted"}
+SIM_TONES = {_similarity.NO_CITATION: "bad", _similarity.WRONG_SOURCE: "warn", _similarity.TOO_CLOSE: "info"}
 CHOICES = [_review.ACCEPT, _review.EDIT, _review.DROP]
 
 
-def _run(uploaded, pasted: str, title: str, level: str, online: bool) -> dict:
+def _run(uploaded, pasted: str, title: str, level: str, online: bool, feedback: bool, similarity: bool) -> dict:
     if uploaded is not None:
         suffix = Path(uploaded.name).suffix.lower()
         with tempfile.TemporaryDirectory() as tmp:
@@ -30,7 +36,8 @@ def _run(uploaded, pasted: str, title: str, level: str, online: bool) -> dict:
         source = uploaded.name
     else:
         md, name, source = pasted, title or "Draf", "teks ditempel"
-    return _review.review_text(md, title=name, level=level, online=online, source=source)
+    return _review.review_text(md, title=name, level=level, online=online, source=source,
+                               feedback=feedback, similarity=similarity)
 
 
 def _wkey(key: str, stem: str, cid: str, part: str) -> str:
@@ -55,6 +62,21 @@ def _on_edit(key: str, stem: str, cid: str):
         _review.save(report)
 
 
+def _on_hide(key: str, stem: str, fid: str):
+    report = _review.load(stem)
+    _similarity.set_hidden(report["similarity"], fid, st.session_state.get(_wkey(key, stem, fid, "h"), False))
+    report["summary"] = _review.summarize(report)
+    _review.save(report)
+
+
+def _on_rerun_similarity(stem: str, online: bool):
+    report = _review.load(stem)
+    try:
+        _review.save(_review.run_similarity(report, online=online))
+    except ValueError as e:
+        st.session_state[f"{stem}_sim_error"] = str(e)
+
+
 def _on_accept_grounded(stem: str):
     report = _review.load(stem)
     _review.accept_grounded(report)
@@ -70,6 +92,8 @@ def _sync_widgets(key: str, report: dict):
         if d == _review.EDIT:
             st.session_state[_wkey(key, stem, c["id"], "c")] = c.get("edited_comment") or c["comment"]
             st.session_state[_wkey(key, stem, c["id"], "q")] = c.get("edited_question", c["question"])
+    for f in (report.get("similarity") or {}).get("findings", []):
+        st.session_state[_wkey(key, stem, f["id"], "h")] = bool(f.get("hidden"))
 
 
 def _comment_card(key: str, report: dict, c: dict):
@@ -95,6 +119,55 @@ def _comment_card(key: str, report: dict, c: dict):
     st.divider()
 
 
+def _similarity_tab(key: str, report: dict):
+    stem, sim = report["stem"], report.get("similarity")
+    err = st.session_state.pop(f"{stem}_sim_error", None)
+    if err:
+        st.warning(err)
+    if not sim:
+        if report.get("draft_md"):
+            st.info("Cek kemiripan belum dijalankan untuk review ini.")
+            st.button("Jalankan cek kemiripan", key=f"{key}_{stem}_sim_run", on_click=_on_rerun_similarity,
+                      args=(stem, True), type="primary")
+        else:
+            st.info("Review ini dibuat sebelum cek kemiripan ada. Unggah ulang drafnya untuk menjalankan cek.")
+        return
+
+    src = sim["sources"]
+    st.caption(_similarity.CAVEAT)
+    st.markdown(f"**Perkiraan kemiripan: {sim['score']}%** dari {sim['words']} kata. Pembanding: {src['korpus']} paper "
+                f"di koleksi proyek dan {src['dikutip']} abstrak sumber yang dikutip"
+                + (f" ({src['dikutip_gagal']} sumber dikutip tidak punya abstrak)." if src.get("dikutip_gagal") else "."))
+    if sim.get("top_sources"):
+        render_table([{"Sumber": _similarity.source_label(t), "Asal": "Koleksi" if t["kind"] == "korpus" else "Dikutip",
+                       "Porsi draf": f"{t['pct']}%"} for t in sim["top_sources"]])
+    st.button("Jalankan ulang (misalnya setelah menambah paper)", key=f"{key}_{stem}_sim_rerun",
+              on_click=_on_rerun_similarity, args=(stem, True))
+
+    if not sim["findings"]:
+        st.success("Tidak ada kalimat yang terlalu mirip dengan sumber pembanding.")
+        return
+    st.caption("Temuan masuk ke dokumen mahasiswa. Centang **Sembunyikan** kalau temuan keliru, misalnya kalimat "
+               "definisi baku atau kutipan yang tanda petiknya hilang saat dokumen diunggah.")
+    for label, title in _similarity.LABELS.items():
+        group = [f for f in sim["findings"] if f["label"] == label]
+        if not group:
+            continue
+        with st.expander(f"{title} ({len(group)})", expanded=label == _similarity.NO_CITATION):
+            st.caption(_similarity.ADVICE[label])
+            for f in group:
+                st.markdown(_badge(f"P{f['paragraph']} · mirip {f['match_pct']}%", SIM_TONES[label]),
+                            unsafe_allow_html=True)
+                st.markdown(f"“{_e(f['sentence'])}”")
+                st.caption(f"Sumber: {_similarity.source_label(f['source'])}"
+                           + (f" · Dikutip sebagai: {f['cited_as']}" if f.get("cited_as") else ""))
+                if f.get("source_excerpt"):
+                    st.caption(f"Teks sumber: “{f['source_excerpt']}”")
+                st.checkbox("Sembunyikan dari dokumen mahasiswa", key=_wkey(key, stem, f["id"], "h"),
+                            on_change=_on_hide, args=(key, stem, f["id"]))
+                st.divider()
+
+
 def _show(stem: str, key: str):
     report = _review.load(stem)
     _sync_widgets(key, report)
@@ -102,11 +175,15 @@ def _show(stem: str, key: str):
     d = _review.decision_counts(report)
     total = len(report["comments"])
 
-    c1, c2, c3, c4 = st.columns(4)
+    sim = report.get("similarity")
+    with_ai = report.get("feedback", True)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Paragraf isi", s["paragraphs"])
-    c2.metric("Komentar AI", total)
-    c3.metric("Kutipan tidak cocok", s.get("ungrounded", 0))
+    c2.metric("Komentar AI", total if with_ai else "-")
+    c3.metric("Kutipan tidak cocok", s.get("ungrounded", 0) if with_ai else "-")
     c4.metric("Sitasi bermasalah", s["references_flagged"] + s["citations_missing"])
+    c5.metric("Kemiripan (perkiraan)", f"{sim['score']}%" if sim else "-",
+              help="Dibandingkan dengan koleksi proyek dan abstrak sumber yang dikutip. Bukan skor Turnitin.")
 
     if report["priorities"]:
         with st.container(border=True):
@@ -119,8 +196,12 @@ def _show(stem: str, key: str):
             for p in report["strengths"]:
                 st.markdown(f"- {p}")
 
-    tab_c, tab_s = st.tabs(["Komentar per paragraf", "Pemeriksaan sitasi"])
+    tab_c, tab_s, tab_m = st.tabs(["Komentar per paragraf", "Pemeriksaan sitasi", "Cek kemiripan"])
+    with tab_m:
+        _similarity_tab(key, report)
     with tab_c:
+        if not with_ai:
+            st.info("Review ini dijalankan tanpa komentar AI: hanya pemeriksaan sitasi dan kemiripan.")
         st.caption(
             "Putuskan setiap komentar AI. Hanya komentar yang diterima atau diedit yang masuk ke dokumen mahasiswa. "
             "“Kutipan tidak ditemukan” berarti AI mengutip kalimat yang tidak ada di paragraf itu: periksa dulu."
@@ -210,14 +291,21 @@ def render(ctx: AppContext):
             level = col2.selectbox("Jenjang", list(_review.LEVELS), index=1,
                                    format_func=lambda k: _review.LEVELS[k].capitalize())
             online = col3.toggle("Cek sitasi ke Crossref", value=True)
+            col4, col5 = st.columns(2)
+            feedback = col4.checkbox("Komentar pembimbing (AI)", value=True,
+                                     help="Matikan untuk pemeriksaan sitasi dan kemiripan saja, tanpa biaya AI.")
+            sim_on = col5.checkbox("Cek kemiripan", value=True,
+                                   help="Bandingkan setiap kalimat dengan koleksi proyek dan abstrak sumber yang dikutip.")
             go = st.button("Review draf", type="primary", use_container_width=True)
 
         if go and uploaded is None and not pasted.strip():
             st.warning("Unggah file draf atau tempel teksnya dulu.")
+        elif go and not (feedback or sim_on):
+            st.warning("Pilih minimal satu: komentar pembimbing atau cek kemiripan.")
         elif go:
             try:
                 with st.spinner("Membaca draf dan menyusun komentar. Draf panjang bisa beberapa menit..."):
-                    report = _run(uploaded, pasted, title, level, online)
+                    report = _run(uploaded, pasted, title, level, online, feedback, sim_on)
                     _review.save(report)
                 st.session_state["review_current"] = report["stem"]
             except Exception as e:

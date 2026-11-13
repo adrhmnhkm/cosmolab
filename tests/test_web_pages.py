@@ -62,6 +62,41 @@ class TestWebPages(unittest.TestCase):
         finally:
             sinta.remove("2087-1236")
 
+    def test_review_page_similarity_only(self):
+        from test_similarity import DRAFT, OTHER, SOURCE
+
+        from cosmolab import similarity
+
+        with mock.patch("importlib.reload", lambda m: m), \
+                mock.patch.object(similarity, "corpus_sources", lambda: [SOURCE, OTHER]), \
+                mock.patch("cosmolab.review._default_chat", side_effect=AssertionError("AI must not be called")):
+            at = AppTest.from_file(WEB, default_timeout=120)
+            at.session_state["active_nav_menu"] = "Review Draf Mahasiswa"
+            at.run()
+            at.text_area[0].input(DRAFT)
+            [t for t in at.toggle if t.label == "Cek sitasi ke Crossref"][0].set_value(False)
+            [c for c in at.checkbox if c.label == "Komentar pembimbing (AI)"][0].uncheck()
+            [b for b in at.button if b.label == "Review draf"][0].click()
+            at.run()
+            self.assertEqual([e.value for e in at.exception], [])
+            self.assertEqual([e.value for e in at.error], [])
+            stem = at.session_state["review_current"]
+            text = " ".join(m.value for m in at.markdown)
+            self.assertIn("Perkiraan kemiripan", text)
+
+            first = review.load(stem)["similarity"]["findings"][0]["id"]
+            at.checkbox(key=f"rv_new_{stem}_{first}_h").check()
+            at.run()
+            at.text_input(key=f"rv_new_{stem}_reviewer").input("Konsultan Uji")
+            at.button(key=f"rv_new_{stem}_docx_btn").click()
+            at.run()
+
+        self.assertEqual([e.value for e in at.exception], [])
+        self.assertTrue(any(b.label.startswith("Unduh Word") for b in at.get("download_button")))
+        saved = review.load(stem)
+        self.assertTrue([f for f in saved["similarity"]["findings"] if f["id"] == first][0]["hidden"])
+        self.assertEqual(saved["summary"]["similarity_findings"], len(saved["similarity"]["findings"]) - 1)
+
     def test_review_page_runs_a_review(self):
         from test_review import DRAFT, fake_chat
 

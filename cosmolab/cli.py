@@ -937,8 +937,10 @@ def review_draft(
     jenjang: str = typer.Option("s2", "--jenjang", "-j", help="s1 (skripsi), s2 (tesis), atau s3 (disertasi)"),
     offline: bool = typer.Option(False, "--offline", help="Jangan cek daftar pustaka ke Crossref"),
     model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+    tanpa_komentar: bool = typer.Option(False, "--tanpa-komentar", help="Lewati komentar AI (tanpa biaya AI): sitasi dan kemiripan saja"),
+    tanpa_kemiripan: bool = typer.Option(False, "--tanpa-kemiripan", help="Lewati cek kemiripan"),
 ):
-    """Review draf mahasiswa: komentar ala pembimbing per paragraf dan cek sitasi. Draf tidak ditulis ulang.
+    """Review draf mahasiswa: komentar ala pembimbing, cek sitasi, dan cek kemiripan. Draf tidak ditulis ulang.
 
     Komentar AI harus diputuskan konsultan (terima, edit, buang) di dashboard sebelum Word dibuat.
     """
@@ -950,7 +952,8 @@ def review_draft(
     try:
         with Progress() as progress:
             task = progress.add_task("[cyan]Mereview draf...", total=None)
-            report = _review.review_file(Path(path), level=jenjang, online=not offline, model=model)
+            report = _review.review_file(Path(path), level=jenjang, online=not offline, model=model,
+                                         feedback=not tanpa_komentar, similarity=not tanpa_kemiripan)
             progress.update(task, completed=1, description="[green]Review selesai")
     except (FileNotFoundError, ValueError) as e:
         console.print(f"[red]{e}[/red]")
@@ -962,6 +965,11 @@ def review_draft(
                   f"({sev[_review.PENTING]} penting, {sev[_review.SARAN]} saran, {sev[_review.CATATAN]} catatan). "
                   f"Sitasi: {s['references_flagged']} entri pustaka perlu dicek, "
                   f"{s['citations_missing']} sitasi tidak ada di daftar pustaka.")
+    if report.get("similarity"):
+        sim = report["similarity"]
+        console.print(f"Kemiripan (perkiraan, bukan Turnitin): {sim['score']}%, {len(sim['findings'])} kalimat ditandai, "
+                      f"dibandingkan dengan {sim['sources']['korpus']} paper koleksi dan "
+                      f"{sim['sources']['dikutip']} abstrak sumber yang dikutip.")
     for i, p in enumerate(report["priorities"], 1):
         console.print(f"  {i}. {p}")
     console.print(f"[green]OK[/green] {paths['md']} (versi internal)")

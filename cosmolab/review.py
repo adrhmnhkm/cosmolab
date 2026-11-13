@@ -13,8 +13,10 @@ Steps:
 2. Check citations with cosmolab.verify: every in-text citation must be in the
    reference list, and each reference is matched against the project
    collection and Crossref.
-3. Ask the LLM for supervisor comments in batches of paragraphs.
-4. Save the result as JSON and Markdown under <project>/reviews/, and
+3. Ask the LLM for supervisor comments in batches of paragraphs (optional).
+4. Compare every sentence with the project collection and the cited works
+   (cosmolab.similarity, no AI), and label close matches by citation status.
+5. Save the result as JSON and Markdown under <project>/reviews/, and
    optionally as a Word file with the firm letterhead.
 """
 
@@ -25,7 +27,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from . import config, verify
+from . import config, similarity as _similarity, verify
 
 LEVELS = {"s1": "skripsi (S1)", "s2": "tesis (S2)", "s3": "disertasi (S3)"}
 
@@ -269,8 +271,14 @@ def _dedupe(items: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def review_text(md: str, title: str = "", level: str = "s2", online: bool = True, model: str | None = None,
-                chat=None, source: str = "") -> dict:
-    """Run the citation check and the supervisor feedback on a draft."""
+                chat=None, source: str = "", feedback: bool = True, similarity: bool = True) -> dict:
+    """Run the citation check, the supervisor feedback, and the similarity check on a draft.
+
+    feedback=False skips the AI comments (no AI cost); similarity=False skips the
+    similarity check. At least one of the two must run.
+    """
+    if not (feedback or similarity):
+        raise ValueError("Pilih minimal satu: komentar pembimbing atau cek kemiripan.")
     from . import audit
 
     level = level if level in LEVELS else "s2"
@@ -280,31 +288,53 @@ def review_text(md: str, title: str = "", level: str = "s2", online: bool = True
         raise ValueError("Draf kosong atau tidak ada paragraf isi yang bisa direview.")
 
     cites = verify.verify_markdown(md, source=source, online=online)
-    feedback = llm_feedback(paragraphs, level=level, model=model, chat=chat)
+    fb = (llm_feedback(paragraphs, level=level, model=model, chat=chat) if feedback
+          else {"comments": [], "strengths": [], "priorities": []})
 
     report = {
         "title": title or Path(source).stem or "Draf",
         "source": source,
         "level": level,
         "reviewed_at": datetime.now().isoformat(timespec="seconds"),
-        "model": model or config.LLM_MODEL,
+        "model": (model or config.LLM_MODEL) if feedback else "",
+        "feedback": feedback,
         "paragraphs": [{"n": p["n"], "section": p["section"], "opening": opening(p["text"]), "chars": len(p["text"])}
                        for p in paragraphs],
-        "comments": feedback["comments"],
-        "strengths": feedback["strengths"],
-        "priorities": feedback["priorities"],
+        "comments": fb["comments"],
+        "strengths": fb["strengths"],
+        "priorities": fb["priorities"],
         "citations": cites.to_dict(),
+        # Kept so the similarity check can run again later. Internal only.
+        "draft_md": md,
     }
+    report["similarity"] = (_similarity.check(paragraphs, report["citations"], online=online)
+                            if similarity else None)
     report["summary"] = summarize(report)
     audit.log("review_draf", file=source or report["title"], model=report["model"], level=level,
-              comments=len(report["comments"]))
+              comments=len(report["comments"]), similarity=report["summary"]["similarity_score"])
     return report
 
 
-def review_file(path: Path, level: str = "s2", online: bool = True, model: str | None = None, chat=None) -> dict:
+def run_similarity(report: dict, online: bool = True) -> dict:
+    """Run (or rerun) the similarity check on a saved review. Hidden findings stay hidden."""
+    md = report.get("draft_md")
+    if not md:
+        raise ValueError("Review ini dibuat sebelum cek kemiripan ada. Unggah ulang drafnya untuk menjalankan cek.")
+    old =report.get("similarity") or {}
+    hidden = {(f["sentence"], f["source"]["title"]) for f in old.get("findings", []) if f.get("hidden")}
+    sim = _similarity.check(split_paragraphs(md), report["citations"], online=online)
+    for f in sim["findings"]:
+        f["hidden"] = (f["sentence"], f["source"]["title"]) in hidden
+    report["similarity"] = sim
+    report["summary"] = summarize(report)
+    return report
+
+
+def review_file(path: Path, level: str = "s2", online: bool = True, model: str | None = None, chat=None,
+                feedback: bool = True, similarity: bool = True) -> dict:
     path = Path(path)
     return review_text(read_draft(path), title=path.stem.replace("_", " "), level=level, online=online,
-                       model=model, chat=chat, source=str(path))
+                       model=model, chat=chat, source=str(path), feedback=feedback, similarity=similarity)
 
 
 def summarize(report: dict) -> dict:
@@ -325,6 +355,8 @@ def summarize(report: dict) -> dict:
         "references_flagged": sum(1 for r in refs if r["status"] in verify.BLOCKING_REF),
         "citations": len(cites),
         "citations_missing": sum(1 for c in cites if c["status"] in verify.BLOCKING_CITE),
+        "similarity_score": (report.get("similarity") or {}).get("score"),
+        "similarity_findings": len(_similarity.visible(report.get("similarity"))),
     }
 
 
@@ -408,8 +440,9 @@ def report_markdown(report: dict, final: bool | None = None) -> str:
         f"# Catatan Review Draf: {report['title']}",
         "",
         f"Jenjang: {level}. Direview {report['reviewed_at'][:10]}. "
-        f"{s['paragraphs']} paragraf isi, {len(shown)} komentar "
-        f"({by_sev[PENTING]} penting, {by_sev[SARAN]} saran, {by_sev[CATATAN]} catatan).",
+        f"{s['paragraphs']} paragraf isi"
+        + (f", {len(shown)} komentar ({by_sev[PENTING]} penting, {by_sev[SARAN]} saran, {by_sev[CATATAN]} catatan)."
+           if report.get("feedback", True) else ". Pemeriksaan sitasi dan kemiripan saja."),
         "",
         "Catatan ini berisi umpan balik dan pertanyaan pemandu. Perbaikan draf tetap dikerjakan oleh mahasiswa.",
         "",
@@ -427,11 +460,13 @@ def report_markdown(report: dict, final: bool | None = None) -> str:
     if report["strengths"]:
         lines += ["## Yang sudah baik", ""] + [f"- {p}" for p in report["strengths"]] + [""]
 
-    lines += ["## Komentar per paragraf", ""]
+    with_feedback = report.get("feedback", True)
+    if with_feedback:
+        lines += ["## Komentar per paragraf", ""]
     by_par: dict[int, list] = {}
     for c in shown:
         by_par.setdefault(c["paragraph"], []).append(c)
-    if not by_par:
+    if not by_par and with_feedback:
         lines += ["Tidak ada komentar per paragraf.", ""]
     for p in report["paragraphs"]:
         cs = by_par.get(p["n"])
@@ -469,7 +504,47 @@ def report_markdown(report: dict, final: bool | None = None) -> str:
             lines += ["Sitasi di teks yang tidak ada di daftar pustaka:", ""]
             lines += [f"- {c['name']}, {c['year']}" for c in missing]
             lines.append("")
+    lines += similarity_markdown(report.get("similarity"), final)
     return "\n".join(lines).rstrip() + "\n"
+
+
+def similarity_markdown(sim: dict | None, final: bool) -> list[str]:
+    """Report section for the similarity check. final=True leaves out hidden findings and source excerpts."""
+    if not sim:
+        return []
+    shown = _similarity.visible(sim) if final else sim["findings"]
+    src = sim["sources"]
+    lines = [
+        "## Pemeriksaan kemiripan", "",
+        f"Perkiraan kemiripan: **{sim['score']}%** dari {sim['words']} kata. "
+        f"Dibandingkan dengan {src['korpus']} paper di koleksi proyek dan {src['dikutip']} abstrak sumber yang dikutip.",
+        "", _similarity.CAVEAT, "",
+    ]
+    if not final and src.get("dikutip_gagal"):
+        lines += [f"> {src['dikutip_gagal']} sumber yang dikutip tidak punya abstrak di OpenAlex, "
+                  "jadi tidak ikut dibandingkan.", ""]
+    if not shown:
+        return lines + ["Tidak ada kalimat yang terlalu mirip dengan sumber pembanding.", ""]
+    if sim.get("top_sources"):
+        lines += ["Sumber dengan kemiripan terbesar:", ""]
+        lines += [f"- {t['pct']}% · {_similarity.source_label(t)}" for t in sim["top_sources"][:5]]
+        lines.append("")
+    for label, title in _similarity.LABELS.items():
+        group = [f for f in shown if f["label"] == label]
+        if not group:
+            continue
+        lines += [f"### {title} ({len(group)})", "", _similarity.ADVICE[label], ""]
+        for f in group:
+            lines.append(f"- P{f['paragraph']}: “{f['sentence']}”")
+            lines.append(f"  Mirip {f['match_pct']}% dengan: {_similarity.source_label(f['source'])}"
+                         + (f". Dikutip sebagai: {f['cited_as']}" if f.get("cited_as") else ""))
+            if not final:
+                if f.get("source_excerpt"):
+                    lines.append(f"  Teks sumber: “{f['source_excerpt']}”")
+                if f.get("hidden"):
+                    lines.append("  [Disembunyikan dari dokumen mahasiswa]")
+        lines.append("")
+    return lines
 
 
 def reviews_dir() -> Path:

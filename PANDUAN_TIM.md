@@ -51,15 +51,22 @@ Untuk konsultasi skripsi, tesis, dan disertasi. CosmoLab memberi komentar sepert
 1. Buka **Review draf mahasiswa** di menu kiri.
 2. Unggah draf (.docx, .md, atau .txt), atau tempel teksnya. Ikutkan daftar pustaka supaya sitasi ikut diperiksa.
 3. Pilih jenjang (S1, S2, atau S3), lalu klik **Review draf**.
+   - Matikan **Komentar pembimbing (AI)** kalau hanya perlu cek sitasi dan kemiripan. Cara ini tidak memakai kuota AI.
+   - **Cek kemiripan** menyala secara bawaan.
 4. Baca hasilnya:
    - **Prioritas perbaikan**: hal terpenting untuk dikerjakan mahasiswa.
    - **Komentar per paragraf**: masalah, alasannya, pertanyaan pemandu, dan bagian kalimat yang dikomentari. Paragraf ditandai P1, P2, dan seterusnya dengan kutipan beberapa kata awal.
    - **Pemeriksaan sitasi**: sitasi di teks yang tidak ada di daftar pustaka, dan entri pustaka yang tidak ditemukan.
+   - **Cek kemiripan**: kalimat yang terlalu mirip dengan paper di koleksi proyek atau abstrak sumber yang dikutip.
+     Labelnya: **tanpa sitasi** (paling penting), **sitasi ke karya lain**, dan **sitasi benar tapi terlalu mirip sumber**.
+     Skornya perkiraan, bukan skor Turnitin, karena Turnitin memakai basis data yang jauh lebih besar. Jangan menjanjikan skor Turnitin ke klien.
+     Temuan ikut ke dokumen mahasiswa. Centang **Sembunyikan** kalau temuannya keliru, misalnya definisi baku.
+     Tambah paper ke koleksi proyek lalu klik **Jalankan ulang** supaya pembandingnya lebih lengkap.
 5. Putuskan setiap komentar AI: **Terima**, **Edit** (ubah kata-katanya), atau **Buang**.
    - Label **Kutipan cocok**: kalimat yang dikomentari AI memang ada di paragraf itu.
    - Label **Kutipan tidak ditemukan, cek manual**: AI mengutip kalimat yang tidak ada di paragraf itu. Baca paragrafnya dulu. Kemungkinan besar komentarnya keliru.
    - Tombol **Terima ... komentar yang kutipannya cocok** menerima sekaligus semua komentar berlabel kutipan cocok. Tetap baca sekilas sebelum menekannya.
-6. Setelah semua komentar diputuskan, isi nama Anda sebagai konsultan pemeriksa, klik **Buat Word berkop firma**, lalu unduh filenya. Dokumen hanya berisi komentar yang diterima atau diedit.
+6. Setelah semua komentar diputuskan, isi nama Anda sebagai konsultan pemeriksa, klik **Buat Word berkop firma**, lalu unduh filenya. Dokumen hanya berisi komentar yang diterima atau diedit, ditambah temuan kemiripan yang tidak disembunyikan.
 
 Keputusan tersimpan otomatis. Review bisa dilanjutkan nanti dari tab **Review tersimpan**.
 
