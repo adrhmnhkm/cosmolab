@@ -50,6 +50,15 @@ class TestHome(unittest.TestCase):
         self.assertEqual(items["analisis"]["title"], "2 paper belum dianalisis")
         self.assertEqual(home.summary(papers)["reviews"], 4)
 
+    def test_word_made_before_tracking_counts_as_sent(self):
+        folder = review.reviews_dir()
+        r = _report("e_old", [review.ACCEPT], source="tesis.docx", reviewed_at="2026-11-13T11:24:20")
+        (folder / "e_old.json").write_text(json.dumps(r), encoding="utf-8")
+        self.assertIn("e_old", [it["stem"] for it in home.todo([])])
+        (config.ROOT / "audit.jsonl").write_text(json.dumps(
+            {"time": "2026-11-13T12:26:00", "event": "review_draf_kirim", "file": "tesis.docx"}) + "\n", encoding="utf-8")
+        self.assertNotIn("e_old", [it["stem"] for it in home.todo([])])
+
     def test_nothing_waiting(self):
         shutil.rmtree(review.reviews_dir())
         self.assertEqual(home.todo([{"file": "a.pdf", "thesis": "t"}]), [])
@@ -86,6 +95,44 @@ class TestHome(unittest.TestCase):
             rows = home.projects_overview()
         self.assertEqual(rows[0]["Review draf"], 4)
         self.assertEqual(rows[0]["Komentar belum diputuskan"], 2)
+
+    def test_chart_data(self):
+        from datetime import date
+
+        papers = [
+            {"file": "a", "year": "2025", "thesis": "t", "supports_or_critiques": "supports", "source": "arxiv",
+             "faculty": "ekonomi", "created_at": "2026-11-02 10:00:00"},
+            {"file": "b", "year": "2019", "thesis": "t", "supports_or_critiques": "critiques", "source": "openalex",
+             "faculty": "ekonomi", "created_at": "2026-10-01 10:00:00"},
+            {"file": "c", "year": "2022", "thesis": "t", "supports_or_critiques": "supports", "source": "arxiv"},
+            {"file": "d", "year": "", "source": "doaj", "created_at": "2026-11-12 08:00:00"},
+        ]
+        years = home.year_counts(papers, now=datetime(2026, 11, 13))
+        self.assertEqual([(r["Tahun"], r["Baru"]) for r in years["rows"]],
+                         [("2019", False), ("2022", True), ("2025", True)])
+        self.assertAlmostEqual(years["recent_share"], 2 / 3)
+        self.assertEqual(years["unknown"], 1)
+
+        self.assertEqual(home.stance_counts(papers), [{"Posisi": "Mendukung", "Paper": 2},
+                                                      {"Posisi": "Mengkritik", "Paper": 1}])
+        self.assertEqual(home.source_counts(papers)[0], {"Nama": "arXiv", "Paper": 2})
+        many = home.ranked_counts([f"x{i}" for i in range(8)], top=6)
+        self.assertEqual(many[-1], {"Nama": "Lainnya", "Paper": 2})
+
+        k = home.kpis(papers, now=datetime(2026, 11, 13))
+        self.assertEqual((k["papers"], k["new_this_month"], k["analyzed"], k["pending"], k["reviews_open"]),
+                         (4, 2, 3, 2, 3))
+        growth = home.paper_growth(papers, days=3, today=date(2026, 11, 13))
+        self.assertEqual(growth, [3, 4, 4])  # one paper has no date and always counts
+
+        (config.ROOT / "audit.jsonl").write_text(
+            json.dumps({"time": "2026-11-13T10:00:00", "event": "tanya"}) + "\n"
+            + json.dumps({"time": "2026-11-12T10:00:00", "event": "tanya"}) + "\n", encoding="utf-8")
+        days = home.activity_days(weeks=2, today=date(2026, 11, 13))  # a Friday
+        self.assertEqual(days[0]["Tanggal"], "2026-11-02")             # Monday a week earlier
+        self.assertEqual(days[-1]["Tanggal"], "2026-11-13")            # no days after today
+        self.assertEqual(sum(d["Kegiatan"] for d in days), 2)
+        self.assertEqual(home.weekly_activity(days), [0, 2])
 
     def test_owner_or_team(self):
         with mock.patch.dict(os.environ, {"COSMOLAB_TEAM_MODE": "1"}):

@@ -22,6 +22,7 @@ File `.env` berisi kunci rahasia. Jangan kirim file ini ke siapa pun, termasuk k
    - Biarkan kosong untuk memakai data utama (koleksi lama, bukan milik klien mana pun).
 3. Dashboard terbuka di browser, di halaman **Beranda**. Nama proyek aktif tampil di kiri atas dan di Beranda. Pastikan namanya benar sebelum mulai.
    - **Perlu tindakan** di Beranda berisi pekerjaan yang menunggu: review yang komentarnya belum diputuskan, review yang Word-nya belum dibuat, dan paper yang belum dianalisis. Klik **Buka** untuk langsung ke halamannya.
+   - Di bawahnya ada grafik isi koleksi: tahun terbit (berapa persen terbitan 5 tahun terakhir), posisi paper terhadap tesisnya (mendukung, campuran, mengkritik), bidang ilmu, dan asal sumber. Grafik ini ikut filter **Bidang ilmu** di sidebar. Arahkan kursor ke grafik untuk melihat angkanya.
    - Pemilik yang menjalankan dashboard tanpa mode tim juga melihat status setup, semua proyek, dan pemakaian AI bulan ini.
 4. Selesai bekerja: tutup jendela hitam (command prompt). Dashboard ikut mati.
 

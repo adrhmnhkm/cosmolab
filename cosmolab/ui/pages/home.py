@@ -1,20 +1,35 @@
-"""Beranda: work waiting, start buttons, project summary, recent activity.
+"""Beranda: key numbers, work waiting, what the collection holds, recent activity.
 
-The owner view (dashboard run without team mode) adds setup status, every
-project at a glance, and AI usage this month.
+The owner view (dashboard run without team mode) adds setup status, AI usage,
+and every project at a glance.
+
+Colors (checked with the color-blind palette validator against a white card):
+teal for the accent and "supports", amber for "critiques", gray for neutral
+and de-emphasized marks.
 """
 
+import altair as alt
+import pandas as pd
 import streamlit as st
 
 from cosmolab import config
 from cosmolab import home as _home
 from cosmolab import usage as _usage
-from cosmolab.ui.components import _e, render_hero, render_table
+from cosmolab.ui.components import _badge, _e, render_hero
 from cosmolab.ui.context import AppContext
 
+TEAL = "#0E8A72"
+TEAL_DARK = "#08594A"
+TEAL_LIGHT = "#A6D4C8"
+AMBER = "#B87A00"
+GRAY = "#CBD5E1"
+EMPTY = "#EEF2F1"
+INK = "#334155"
+DAY_NAMES = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
+
 START = [
-    ("Review draf mahasiswa", "Review Draf Mahasiswa", ":material/rate_review:"),
-    ("Cari & unduh paper", "Panen Paper Ilmiah", ":material/travel_explore:"),
+    ("Review draf", "Review Draf Mahasiswa", ":material/rate_review:"),
+    ("Cari paper", "Panen Paper Ilmiah", ":material/travel_explore:"),
     ("Tanya korpus", "Tanya Korpus & Sintesis", ":material/forum:"),
     ("Tulis artikel", "Studio Artikel Siap Baca", ":material/edit_note:"),
 ]
@@ -25,6 +40,18 @@ def _go(target: str, stem: str = ""):
     if stem:
         st.session_state["review_current"] = stem
 
+
+def _chart(chart, height: int):
+    st.altair_chart(chart.properties(height=height, background="transparent")
+                    .configure_view(stroke=None, fill="transparent")
+                    .configure_axis(labelColor="#64748B", titleColor="#64748B", gridColor="#E2E8F0",
+                                    domain=False, ticks=False, labelFontSize=11),
+                    width="stretch")
+
+
+# ---------------------------------------------------------------------------
+# Sections
+# ---------------------------------------------------------------------------
 
 def _project_header():
     info = config.project_info()
@@ -37,52 +64,159 @@ def _project_header():
                    "`cosmolab -P <nama> ui`.")
 
 
+def _kpi_row(ctx: AppContext, activity: list[dict], owner: bool):
+    k = _home.kpis(ctx.papers)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Paper di koleksi", k["papers"], delta=f"+{k['new_this_month']} bulan ini" if k["new_this_month"] else None,
+              chart_data=_home.paper_growth(ctx.papers), chart_type="area", border=True,
+              help="Garis: jumlah paper selama 30 hari terakhir.")
+    pct = round(100 * k["analyzed"] / k["papers"]) if k["papers"] else 0
+    c2.metric("Sudah dianalisis", f"{pct}%", delta=f"{k['analyzed']} dari {k['papers']} paper", delta_color="off",
+              delta_arrow="off", border=True)
+    c3.metric("Komentar belum diputuskan", k["pending"],
+              delta=f"di {k['reviews_open']} review" if k["reviews_open"] else "semua beres",
+              delta_color="off", delta_arrow="off", border=True)
+    if owner:
+        days = _home.usage_days()
+        tokens = sum(d["Token"] for d in days)
+        rows = _home.usage_by_feature()
+        cost = sum(u["cost"] for u in rows)
+        value = _usage.format_money(cost) if _usage.pricing() else f"{tokens / 1_000_000:.1f} jt token"
+        c4.metric("AI 30 hari terakhir", value, chart_data=[d["Token"] for d in days], chart_type="bar", border=True,
+                  help="Batang: token AI per hari, semua proyek." + ("" if _usage.pricing() else
+                                                                      " Tarif belum diisi, jadi yang tampil token."))
+    else:
+        weeks = _home.weekly_activity(activity)
+        c4.metric("Kegiatan minggu ini", weeks[-1] if weeks else 0, chart_data=weeks or None, chart_type="bar",
+                  border=True, help="Batang: kegiatan per minggu, 12 minggu terakhir.")
+
+
 def _todo_section(ctx: AppContext):
-    st.markdown("##### Perlu tindakan")
-    items = _home.todo(ctx.all_papers)
-    if not items:
-        st.success("Tidak ada pekerjaan tertunda.")
-        return
     with st.container(border=True):
+        st.markdown("##### Perlu tindakan")
+        items = _home.todo(ctx.all_papers)
+        if not items:
+            st.success("Tidak ada pekerjaan tertunda.")
+            return
         for i, it in enumerate(items):
-            col_t, col_b = st.columns([5, 1], vertical_alignment="center")
+            col_t, col_p, col_b = st.columns([3, 2, 1], vertical_alignment="center")
             if it["kind"] == "review":
-                col_t.markdown(f"**Review: {_e(it['title'])}**  \n{_e(it['detail'])}")
+                tags = " ".join(_badge(x, "warn" if "belum" in x or "lemah" in x else "info")
+                                for x in it["issues"] if "komentar belum diputuskan" not in x)
+                col_t.markdown(f"**{_e(it['title'])}**" + (f"<br>{tags}" if tags else ""), unsafe_allow_html=True)
+                if it["total"]:
+                    col_p.progress(it["decided"] / it["total"], text=f"{it['decided']}/{it['total']} komentar diputuskan")
+                else:
+                    col_p.caption("Tanpa komentar AI")
                 col_b.button("Buka", key=f"home_todo_{i}", on_click=_go, args=("Review Draf Mahasiswa", it["stem"]),
-                             use_container_width=True)
+                             width="stretch")
             else:
-                col_t.markdown(f"**{_e(it['title'])}**  \n{_e(it['detail'])}")
+                n = len(ctx.all_papers)
+                done = n - int(it["title"].split()[0])
+                col_t.markdown(f"**{_e(it['title'])}**")
+                col_p.progress(done / n if n else 0.0, text=f"{done}/{n} paper dianalisis")
                 col_b.button("Buka", key=f"home_todo_{i}", on_click=_go, args=("Paper Explorer & Korpus",),
-                             use_container_width=True)
+                             width="stretch")
 
 
 def _start_section():
-    st.markdown("##### Mulai kerja baru")
-    cols = st.columns(len(START))
-    for col, (label, target, icon) in zip(cols, START):
-        col.button(label, key=f"home_start_{target}", icon=icon, on_click=_go, args=(target,),
-                   use_container_width=True)
+    with st.container(border=True):
+        st.markdown("##### Mulai kerja baru")
+        for row in (START[:2], START[2:]):
+            cols = st.columns(2)
+            for col, (label, target, icon) in zip(cols, row):
+                col.button(label, key=f"home_start_{target}", icon=icon, on_click=_go, args=(target,), width="stretch")
 
 
-def _summary_section(ctx: AppContext):
-    st.markdown("##### Ringkasan proyek")
-    s = _home.summary(ctx.all_papers)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Paper", s["papers"])
-    c2.metric("Sudah dianalisis", s["analyzed"])
-    c3.metric("Review draf", s["reviews"])
-    c4.metric("Paper berperingkat SINTA", s["sinta"])
+def _years_chart(papers: list[dict]):
+    with st.container(border=True):
+        st.markdown("##### Tahun terbit")
+        data = _home.year_counts(papers)
+        if not data["rows"]:
+            st.caption("Belum ada paper dengan tahun terbit.")
+            return
+        st.caption(f"**{round(100 * data['recent_share'])}%** terbit dalam {_home.RECENT_YEARS} tahun terakhir "
+                   f"(batang hijau)." + (f" {data['unknown']} paper tanpa tahun." if data["unknown"] else ""))
+        df = pd.DataFrame(data["rows"])
+        chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            x=alt.X("Tahun:O", title=None, axis=alt.Axis(labelAngle=0, labelOverlap=True)),
+            y=alt.Y("Paper:Q", title=None, axis=alt.Axis(tickMinStep=1)),
+            color=alt.condition("datum.Baru", alt.value(TEAL), alt.value(GRAY)),
+            tooltip=[alt.Tooltip("Tahun:O"), alt.Tooltip("Paper:Q", title="Paper")],
+        )
+        _chart(chart, 210)
 
 
-def _recent_section(owner: bool):
-    st.markdown("##### Aktivitas terbaru")
-    rows = _home.recent(5, _usage.all_roots() if owner else None)
-    if not rows:
-        st.caption("Belum ada aktivitas tercatat.")
-        return
-    for r in rows:
-        where = f" · {_e(r['_root'])}" if owner and r.get("_root") else ""
-        st.markdown(f"- {_e(_home.when(r.get('time', '')))} · {_e(_home.describe(r))}{where}")
+def _stance_chart(papers: list[dict]):
+    with st.container(border=True):
+        st.markdown("##### Posisi paper terhadap tesisnya")
+        rows = _home.stance_counts(papers)
+        if not rows:
+            st.caption("Belum ada paper yang dianalisis.")
+            return
+        total = sum(r["Paper"] for r in rows)
+        order = [label for _, label in _home.STANCE]
+        df = pd.DataFrame([{**r, "Urut": order.index(r["Posisi"]), "Persen": r["Paper"] / total} for r in rows])
+        df["x1"] = df["Paper"].cumsum()
+        df["x0"] = df["x1"] - df["Paper"]
+        df["mid"] = (df["x0"] + df["x1"]) / 2
+        scale = alt.Scale(domain=order, range=[TEAL, GRAY, AMBER])
+        base = alt.Chart(df)
+        bars = base.mark_bar(cornerRadius=4, stroke="white", strokeWidth=2, height=40).encode(
+            x=alt.X("x0:Q", axis=None, scale=alt.Scale(domain=[0, total])), x2="x1:Q",
+            color=alt.Color("Posisi:N", scale=scale, legend=alt.Legend(orient="bottom", title=None, labelColor=INK)),
+            tooltip=["Posisi", "Paper", alt.Tooltip("Persen:Q", format=".0%")],
+        )
+        text = base.mark_text(fontWeight="bold", fontSize=13).encode(
+            x="mid:Q", text="Paper:Q",
+            color=alt.condition(alt.datum.Posisi == "Campuran", alt.value(INK), alt.value("white")),
+        )
+        _chart(bars + text, 90)
+        st.caption(" · ".join(f"{r['Paper']} {r['Posisi'].lower()}" for r in rows) + f" dari {total} paper teranalisis. "
+                   "Literatur yang seimbang memuat pendukung dan pengkritik.")
+
+
+def _ranked_chart(title: str, rows: list[dict], empty: str):
+    with st.container(border=True):
+        st.markdown(f"##### {title}")
+        if not rows:
+            st.caption(empty)
+            return
+        df = pd.DataFrame(rows)
+        base = alt.Chart(df).encode(y=alt.Y("Nama:N", sort="-x", title=None, axis=alt.Axis(labelLimit=170)))
+        bars = base.mark_bar(cornerRadiusEnd=4, color=TEAL, height=16).encode(
+            x=alt.X("Paper:Q", title=None, axis=None), tooltip=["Nama", "Paper"])
+        text = base.mark_text(align="left", dx=4, color=INK).encode(x="Paper:Q", text="Paper:Q")
+        _chart(bars + text, 28 * len(rows) + 10)
+
+
+def _activity_section(activity: list[dict], owner: bool):
+    col_h, col_r = st.columns([3, 2])
+    with col_h, st.container(border=True):
+        st.markdown("##### Aktivitas 12 minggu terakhir")
+        total = sum(d["Kegiatan"] for d in activity)
+        st.caption(f"{total} kegiatan tercatat. Makin gelap kotaknya, makin banyak kegiatan hari itu.")
+        df = pd.DataFrame(activity)
+        df["Nama hari"] = df["Hari"].map(lambda i: DAY_NAMES[i])
+        peak = max(1, int(df["Kegiatan"].max()))
+        chart = alt.Chart(df).mark_rect(cornerRadius=3, stroke="white", strokeWidth=2).encode(
+            x=alt.X("Minggu:O", axis=None),
+            y=alt.Y("Nama hari:O", sort=DAY_NAMES, title=None),
+            color=alt.condition("datum.Kegiatan == 0", alt.value(EMPTY),
+                                alt.Color("Kegiatan:Q", scale=alt.Scale(domain=[1, peak], range=[TEAL_LIGHT, TEAL_DARK]),
+                                          legend=None)),
+            tooltip=[alt.Tooltip("Tanggal:T", format="%d %b %Y"), "Kegiatan"],
+        )
+        _chart(chart, 170)
+    with col_r, st.container(border=True):
+        st.markdown("##### Terbaru")
+        rows = _home.recent(5, _usage.all_roots() if owner else None)
+        if not rows:
+            st.caption("Belum ada aktivitas tercatat.")
+        for r in rows:
+            where = f" · {_e(r['_root'])}" if owner and r.get("_root") else ""
+            st.markdown(f"<span style='color:#64748B'>{_e(_home.when(r.get('time', '')))}</span>  \n"
+                        f"{_e(_home.describe(r))}{where}", unsafe_allow_html=True)
 
 
 def _owner_section():
@@ -90,36 +224,92 @@ def _owner_section():
     st.markdown("#### Khusus pemilik")
     st.caption("Bagian ini hanya tampil di dashboard yang dijalankan tanpa mode tim.")
 
-    st.markdown("##### Status setup")
-    checks = _home.setup_checks()
-    with st.container(border=True):
+    col_s, col_u = st.columns([2, 3])
+    with col_s, st.container(border=True):
+        st.markdown("##### Status setup")
+        checks = _home.setup_checks()
+        ready = sum(1 for c in checks if c["ok"])
+        st.progress(ready / len(checks), text=f"{ready} dari {len(checks)} siap")
         for c in checks:
-            mark = ":green[Siap]" if c["ok"] else ":orange[Belum]"
-            st.markdown(f"**{_e(c['label'])}** · {mark}  \n{_e(c['detail'])}")
+            st.markdown(_badge("Siap" if c["ok"] else "Belum", "good" if c["ok"] else "warn")
+                        + f" **{_e(c['label'])}**", unsafe_allow_html=True)
+            if not c["ok"]:
+                st.caption(c["detail"])
+    with col_u, st.container(border=True):
+        st.markdown("##### Token AI per hari, 30 hari terakhir")
+        days = _home.usage_days()
+        if not any(d["Token"] for d in days):
+            st.caption("Belum ada pemakaian AI.")
+        else:
+            df = pd.DataFrame(days)
+            chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3, color=TEAL).encode(
+                x=alt.X("yearmonthdate(Tanggal):T", title=None, axis=alt.Axis(format="%d %b", labelOverlap=True)),
+                y=alt.Y("Token:Q", title=None, axis=alt.Axis(format="~s")),
+                tooltip=[alt.Tooltip("Tanggal:T", format="%d %b %Y"), alt.Tooltip("Token:Q", format=",")],
+            )
+            _chart(chart, 190)
+        usage = _home.usage_by_feature()
+        if usage:
+            st.markdown("**Per fitur, bulan ini**")
+            priced = bool(_usage.pricing())
+            rows = [{"Nama": _home.feature_label(u["key"]), "Paper": u["total_tokens"]} for u in usage[:6]]
+            df = pd.DataFrame(rows)
+            base = alt.Chart(df).encode(y=alt.Y("Nama:N", sort="-x", title=None, axis=alt.Axis(labelLimit=190)))
+            bars = base.mark_bar(cornerRadiusEnd=4, color=TEAL, height=14).encode(
+                x=alt.X("Paper:Q", title=None, axis=None), tooltip=[alt.Tooltip("Nama", title="Fitur"),
+                                                                     alt.Tooltip("Paper:Q", title="Token", format=",")])
+            text = base.mark_text(align="left", dx=4, color=INK).encode(x="Paper:Q", text=alt.Text("Paper:Q", format=".2s"))
+            _chart(bars + text, 26 * len(rows) + 10)
+            total = sum(u["total_tokens"] for u in usage)
+            cost = _usage.format_money(sum(u["cost"] for u in usage)) if priced else "tarif belum diisi"
+            st.caption(f"Total bulan ini: {total:,} token · {cost}")
 
-    st.markdown("##### Semua proyek")
-    render_table(_home.projects_overview())
-
-    st.markdown("##### Pemakaian AI bulan ini")
-    usage = _home.usage_by_feature()
-    if not usage:
-        st.caption("Belum ada pemakaian AI bulan ini.")
-        return
-    priced = bool(_usage.pricing())
-    render_table([{"Fitur": _home.feature_label(u["key"]), "Panggilan": u["calls"], "Token": f"{u['total_tokens']:,}",
-                   "Biaya": _usage.format_money(u["cost"]) if priced else "-"} for u in usage])
-    total = sum(u["total_tokens"] for u in usage)
-    cost = _usage.format_money(sum(u["cost"] for u in usage)) if priced else "tarif belum diisi"
-    st.caption(f"Total: {total:,} token · {cost}")
+    with st.container(border=True):
+        st.markdown("##### Semua proyek")
+        rows = _home.projects_overview()
+        for r in rows:
+            r["Dianalisis (%)"] = round(100 * r["Dianalisis"] / r["Paper"]) if r["Paper"] else 0
+        st.dataframe(
+            pd.DataFrame(rows)[["Proyek", "Paper", "Dianalisis (%)", "Review draf", "Komentar belum diputuskan",
+                                "Token AI bulan ini", "Biaya AI bulan ini"]],
+            hide_index=True, width="stretch",
+            column_config={
+                "Dianalisis (%)": st.column_config.ProgressColumn("Dianalisis", min_value=0, max_value=100,
+                                                                  format="%d%%"),
+                "Token AI bulan ini": st.column_config.NumberColumn(format="compact"),
+            },
+        )
 
 
 def render(ctx: AppContext):
     """Beranda."""
-    render_hero(title="Beranda", subtitle="Pekerjaan yang menunggu, cara cepat memulai, dan ringkasan proyek.")
+    owner = _home.is_owner()
+    render_hero(title="Beranda", subtitle="Pekerjaan yang menunggu, isi koleksi, dan kegiatan tim dalam satu layar.")
     _project_header()
-    _todo_section(ctx)
-    _start_section()
-    _summary_section(ctx)
-    _recent_section(_home.is_owner())
-    if _home.is_owner():
+    activity = _home.activity_days(_usage.all_roots() if owner else None)
+    _kpi_row(ctx, activity, owner)
+
+    col_t, col_s = st.columns([3, 2])
+    with col_t:
+        _todo_section(ctx)
+    with col_s:
+        _start_section()
+
+    st.markdown("#### Isi koleksi")
+    if ctx.selected_faculty_id != "all":
+        st.caption(f"Bidang: {_e(ctx.faculty_labels.get(ctx.selected_faculty_id, ''))} (ubah di sidebar).")
+    col_y, col_p = st.columns([3, 2])
+    with col_y:
+        _years_chart(ctx.papers)
+    with col_p:
+        _stance_chart(ctx.papers)
+    col_f, col_src = st.columns(2)
+    with col_f:
+        _ranked_chart("Bidang ilmu", _home.faculty_counts(ctx.papers, ctx.faculty_labels), "Belum ada paper.")
+    with col_src:
+        _ranked_chart("Asal sumber", _home.source_counts(ctx.papers), "Belum ada paper.")
+
+    st.markdown("#### Kegiatan")
+    _activity_section(activity, owner)
+    if owner:
         _owner_section()
