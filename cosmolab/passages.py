@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import re
+import unicodedata
 from collections import Counter
 
 from . import config
@@ -27,6 +28,10 @@ STOP = {
     "antara", "atau", "juga", "tidak", "lebih", "karena", "bahwa", "telah", "sudah", "para",
     "apakah", "bagaimana", "mengapa", "apa", "siapa", "kapan", "dimana", "terhadap", "hal",
     "hlm", "dkk", "serta", "namun", "tetapi", "maka", "agar", "secara", "masih", "hanya",
+    "ada", "cara", "berapa", "harus", "yaitu", "yakni", "tersebut", "merupakan", "menjadi", "seperti",
+    "bagi", "hingga", "sampai", "saja", "lain", "setiap", "semua", "beberapa", "banyak", "sangat",
+    "pernah", "belum", "lagi", "mana", "kami", "kita", "saya", "anda", "mereka", "dia", "pun",
+    "lalu", "jadi", "sedang", "sejak", "punya", "memiliki", "yakni", "ialah", "adakah",
     # English
     "the", "and", "for", "with", "that", "this", "are", "was", "were", "from", "but", "not",
     "has", "have", "had", "its", "their", "which", "what", "how", "why", "who", "when", "where",
@@ -65,9 +70,29 @@ def _stem(w: str) -> str:
     return w
 
 
+# Words found in papers of every field. They still score, but do not on their own make a
+# passage a match: "time series" or "replacement strategy" says nothing about the topic.
+GENERIC = {_stem(w) for w in (
+    "time", "series", "strategy", "strategies", "replacement", "analysis", "method", "methods", "model",
+    "models", "system", "systems", "design", "data", "effect", "effects", "factor", "factors", "study",
+    "studies", "research", "result", "results", "approach", "framework", "process", "level", "levels",
+    "impact", "development", "performance", "based", "case", "use", "using", "theory", "theoretical",
+    "empirical", "evidence", "role", "relationship", "concept", "conceptual", "practice", "practices",
+    "application", "applications", "technique", "techniques", "dynamics", "structure", "pattern",
+    "patterns", "criteria", "selection", "procedure", "optimization", "evaluation", "assessment",
+    "prediction", "forecasting", "regression", "variable", "variables", "management", "quality",
+    "reduction", "protocol", "guidelines", "traditional", "modern", "general", "specific", "new",
+    "high", "low", "long", "short", "term", "rate", "value", "price", "cost", "demand", "supply",
+    "analisis", "metode", "model", "sistem", "data", "pengaruh", "faktor", "studi", "penelitian",
+    "hasil", "pendekatan", "proses", "tingkat", "dampak", "pengembangan", "kinerja", "teori",
+    "harga", "waktu", "nilai", "biaya", "bulan", "tahun", "hari",
+)}
+
+
 def tokenize(text: str) -> list[str]:
     out = []
-    for w in _WORD.findall((text or "").lower()):
+    # NFKC turns PDF ligatures back into letters: "ﬁnite" -> "finite".
+    for w in _WORD.findall(unicodedata.normalize("NFKC", text or "").lower()):
         if w in STOP or (len(w) < 3 and not w.isdigit()):
             continue
         out.append(_stem(w))
@@ -266,10 +291,16 @@ def search(file_name: str, query: str, top_k: int = 5, extra_terms: str = "", de
     need = min(MIN_QUERY_TERMS, len(q_terms))
     tfs = idx["bm25"].tf
 
+    def enough(terms, tf, n):
+        # n shared words, at least one of them not GENERIC: "data" may help a methods
+        # question match, but "time series" alone is no match.
+        hit = terms.intersection(tf)
+        return len(hit) >= n and bool(hit - GENERIC)
+
     def matches(i):
-        if need and len(q_terms.intersection(tfs[i])) >= need:
+        if need and enough(q_terms, tfs[i], need):
             return True
-        if len(x_terms.intersection(tfs[i])) >= MIN_EXTRA_TERMS:
+        if enough(x_terms, tfs[i], MIN_EXTRA_TERMS):
             return True
         return cos is not None and cos[i] >= config.DENSE_MIN
 

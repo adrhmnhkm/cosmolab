@@ -43,6 +43,40 @@ class PassageGateTests(TempRoot):
         self.assertEqual([h["page"] for h in self._search("awal mula alam semesta", "temporal beginning universe")], [1])
 
 
+    def test_pdf_ligatures_match_plain_letters(self):
+        self.assertEqual(passages.tokenize("an actual ﬁnite ﬂow"), passages.tokenize("an actual finite flow"))
+
+    def test_generic_academic_words_do_not_make_a_match(self):
+        pages = [{"page": 1, "paragraphs": ["A time series analysis of bank financing and replacement strategy for small firms."]}]
+        with mock.patch("cosmolab.extract.get_paper_pages", return_value=pages):
+            got = passages.search("y.pdf", "harga tiket kereta", top_k=5,
+                                  extra_terms="time series rail fare replacement strategy", dense=False)
+        self.assertEqual(got, [])
+
+
+class JudgeTests(unittest.TestCase):
+    CUT = '{"results": [{"id": 1, "verdict": "didukung", "reason": "a", "evidence": ["E1"]}, {"id": 2, "verdict": "'
+
+    def test_cut_off_reply_keeps_whole_rows(self):
+        from cosmolab import entail
+        self.assertEqual([r["id"] for r in entail._complete_results(self.CUT)], [1])
+
+    def test_claims_left_out_are_asked_again_one_by_one(self):
+        from cosmolab import entail
+        calls = []
+
+        def judge(batch, model):
+            calls.append([r["id"] for r in batch])
+            if len(batch) > 1:
+                return {1: {"verdict": "didukung", "reason": "a"}}
+            return {batch[0]["id"]: {"verdict": "tidak_didukung", "reason": "b"}}
+
+        claims = [{"id": i, "text": "klaim", "matched": [{"file": "a.pdf"}]} for i in (1, 2, 3)]
+        rows = entail._judge_claims(claims, "m", judge, evidence_fn=lambda text, p: [])
+        self.assertEqual([r["verdict"] for r in rows], ["didukung", "tidak_didukung", "tidak_didukung"])
+        self.assertEqual(calls, [[1, 2, 3], [2], [3]])
+
+
 class RerankTests(TempRoot):
     CANDS = [{"file": f"p{i}.pdf", "title": f"P{i}", "thesis": "t"} for i in range(1, 7)]
 

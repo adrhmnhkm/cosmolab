@@ -1014,7 +1014,7 @@ def evaluation(
     console.print(f"Cek klaim: {c['n']} soal, akurasi {pct(c['accuracy'])}, klaim salah tertangkap {pct(c['false_caught'])}, "
                   f"klaim benar lolos {pct(c['true_passed'])}")
     if c.get("failed"):
-        console.print(f"[yellow]{c['failed']} klaim tidak dinilai karena AI gagal dihubungi; tidak dihitung.[/yellow]")
+        console.print(f"[yellow]{c['failed']} klaim tidak dinilai (AI mati atau jawabannya tidak terbaca); tidak dihitung.[/yellow]")
 
 
 @app.command("log")

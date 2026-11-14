@@ -272,8 +272,32 @@ def _llm_judge(items: list[dict], model: str = None) -> dict[int, dict]:
         temperature=0,
         timeout=120,
     )
-    data = _parse_response(resp.choices[0].message.content or "")
-    return {int(r.get("id")): r for r in data.get("results") or [] if str(r.get("id", "")).isdigit()}
+    content = resp.choices[0].message.content or ""
+    try:
+        rows = _parse_response(content).get("results") or []
+    except ValueError:
+        # A reply cut off by the context limit still holds the claims judged before the cut.
+        rows = _complete_results(content)
+        if not rows:
+            raise ValueError("Jawaban AI tidak terbaca (terpotong atau bukan JSON)")
+    return {int(r.get("id")): r for r in rows if isinstance(r, dict) and str(r.get("id", "")).isdigit()}
+
+
+def _complete_results(content: str) -> list[dict]:
+    """The whole objects in a "results" list whose closing part is missing."""
+    start = content.find("[", content.find('"results"'))
+    if start < 0:
+        return []
+    dec, rows, i = json.JSONDecoder(), [], start + 1
+    while True:
+        i = content.find("{", i)
+        if i < 0:
+            return rows
+        try:
+            obj, i = dec.raw_decode(content, i)
+        except json.JSONDecodeError:
+            return rows
+        rows.append(obj)
 
 
 def _normalize_verdict(v: str) -> str:
@@ -302,6 +326,18 @@ def _resolve(cite: dict, papers: list[dict], numbered: list[dict] | None) -> dic
             return next((p for p in papers if p.get("file") == ref.get("file")), ref)
         return None
     return match_paper(cite, papers)
+
+
+# Claims per judge call. Each brings up to ~6 passages; ten of them overflow a local
+# model's 8k context and the reply gets cut off mid-JSON.
+JUDGE_BATCH = 4
+
+
+def _try_judge(judge, batch: list[dict], model) -> tuple[dict, str]:
+    try:
+        return judge(batch, model) or {}, ""
+    except Exception as e:
+        return {}, str(e)[:120]
 
 
 def _judge_claims(claims: list[dict], model, judge, evidence_fn, use_analysis: bool = True) -> list[dict]:
@@ -334,17 +370,20 @@ def _judge_claims(claims: list[dict], model, judge, evidence_fn, use_analysis: b
             to_judge.append(row)
         results.append(row)
 
-    for start in range(0, len(to_judge), 10):
-        batch = to_judge[start:start + 10]
-        try:
-            verdicts = judge(batch, model)
-        except Exception as e:
-            verdicts = {}
-            for row in batch:
-                row["reason"] = f"Pemeriksa AI gagal dijalankan: {str(e)[:120]}"
+    for start in range(0, len(to_judge), JUDGE_BATCH):
+        batch = to_judge[start:start + JUDGE_BATCH]
+        verdicts, error = _try_judge(judge, batch, model)
+        missing = [row for row in batch if row["id"] not in verdicts]
+        # A cut-off or unreadable reply: ask again for each claim it left out, one at a time.
+        if missing and len(batch) > 1:
+            for row in missing:
+                one, err = _try_judge(judge, [row], model)
+                verdicts.update(one)
+                error = err or error
         for row in batch:
             v = verdicts.get(row["id"])
             if not v:
+                row["reason"] = f"Pemeriksa AI gagal dijalankan: {error or 'klaim ini tidak ada di jawaban AI'}"
                 continue
             row["verdict"] = _normalize_verdict(v.get("verdict"))
             row["reason"] = (v.get("reason") or "").strip()

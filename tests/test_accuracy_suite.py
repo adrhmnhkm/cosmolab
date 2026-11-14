@@ -52,7 +52,7 @@ class AnalysisCheckTests(TempRoot):
         seen = {}
 
         def judge(items, model):
-            seen["n"] = len(items)
+            seen["n"] = seen.get("n", 0) + len(items)
             return {it["id"]: {"verdict": "didukung" if it["id"] == 3 else "sebagian", "reason": "r", "evidence": ["E1"]}
                     for it in items}
 

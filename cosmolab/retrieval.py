@@ -161,12 +161,6 @@ def rerank_papers(
     if not client:
         client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
 
-    ckey = llmcache.key("rerank", model, [query, top_k, [c.get("file") for c in candidates]])
-    cached = llmcache.get(ckey)
-    if isinstance(cached, list):
-        by_file = {c.get("file"): c for c in candidates}
-        return [dict(by_file[f], rerank_boost=True) for f in cached if f in by_file]
-
     try:
         extra = " ".join(expand_academic_query(query, model=model))  # cached
     except Exception:
@@ -207,6 +201,13 @@ Judge mainly by the passage from the paper's own text; the summaries were writte
 Choose at most {top_k}. Leave out papers that do not address the query; choosing fewer is fine.
 Return ONLY a valid JSON list of integers representing the chosen candidate IDs in order of highest relevance,
 for example: [3, 1, 5]. Return [] if no candidate addresses the query."""
+
+    # Keyed on the whole prompt: when passage search changes, the model judges again.
+    ckey = llmcache.key("rerank", model, [prompt, [c.get("file") for c in candidates]])
+    cached = llmcache.get(ckey)
+    if isinstance(cached, list):
+        by_file = {c.get("file"): c for c in candidates}
+        return [dict(by_file[f], rerank_boost=True) for f in cached if f in by_file]
 
     try:
         resp = client.chat.completions.create(
