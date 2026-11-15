@@ -144,7 +144,7 @@ Ada dua peran:
 - **admin**: membuka semua proyek dan data utama, serta melihat bagian **Khusus pemilik** di Beranda (status setup, semua proyek, pemakaian AI).
 - **konsultan**: bekerja di proyek tempat ia menjadi anggota. Tidak melihat bagian pemilik.
 
-Admin mengelola akun dari command prompt di komputer server:
+Admin mengelola akun di **lobi tim**, tab **Akun** (buat akun, password sementara baru, hapus akun) dan tab **Anggota** (siapa boleh membuka proyek mana). Perintah di command prompt komputer server tetap bisa dipakai:
 
 | Perintah | Fungsi |
 | --- | --- |
@@ -154,6 +154,9 @@ Admin mengelola akun dari command prompt di komputer server:
 | `cosmolab team remove-member <proyek> rina` | Cabut akses ke satu proyek |
 | `cosmolab team reset rina` | Password sementara baru (kalau lupa) |
 | `cosmolab team remove rina` | Hapus akun dan semua akses proyeknya |
+| `cosmolab team owner adi` | Jadikan admin ini pemilik |
+
+**Pemilik** adalah admin pertama yang dibuat. Hanya pemilik yang bisa membuat, mereset password, atau menghapus akun admin di lobi. Admin lain hanya mengelola akun konsultan. Pindahkan peran pemilik ke admin lain dengan `cosmolab team owner <nama>` di komputer server.
 
 Urutan pertama kali:
 
@@ -170,19 +173,35 @@ Yang perlu diketahui:
 
 ### Menyalakan server
 
-1. Di komputer server, klik dua kali **Jalankan Server Tim.bat**.
-2. Pilih proyek dan port. Satu proyek memakai satu port: misalnya klien A di `8501`, klien B di `8502`.
-3. Jendela akan menampilkan alamat seperti `http://100.x.y.z:8501`. Kirim alamat ini ke anggota tim.
-4. Kalau Windows bertanya soal firewall, izinkan untuk **Private networks** saja.
+1. Di komputer server, klik dua kali **Jalankan Server Tim.bat**. Tidak perlu mengetik nama proyek atau port.
+2. Jendela akan menampilkan alamat lobi seperti `http://100.x.y.z:8501`. Kirim alamat ini ke anggota tim. Alamatnya selalu sama untuk semua proyek.
+3. Kalau Windows bertanya soal firewall, izinkan untuk **Private networks** saja.
+4. Biarkan jendela terbuka selama tim bekerja. Menutup jendela mematikan lobi dan semua proyek yang sedang terbuka.
+
+### Lobi tim
+
+Lobi adalah halaman pertama yang dibuka tim. Isinya:
+
+- **Proyek**: daftar proyek yang boleh dibuka akun itu. Klik **Buka** untuk menyiapkan proyek (10-20 detik), lalu **Masuk**. Tidak perlu login lagi di proyek.
+- **Proyek baru** (admin): isi nama klien, keterangan, dan anggota tim. Nama folder dibuat otomatis, misalnya `2026-11-universitas-x-budi`.
+- **Anggota** dan **Akun** (admin): atur akses proyek dan akun tim.
+- **Sedang terbuka** (admin): proyek yang sedang menyala, dan tombol untuk menutupnya.
+
+Di dalam proyek, tombol **Ganti proyek** di sidebar kembali ke lobi.
+
+Setiap proyek yang terbuka memakai memori komputer server. Karena itu paling banyak 4 proyek terbuka bersamaan, dan proyek yang 2 jam tidak dipakai ditutup otomatis. Kalau keempatnya sedang dipakai, proyek kelima menunggu sampai ada yang selesai.
+
+Selama belum ada akun, semua orang yang tahu password tim bisa membuka dan membuat proyek di lobi.
 
 ### Untuk anggota tim
 
 1. Pasang Tailscale di laptop Anda dan login dengan email yang diundang admin.
-2. Buka alamat dari admin di browser, lalu masuk dengan nama pengguna dan password dari admin.
+2. Buka alamat lobi dari admin di browser, lalu masuk dengan nama pengguna dan password dari admin.
 3. Saat pertama masuk, Anda diminta mengganti password sementara dengan password sendiri (minimal 10 karakter).
-4. Nama Anda tampil di sidebar. Klik **Keluar** kalau selesai, terutama di komputer bersama.
-5. Di Beranda, pilih **Punya saya** pada Perlu tindakan untuk melihat review yang Anda buat saja.
-6. Anggota tim tidak perlu memasang Python atau CosmoLab.
+4. Pilih proyek, klik **Buka**, lalu **Masuk**. Proyek terbuka di tab baru.
+5. Nama Anda tampil di sidebar. Klik **Keluar** kalau selesai, terutama di komputer bersama.
+6. Di Beranda, pilih **Punya saya** pada Perlu tindakan untuk melihat review yang Anda buat saja.
+7. Anggota tim tidak perlu memasang Python atau CosmoLab.
 
 ### Biaya AI per proyek
 

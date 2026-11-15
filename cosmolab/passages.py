@@ -20,6 +20,7 @@ import unicodedata
 from collections import Counter
 
 from . import config
+from . import trace
 
 STOP = {
     # Indonesian
@@ -198,19 +199,59 @@ def embeddings_enabled() -> bool:
 _LOCAL_MODEL = None
 
 
+# Local models fastembed does not list itself. bge-m3 (multilingual, the same model the
+# API served) as the int8 ONNX export: ~570 MB, runs on the CPU.
+CUSTOM_LOCAL_MODELS = {
+    "BAAI/bge-m3": {"hf": "Xenova/bge-m3", "model_file": "onnx/model_int8.onnx", "dim": 1024,
+                    "pooling": "CLS", "size_in_gb": 0.57},
+}
+
+
+def _local_model(name: str):
+    """The fastembed model, loaded once. Model files are kept in <project>/models/."""
+    global _LOCAL_MODEL
+    if _LOCAL_MODEL is not None and _LOCAL_MODEL[0] == name:
+        return _LOCAL_MODEL[1]
+    from fastembed import TextEmbedding  # optional dependency: pip install fastembed
+
+    spec = CUSTOM_LOCAL_MODELS.get(name)
+    if spec and name not in {m["model"] for m in TextEmbedding.list_supported_models()}:
+        from fastembed.common.model_description import ModelSource, PoolingType
+
+        TextEmbedding.add_custom_model(
+            model=name, pooling=PoolingType[spec["pooling"]], normalization=True,
+            sources=ModelSource(hf=spec["hf"]), dim=spec["dim"], model_file=spec["model_file"],
+            size_in_gb=spec["size_in_gb"],
+        )
+    import os
+
+    cache_dir = config.PROJECT_ROOT / "models"
+    model = TextEmbedding(model_name=name, cache_dir=str(cache_dir), threads=os.cpu_count())
+    _LOCAL_MODEL = (name, model)
+    return model
+
+
 def embed(texts: list[str], kind: str = "passage") -> list[list[float]]:
     """Embed texts with the configured model. Raises when none is configured."""
     model = config.EMBED_MODEL
     if not model:
         raise RuntimeError("EMBED_MODEL belum diatur")
     if model.startswith("local:"):
-        global _LOCAL_MODEL
-        from fastembed import TextEmbedding  # optional dependency
-
-        if _LOCAL_MODEL is None:
-            _LOCAL_MODEL = TextEmbedding(model_name=model[len("local:"):])
-        prefix = "query: " if kind == "query" else "passage: "
-        return [list(map(float, v)) for v in _LOCAL_MODEL.embed([prefix + t for t in texts])]
+        name = model[len("local:"):]
+        # Only E5 models were trained with "query: " / "passage: " in front; for others
+        # (bge-m3 among them) the prefix makes the vectors worse.
+        if "e5" in name.lower():
+            prefix = "query: " if kind == "query" else "passage: "
+        else:
+            prefix = ""
+        # On the CPU, texts of similar length batched together waste little on padding:
+        # measured 13.7 passages/s against 6.4 unsorted (bge-m3 int8, 12 threads).
+        order = sorted(range(len(texts)), key=lambda i: len(texts[i]))
+        vecs = _local_model(name).embed([prefix + texts[i] for i in order], batch_size=8)
+        out = [None] * len(texts)
+        for i, v in zip(order, vecs):
+            out[i] = list(map(float, v))
+        return out
 
     from openai import OpenAI
 
@@ -282,12 +323,14 @@ def search(file_name: str, query: str, top_k: int = 5, extra_terms: str = "", de
     # Phrase bonus: adjacent query words that also appear next to each other.
     raw = [w for w in _WORD.findall(query.lower()) if len(w) > 2 and w not in STOP]
     bigrams = {f"{raw[i]} {raw[i + 1]}" for i in range(len(raw) - 1)}
+    boost = {}
     if bigrams:
         for i, c in enumerate(chunks):
             low = c["text"].lower()
             hits = sum(1 for g in bigrams if g in low)
             if hits and bm[i] > 0:
-                bm[i] *= 1 + 0.25 * min(hits, 3)
+                boost[i] = 1 + 0.25 * min(hits, 3)
+                bm[i] *= boost[i]
 
     use_dense = embeddings_enabled() if dense is None else dense
     cos = None
@@ -317,15 +360,17 @@ def search(file_name: str, query: str, top_k: int = 5, extra_terms: str = "", de
         return len(hit) >= n and bool(hit - GENERIC)
 
     def matches(i):
+        """Why chunk i passes the gate, or "" when it does not."""
         if q_generic_only and len(q_core.intersection(tfs[i])) >= need_core:
-            return True
+            return "kata umum saja"
         if need and enough(q_terms, tfs[i], need):
-            return True
+            return "kata pertanyaan"
         if enough(x_terms, tfs[i], MIN_EXTRA_TERMS):
-            return True
-        return cos is not None and cos[i] >= config.DENSE_MIN
+            return "kata ekspansi"
+        return "makna (dense)" if cos is not None and cos[i] >= config.DENSE_MIN else ""
 
-    ok = [matches(i) for i in range(len(chunks))]
+    why = [matches(i) for i in range(len(chunks))]
+    ok = [bool(w) for w in why]
     order_bm = sorted(range(len(chunks)), key=lambda i: bm[i], reverse=True)
     fused = [0.0] * len(chunks)
     for r, i in enumerate(order_bm, 1):
@@ -347,6 +392,21 @@ def search(file_name: str, query: str, top_k: int = 5, extra_terms: str = "", de
             "bm25": round(bm[i], 3),
             "dense": round(cos[i], 4) if cos is not None else None,
         })
+    if trace.active():
+        from collections import Counter as _C
+
+        trace.add(
+            "passages", file=file_name, chunks=len(chunks), dense_on=cos is not None, dense_min=config.DENSE_MIN,
+            terms=[{"term": t, "weight": w, "generic": t in GENERIC and t not in FILLER, "filler": t in FILLER,
+                    "idf": round(idx["bm25"].idf.get(t, 0.0), 2)} for t, w in weights.items()],
+            bigrams=sorted(bigrams), need=need, generic_only=q_generic_only,
+            passed=sum(ok), reasons=dict(_C(w for w in why if w)),
+            with_score=sum(1 for f in fused if f > 0),
+            top=[{"page": chunks[i]["page"], "bm25": round(bm[i], 3), "boost": boost.get(i, 1.0),
+                  "dense": round(cos[i], 4) if cos is not None else None,
+                  "fused": round(fused[i], 5), "score": round(100.0 * fused[i] / best, 1) if best else 0.0,
+                  "why": why[i], "text": trace.short(chunks[i]["text"], 160)} for i in ranked[:top_k]],
+        )
     return out
 
 
@@ -411,19 +471,26 @@ def _cached_order(question: str, texts: list[str], model: str, ranker) -> list[i
     return order
 
 
-def rerank(question: str, hits: list[dict], model: str = None, ranker=None) -> list[dict]:
+def rerank(question: str, hits: list[dict], model: str = None, ranker=None, file_name: str = "") -> list[dict]:
     """Reorder search() hits with the LLM. Hits it leaves out keep their order after the chosen ones.
 
     On any error the original order is returned unchanged.
     """
     if len(hits) < 2:
+        trace.add("passage_rerank", file=file_name, source="dilewati", reason=f"hanya {len(hits)} pasase")
         return hits
     if ranker is None and not config.RERANK_ALWAYS and confident(hits):
+        trace.add("passage_rerank", file=file_name, source="dilewati",
+                  reason="BM25 sudah jelas: pasase teratas >= 1.3x pasase kedua")
         return hits
     try:
         order = _cached_order(question, [h["text"] for h in hits], model, ranker)
-    except Exception:
+    except Exception as e:
+        trace.add("passage_rerank", file=file_name, source="fallback", error=str(e)[:160])
         return hits
+    trace.add("passage_rerank", file=file_name, source="ai", model=model or config.LLM_MODEL,
+              before=[h["page"] for h in hits], chosen=[hits[i]["page"] for i in order],
+              rejected=[h["page"] for i, h in enumerate(hits) if i not in order])
     chosen = [hits[i] for i in order]
     rest = [h for i, h in enumerate(hits) if i not in order]
     for h in chosen:

@@ -14,6 +14,7 @@ from rich.console import Console
 from . import config
 from . import db
 from . import llmcache
+from . import trace
 
 console = Console(force_terminal=True, legacy_windows=False)
 
@@ -45,6 +46,7 @@ def expand_academic_query(query: str, client: OpenAI = None, model: str = None) 
         ckey = llmcache.key("expand", model, query)
         cached = llmcache.get(ckey)
         if cached:
+            trace.add("expand", query=query, terms=list(cached), source="cache", model=model)
             return list(cached)
         if not client:
             client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
@@ -70,9 +72,11 @@ Return ONLY a valid JSON list of strings, for example: ["temporal origin", "kala
             if isinstance(terms, list) and terms:
                 out = [str(t).strip() for t in terms if str(t).strip()]
                 llmcache.put(ckey, out)
+                trace.add("expand", query=query, terms=out, source="ai", model=model)
                 return out
-    except Exception:
-        pass
+        error = "jawaban AI tanpa daftar JSON"
+    except Exception as e:
+        error = str(e)[:160]
 
     # Heuristic fallback
     q_lower = query.lower()
@@ -81,7 +85,10 @@ Return ONLY a valid JSON list of strings, for example: ["temporal origin", "kala
         if key in q_lower:
             fallback_terms.extend(terms[:2])
 
-    return list(dict.fromkeys(fallback_terms)) if fallback_terms else [query]
+    out = list(dict.fromkeys(fallback_terms)) if fallback_terms else [query]
+    trace.add("expand", query=query, terms=out, model=model, error=error,
+              source="peta konsep" if fallback_terms else "pertanyaan apa adanya")
+    return out
 
 
 EXPANSION_WEIGHT = 1.0
@@ -132,6 +139,13 @@ def hybrid_search(
 
     # Sort merged papers by descending RRF score
     ranked_files = sorted(scores.keys(), key=lambda f: scores[f], reverse=True)
+    if trace.active():
+        raw_rank = {d["file"]: r for r, d in enumerate(raw_results, 1)}
+        exp_rank = {d["file"]: r for r, d in enumerate(expanded_results, 1)}
+        trace.add("rrf", k=k, expansion_weight=EXPANSION_WEIGHT, concept_query=concept_query, limit=limit,
+                  rows=[{"file": f, "title": doc_map[f].get("title"), "raw": raw_rank.get(f),
+                         "expanded": exp_rank.get(f), "score": round(scores[f], 5), "kept": i < limit}
+                        for i, f in enumerate(ranked_files)])
     merged_results = []
     for f in ranked_files[:limit]:
         item = dict(doc_map[f])
@@ -155,6 +169,9 @@ def rerank_papers(
     - Prioritizes papers whose theses directly engage or refute the core premises.
     """
     if not candidates or len(candidates) <= top_k:
+        trace.add("rerank_papers", source="dilewati",
+                  reason=f"kandidat ({len(candidates or [])}) tidak lebih dari top_k ({top_k})",
+                  chosen=[c.get("file") for c in candidates or []], rejected=[], candidates=[])
         return candidates
 
     model = model or config.LLM_MODEL
@@ -168,6 +185,7 @@ def rerank_papers(
 
     # Build concise candidate summaries for re-ranking prompt
     candidate_prompts = []
+    cand_info = []
     for idx, c in enumerate(candidates, start=1):
         title = c.get("title") or "Untitled"
         year = c.get("year") or "n.d."
@@ -188,6 +206,8 @@ def rerank_papers(
         if psg:
             c_text += f"\n   - Passage from the paper's own text: \"{psg}\""
         candidate_prompts.append(c_text)
+        cand_info.append({"id": idx, "file": c.get("file"), "title": title, "year": year,
+                          "passage": trace.short(psg, 160)})
 
     prompt = f"""You are an expert academic research re-ranker.
 Research Query: "{query}"
@@ -207,6 +227,8 @@ for example: [3, 1, 5]. Return [] if no candidate addresses the query."""
     cached = llmcache.get(ckey)
     if isinstance(cached, list):
         by_file = {c.get("file"): c for c in candidates}
+        trace.add("rerank_papers", source="cache", model=model, candidates=cand_info, chosen=list(cached),
+                  rejected=[c.get("file") for c in candidates if c.get("file") not in cached])
         return [dict(by_file[f], rerank_boost=True) for f in cached if f in by_file]
 
     try:
@@ -233,10 +255,18 @@ for example: [3, 1, 5]. Return [] if no candidate addresses the query."""
             # Papers the model left out stay out: no refill with rejected candidates.
             reranked = reranked[:top_k]
             llmcache.put(ckey, [c.get("file") for c in reranked])
+            chosen = [c.get("file") for c in reranked]
+            trace.add("rerank_papers", source="ai", model=model, candidates=cand_info, chosen=chosen,
+                      rejected=[c.get("file") for c in candidates if c.get("file") not in chosen])
             return reranked
+        error = "jawaban AI tanpa daftar nomor"
     except Exception as e:
+        error = str(e)[:160]
         console.print(f"[dim yellow]Notice: Re-ranking fallback to hybrid order ({e})[/dim yellow]")
 
+    trace.add("rerank_papers", source="fallback", model=model, error=error, candidates=cand_info,
+              chosen=[c.get("file") for c in candidates[:top_k]],
+              rejected=[c.get("file") for c in candidates[top_k:]])
     return candidates[:top_k]
 
 
@@ -309,7 +339,7 @@ def find_grounded_passages(
 
     hits = passages.search(file_name, query, top_k=max(top_k * 3, 12 if rerank else 0), extra_terms=extra)
     if rerank:
-        hits = passages.rerank(query, hits, model=model)
+        hits = passages.rerank(query, hits, model=model, file_name=file_name)
     words = passages.tokenize(query)
 
     results, seen = [], set()
@@ -403,7 +433,13 @@ def select_sources(question: str, top_k: int = 5, model: str = None, expand: boo
     found = grounded_passages_batch([r.get("file") for r in ranked], question, top_k=passages,
                                     rerank=None if rerank else False, model=model, expand=expand)
     found = {f: [p for p in (psgs or []) if not p.get("fallback")] for f, psgs in found.items()}
-    return [r for r in ranked if found.get(r.get("file"))], found
+    kept = [r for r in ranked if found.get(r.get("file"))]
+    trace.add("select", question=question, kept=[r.get("file") for r in kept],
+              dropped=[r.get("file") for r in ranked if not found.get(r.get("file"))],
+              titles={r.get("file"): r.get("title") for r in ranked},
+              passages={f: [{"page": p["page"], "text": trace.short(p["verbatim"])} for p in psgs]
+                        for f, psgs in found.items() if psgs})
+    return kept, found
 
 
 def get_grounded_passages_for_papers(

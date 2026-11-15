@@ -92,6 +92,33 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual(calls, [[1, 2, 3], [2], [3]])
 
 
+class LocalEmbedTests(unittest.TestCase):
+    class Fake:
+        def __init__(self):
+            self.seen = []
+
+        def embed(self, texts, batch_size=None):
+            self.seen = list(texts)
+            return [[float(len(t))] for t in texts]
+
+    def _embed(self, model, texts, kind):
+        fake = self.Fake()
+        with mock.patch.object(config, "EMBED_MODEL", model), \
+             mock.patch.object(passages, "_local_model", return_value=fake):
+            return passages.embed(texts, kind=kind), fake.seen
+
+    def test_bge_m3_gets_no_prefix_and_order_is_kept(self):
+        texts = ["panjang sekali teksnya", "a b", "sedang saja"]
+        vecs, seen = self._embed("local:BAAI/bge-m3", texts, "query")
+        self.assertEqual(sorted(seen, key=len), seen)        # sent shortest first
+        self.assertEqual(vecs, [[float(len(t))] for t in texts])  # returned in the caller's order
+        self.assertFalse(any(s.startswith(("query: ", "passage: ")) for s in seen))
+
+    def test_e5_keeps_its_prefix(self):
+        _, seen = self._embed("local:intfloat/multilingual-e5-large", ["teks"], "query")
+        self.assertEqual(seen, ["query: teks"])
+
+
 class RoundCitationTests(unittest.TestCase):
     def test_author_year_in_round_brackets_is_a_claim(self):
         from cosmolab import entail

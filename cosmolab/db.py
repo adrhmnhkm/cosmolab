@@ -492,6 +492,7 @@ def search(query: str, limit: int = 10) -> list[dict]:
     fts_query = " OR ".join(f'"{w}"*' for w in words)
 
     results = []
+    mode = "fts5"
     try:
         cur = con.execute("""
             SELECT 
@@ -510,6 +511,7 @@ def search(query: str, limit: int = 10) -> list[dict]:
         results = [dict(r) for r in cur.fetchall()]
     except Exception:
         # Fallback to simple LIKE search if FTS query syntax error
+        mode = "like"
         cur = con.execute("""
             SELECT 
                 p.file, p.title, p.year, p.doi, p.arxiv_id, p.faculty,
@@ -525,6 +527,13 @@ def search(query: str, limit: int = 10) -> list[dict]:
         results = [dict(r) for r in cur.fetchall()]
 
     con.close()
+    from . import trace
+
+    trace.add("fts", query=query, fts_query=fts_query, mode=mode, limit=limit,
+              weights={"title": 10.0, "abstract": 5.0, "full_text": 3.0, "thesis": 4.0,
+                       "argument_type": 1.0, "premises": 3.0},
+              results=[{"file": r["file"], "title": r.get("title"), "year": r.get("year"),
+                        "rank": round(r.get("rank") or 0.0, 3)} for r in results])
     return results
 
 

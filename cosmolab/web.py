@@ -5,6 +5,7 @@ to the page module for the selected menu entry (cosmolab/ui/pages/).
 """
 
 import importlib
+import os
 import streamlit as st
 from cosmolab import config
 from cosmolab import db
@@ -81,6 +82,12 @@ st.set_page_config(
 from cosmolab.ui import login as _login  # noqa: E402
 
 _login.require_login()
+
+# Opened from the team lobby: mark this project as in use, so the lobby does not close it as idle.
+if os.environ.get("COSMOLAB_FROM_LOBBY"):
+    from cosmolab import servers as _servers  # noqa: E402
+
+    _servers.touch(os.environ["COSMOLAB_FROM_LOBBY"])
 
 
 # -------------------------------------------------------------

@@ -18,6 +18,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Local embeddings on the CPU (EMBED_MODEL=local:BAAI/bge-m3).
+embed = ["fastembed>=0.9"]
 
 [project.scripts]
 cosmolab = "cosmolab.cli:app"

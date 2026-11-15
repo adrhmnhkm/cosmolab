@@ -24,6 +24,7 @@ import json
 import re
 import secrets
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -168,6 +169,48 @@ def change_password(username: str, new_password: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Owner: the one admin who may create, reset, or delete other admins
+# ---------------------------------------------------------------------------
+
+def owner_username() -> str:
+    """The owner: the admin marked "owner", else the earliest admin account. '' when there is no admin."""
+    users = _load()
+    marked = [u for u, r in users.items() if r.get("owner") and r.get("role") == ADMIN]
+    if marked:
+        return sorted(marked)[0]
+    admins = sorted((r.get("created", ""), u) for u, r in users.items() if r.get("role") == ADMIN)
+    return admins[0][1] if admins else ""
+
+
+def is_owner(user: dict | None) -> bool:
+    return bool(user) and user.get("role") == ADMIN and user.get("username") == owner_username()
+
+
+def set_owner(username: str) -> None:
+    """Hand ownership to another admin (from the server's command line)."""
+    username = validate_username(username)
+    users = _load()
+    if users.get(username, {}).get("role") != ADMIN:
+        raise ValueError(f"'{username}' bukan akun admin.")
+    for u, r in users.items():
+        r.pop("owner", None)
+        if u == username:
+            r["owner"] = True
+    _save(users)
+
+
+def can_manage(actor: dict | None, target_role: str) -> bool:
+    """May `actor` create, reset, or delete an account with `target_role` from the dashboard?
+
+    The owner manages everyone. Other admins manage consultants only, so an admin cannot make
+    new admins or take over the owner's account by resetting its password.
+    """
+    if is_owner(actor):
+        return True
+    return bool(actor) and actor.get("role") == ADMIN and target_role == CONSULTANT
+
+
+# ---------------------------------------------------------------------------
 # Project access
 # ---------------------------------------------------------------------------
 
@@ -216,6 +259,78 @@ def can_access(user: dict | None, project: str | None) -> bool:
     if user.get("role") == ADMIN:
         return True
     return bool(project) and user.get("username") in members(project)
+
+
+# ---------------------------------------------------------------------------
+# Lobby tickets: open a project's dashboard without logging in again
+# ---------------------------------------------------------------------------
+
+TICKET_TTL = 600  # seconds a link from the lobby stays valid; each link works once
+
+
+def _secret() -> bytes:
+    """Key that signs lobby tickets. Made once, kept next to the accounts file (outside git)."""
+    path = users_file().parent / "lobby_secret"
+    try:
+        return bytes.fromhex(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        key = secrets.token_bytes(32)
+        path.write_text(key.hex(), encoding="utf-8")
+        return key
+
+
+def _sign(body: str) -> str:
+    return hmac.new(_secret(), body.encode("ascii"), hashlib.sha256).hexdigest()
+
+
+def make_ticket(username: str, project: str | None) -> str:
+    """One-time link token for `username` to enter `project` ('' = shared team password)."""
+    import base64
+    payload = {"u": username or "", "p": project or "", "exp": int(time.time()) + TICKET_TTL,
+               "n": secrets.token_hex(8)}
+    body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
+    return f"{body}.{_sign(body)}"
+
+
+def _used_path() -> Path:
+    return users_file().parent / "tickets_used.json"
+
+
+def _spend(nonce: str, exp: int) -> bool:
+    """Record a ticket as used. False when it was used before."""
+    path = _used_path()
+    try:
+        used = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        used = {}
+    now = time.time()
+    used = {n: e for n, e in used.items() if e > now}
+    if nonce in used:
+        return False
+    used[nonce] = exp
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(used), encoding="utf-8")
+    tmp.replace(path)
+    return True
+
+
+def redeem_ticket(token: str, project: str | None) -> dict | None:
+    """The payload {"u": username, "p": project} when the ticket is genuine, unexpired, unused and for this project."""
+    import base64
+    try:
+        body, sig = (token or "").split(".", 1)
+        if not hmac.compare_digest(_sign(body), sig):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+    except (ValueError, TypeError):
+        return None
+    if payload.get("p", "") != (project or "") or int(payload.get("exp", 0)) < time.time():
+        return None
+    if not _spend(str(payload.get("n", "")), int(payload["exp"])):
+        return None
+    return payload
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,9 @@ build/
 # Local research data: papers, database, caches, usage logs
 data/
 
+# Local embedding model files (downloaded by fastembed)
+models/
+
 # Editor / IDE
 .vscode/
 .idea/

@@ -36,6 +36,9 @@ if (_real_root / "pdf" / _SAMPLE_PDF).is_file():
     shutil.copy2(_real_root / "pdf" / _SAMPLE_PDF, _test_root / "pdf" / _SAMPLE_PDF)
 
 config._set_root(_test_root)
+# Tests do not use the embedding model from .env (a 570 MB local model, or a paid API);
+# a test that needs embeddings sets EMBED_MODEL itself.
+config.EMBED_MODEL = ""
 # use_project(None) resets to the default root; keep that inside the copy too.
 config._default_root = lambda: _test_root
 

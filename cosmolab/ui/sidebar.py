@@ -1,5 +1,7 @@
 """Sidebar: brand, active project, field filter, menu, and technical info."""
 
+import os
+
 import streamlit as st
 from cosmolab import config
 from cosmolab import home as _home
@@ -22,6 +24,20 @@ def render_nav_item(label: str, target: str, badge: str = None, icon: str = None
     ):
         st.session_state["active_nav_menu"] = target
         st.rerun()
+
+
+def _lobby_link():
+    """Back to the team lobby, when this dashboard was opened from it."""
+    port = os.environ.get("COSMOLAB_LOBBY_PORT")
+    if not (port and os.environ.get("COSMOLAB_FROM_LOBBY")):
+        return
+    try:
+        host = st.context.headers.get("Host") or ""
+    except Exception:
+        host = ""
+    host = (host.rsplit(":", 1)[0] if host.count(":") == 1 else host) or os.environ.get("COSMOLAB_SERVER_HOST", "localhost")
+    st.sidebar.link_button("Ganti proyek", f"http://{host}:{port}", icon=":material/swap_horiz:",
+                           use_container_width=True)
 
 
 # Kept at column 0: indented lines would turn into a Markdown code block.
@@ -47,6 +63,7 @@ def build_sidebar() -> AppContext:
         st.sidebar.info(f"Proyek: **{config.PROJECT}**{_client}")
     else:
         st.sidebar.warning("Data utama (bukan proyek klien)")
+    _lobby_link()
 
     _user = _team.current()
     if _user:

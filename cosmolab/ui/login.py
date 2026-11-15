@@ -31,6 +31,15 @@ def _slow_down() -> int:
     return tries
 
 
+def _from_ticket() -> dict | None:
+    """A one-time ticket from the lobby link (?tiket=...), for this dashboard's project. Removed from the URL."""
+    token = st.query_params.get("tiket")
+    if not token:
+        return None
+    del st.query_params["tiket"]
+    return _team.redeem_ticket(token, config.PROJECT)
+
+
 def logout():
     for key in ("team_user", "team_auth_ok", "team_auth_tries"):
         st.session_state.pop(key, None)
@@ -41,6 +50,10 @@ def _shared_login():
     """One password for the whole team: used only while no account exists."""
     _team.set_current(None)
     if st.session_state.get("team_auth_ok"):
+        return
+    ticket = _from_ticket()
+    if ticket and not ticket["u"]:
+        st.session_state["team_auth_ok"] = True
         return
     _logo("Masuk tim")
     if not config.TEAM_PASSWORD:
@@ -84,12 +97,23 @@ def _change_password(user: dict):
     st.stop()
 
 
-def _account_login():
+def _account_login(lobby: bool = False):
+    # The lobby only needs a valid account; it lists the projects each person may open.
+    def allowed(u):
+        return bool(u) and (lobby or _team.can_access(u, config.PROJECT))
+
     user = st.session_state.get("team_user")
+    if not user:
+        ticket = _from_ticket()
+        found = _team.get_user(ticket["u"]) if ticket and ticket["u"] else None
+        if allowed(found):
+            user = st.session_state["team_user"] = found
+            _team.set_current(found)
+            audit.log("masuk", via="lobi")
     if user:
         # Read the account again on every run: a removed account or a revoked project loses access at the next click.
         fresh = _team.get_user(user["username"])
-        if fresh and _team.can_access(fresh, config.PROJECT):
+        if allowed(fresh):
             st.session_state["team_user"] = fresh
             if fresh["must_change"]:
                 _change_password(fresh)
@@ -98,7 +122,7 @@ def _account_login():
         logout()
 
     _logo("Masuk")
-    st.caption(f"Proyek: {config.PROJECT or 'data utama (khusus admin)'}")
+    st.caption("Lobi proyek CosmoLab" if lobby else f"Proyek: {config.PROJECT or 'data utama (khusus admin)'}")
     with st.form("team_login"):
         username = st.text_input("Nama pengguna")
         pw = st.text_input("Password", type="password")
@@ -106,7 +130,7 @@ def _account_login():
     if submitted:
         tries = _slow_down()
         found = _team.verify(username, pw)
-        if found and _team.can_access(found, config.PROJECT):
+        if allowed(found):
             st.session_state["team_user"] = found
             st.session_state.pop("team_auth_tries", None)
             _team.set_current(found)
@@ -118,12 +142,15 @@ def _account_login():
     st.stop()
 
 
-def require_login():
-    """Stop the page until the visitor is logged in. Does nothing outside team mode."""
+def require_login(lobby: bool = False):
+    """Stop the page until the visitor is logged in. Does nothing outside team mode.
+
+    lobby=True: any valid account may enter (the lobby itself shows only their projects).
+    """
     if os.environ.get("COSMOLAB_TEAM_MODE") != "1":
         _team.set_current(None)
         return
     if _team.has_users():
-        _account_login()
+        _account_login(lobby)
     else:
         _shared_login()

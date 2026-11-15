@@ -136,14 +136,27 @@ def team_list():
     if not users:
         console.print("[yellow]Belum ada akun. Selama belum ada akun, mode tim memakai password tim bersama.[/yellow]")
         return
+    owner = _team.owner_username()
     table = Table(title="Akun tim")
     for col in ("Nama pengguna", "Nama", "Peran", "Proyek", "Password"):
         table.add_column(col)
     for u in users:
         projects = "semua" if u["role"] == _team.ADMIN else (", ".join(_team.projects_of(u["username"])) or "-")
-        table.add_row(u["username"], u["name"], _team.ROLES.get(u["role"], u["role"]), projects,
+        role = "Pemilik (admin)" if u["username"] == owner else _team.ROLES.get(u["role"], u["role"])
+        table.add_row(u["username"], u["name"], role, projects,
                       "sementara" if u["must_change"] else "sudah diganti")
     console.print(table)
+
+
+@team_app.command("owner")
+def team_owner(username: str = typer.Argument(..., help="Akun admin yang menjadi pemilik")):
+    """Jadikan admin ini pemilik: satu-satunya yang boleh membuat, mereset, dan menghapus admin di lobi."""
+    try:
+        _team.set_owner(username)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]{username} sekarang pemilik.[/green]")
 
 
 @team_app.command("add-member")
@@ -362,6 +375,54 @@ def ask(
         _print_claim_report(answer, None, numbered)
 
 
+@app.command("embed")
+def embed_all():
+    """Hitung vektor embedding semua paper sekarang, supaya pertanyaan pertama tidak lambat."""
+    import time
+    from . import db, passages
+
+    if not passages.embeddings_enabled():
+        console.print("[yellow]EMBED_MODEL belum diatur di .env; embedding mati.[/yellow]")
+        raise typer.Exit(1)
+    files = [p["file"] for p in db.get_all_papers_with_analyses()]
+    console.print(f"[cyan]EMBED[/cyan] {len(files)} paper dengan model {config.EMBED_MODEL}")
+    t0 = time.monotonic()
+    for i, f in enumerate(files, 1):
+        t = time.monotonic()
+        try:
+            idx = passages._index(f)
+            fresh = passages._cache_path(f).exists()
+            passages._vectors(f, idx)
+            note = "sudah ada" if fresh else f"{time.monotonic() - t:.0f} detik"
+            console.print(f"[dim]{i}/{len(files)}[/dim] {f[:70]}  {len(idx['chunks'])} chunk, {note}")
+        except Exception as e:
+            console.print(f"[red]{i}/{len(files)} gagal[/red] {f[:70]}: {str(e)[:120]}")
+    console.print(f"[green]Selesai dalam {(time.monotonic() - t0) / 60:.1f} menit.[/green]")
+
+
+@app.command("jejak")
+def trace_search(
+    question: str,
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Jumlah paper maksimal yang dipilih"),
+    answer: bool = typer.Option(False, "--jawab", help="Lanjutkan sampai jawaban AI dan cek klaim"),
+    model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+):
+    """Tampilkan langkah demi langkah bagaimana sumber dipilih untuk sebuah pertanyaan."""
+    from . import retrieval, trace, trace_view
+
+    console.print(f"[cyan]JEJAK[/cyan] [dim]Model {model} di {config.LLM_BASE_URL}. Merekam setiap tahap...[/dim]")
+    with trace.recording(listener=trace_view.live(console)) as events:
+        if answer:
+            from . import ask as _ask
+
+            text = _ask.ask(question=question, model=model, top_k=top_k)
+        else:
+            retrieval.select_sources(question, top_k=top_k, model=model)
+    trace_view.render(events, question, console=console)
+    if answer:
+        _print_claim_report(text, None)
+
+
 CLAIM_STYLES = {"didukung": "green", "sebagian": "yellow", "tidak_didukung": "red", "sumber_tidak_ada": "red", "belum_dicek": "dim"}
 
 
@@ -494,6 +555,50 @@ def ui(
         how = "masuk dengan akun masing-masing" if _team.has_users() else "memasukkan password tim"
         console.print(f"[dim]Mode tim aktif: anggota tim membuka alamat di atas dan {how}.[/dim]")
     subprocess.run(args, env=env, cwd=str(config.PROJECT_ROOT))
+
+
+@app.command("tim")
+def team_lobby(
+    port: int = typer.Option(8501, "--port", "-p", help="Port lobi tim"),
+    host: str = typer.Option(None, "--host", help="Alamat yang dibuka (default: IP Tailscale)"),
+):
+    """Nyalakan lobi tim: satu alamat untuk login, memilih proyek, dan membuat proyek baru."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from . import servers
+
+    if not _team.has_users() and len(config.TEAM_PASSWORD) < 10:
+        console.print(
+            "[red]Lobi tim butuh akun atau password tim.[/red] Buat akun: cosmolab team add <nama> --role admin. "
+            "Atau isi COSMOLAB_TEAM_PASSWORD (minimal 10 karakter) di .env."
+        )
+        raise typer.Exit(1)
+    address = host or _tailscale_ip()
+    if not address:
+        console.print(
+            "[red]IP Tailscale tidak ditemukan.[/red] Pasang dan login Tailscale dulu (lihat PANDUAN_TIM.md), "
+            "atau tentukan alamat sendiri dengan --host."
+        )
+        raise typer.Exit(1)
+
+    servers.stop_all()  # dashboards left over from a previous run
+    env = os.environ.copy()
+    env.pop("COSMOLAB_PROJECT", None)
+    env.update({"COSMOLAB_TEAM_MODE": "1", "COSMOLAB_SERVER_HOST": address, "COSMOLAB_LOBBY_PORT": str(port)})
+    args = [sys.executable, "-m", "streamlit", "run", str(Path(__file__).parent / "lobby.py"),
+            "--server.port", str(port), "--server.address", address, "--server.headless", "true"]
+    console.print(f"[bold cyan]Lobi tim menyala:[/bold cyan] http://{address}:{port}")
+    how = "masuk dengan akun masing-masing" if _team.has_users() else "memasukkan password tim"
+    console.print(f"[dim]Kirim alamat itu ke tim. Mereka {how}, lalu memilih proyek di browser.[/dim]")
+    try:
+        subprocess.run(args, env=env, cwd=str(config.PROJECT_ROOT))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        servers.stop_all()
 
 
 def _tailscale_ip() -> str:
