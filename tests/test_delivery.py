@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cosmolab import config, deliverables, verify
+from cosmolab import config, deliverables, entail, verify
 
 CORPUS = [
     {"title": "Indeterminism in Kalām and Quantum Mechanics", "year": 2025, "doi": "10.1/abc"},
@@ -80,7 +80,8 @@ class TestDelivery(unittest.TestCase):
 
     def test_blocks_until_reviewed(self):
         with mock.patch.object(verify, "_load_corpus", return_value=CORPUS), \
-             mock.patch.object(verify, "lookup_crossref", side_effect=fake_crossref):
+             mock.patch.object(verify, "lookup_crossref", side_effect=fake_crossref), \
+             mock.patch.object(entail, "check_answer", return_value=CLEAN_CLAIMS):
             with self.assertRaises(deliverables.DeliveryBlocked):
                 deliverables.deliver(self.src, reviewer="Dr. Uji")
             with self.assertRaises(ValueError):
@@ -103,6 +104,40 @@ class TestDelivery(unittest.TestCase):
         pdf = pymupdf.open(str(result["files"][1]))
         self.assertGreaterEqual(pdf.page_count, 2)
         self.assertIn("Halaman 1", pdf[1].get_text())
+
+    def test_unsupported_claims_block_delivery(self):
+        bad = {"claims": [{"id": 1, "text": "x", "verdict": entail.UNSUPPORTED},
+                          {"id": 2, "text": "y", "verdict": entail.SUPPORTED}],
+               "summary": {}, "total": 2, "skipped": 0}
+        with mock.patch.object(verify, "_load_corpus", return_value=CORPUS), \
+             mock.patch.object(verify, "lookup_crossref", side_effect=fake_crossref), \
+             mock.patch.object(entail, "check_answer", return_value=bad) as check:
+            with self.assertRaises(deliverables.ClaimsBlocked) as ctx:
+                deliverables.deliver(self.src, reviewer="Dr. Uji", allow_unverified=True)
+            self.assertEqual([c["id"] for c in ctx.exception.problems], [1])
+            # The reference list is not checked as claims.
+            self.assertNotIn("Daftar Rujukan", check.call_args[0][0])
+            # Accepting the findings reuses the check: no second LLM run.
+            result = deliverables.deliver(self.src, reviewer="Dr. Uji", allow_unverified=True,
+                                          allow_unsupported_claims=True, claims_report=bad)
+        self.assertEqual(check.call_count, 1)
+        self.assertTrue(result["files"])
+
+    def test_unchecked_or_skipped_claims_block_delivery(self):
+        with mock.patch.object(verify, "_load_corpus", return_value=CORPUS), \
+             mock.patch.object(verify, "lookup_crossref", side_effect=fake_crossref):
+            for report in ({"claims": [{"id": 1, "text": "x", "verdict": entail.UNCHECKED}], "total": 1, "skipped": 0},
+                           {"claims": [], "total": 0, "skipped": 3}):
+                with self.assertRaises(deliverables.ClaimsBlocked):
+                    deliverables.deliver(self.src, reviewer="Dr. Uji", allow_unverified=True, claims_report=report)
+
+    def test_round_bracket_citations_reach_the_claim_check(self):
+        claims = entail.split_claims(ARTICLE.split("## Daftar")[0])
+        labels = sorted(c["label"] for cl in claims for c in cl["citations"])
+        self.assertEqual(labels, ["Craig", "Fiktif", "Malik"])
+
+
+CLEAN_CLAIMS = {"claims": [], "summary": {}, "total": 0, "skipped": 0}
 
 
 if __name__ == "__main__":

@@ -148,6 +148,12 @@ LLM_MODEL = (
     or "deepseek-v4-pro"
 )
 
+# Claim checker. A model other than the one that wrote the answer, so the AI does not
+# judge its own writing. Empty = same as LLM_MODEL (and the same server).
+JUDGE_MODEL = env_config.get("JUDGE_MODEL") or os.environ.get("JUDGE_MODEL") or LLM_MODEL
+JUDGE_BASE_URL = env_config.get("JUDGE_BASE_URL") or os.environ.get("JUDGE_BASE_URL") or LLM_BASE_URL
+JUDGE_API_KEY = env_config.get("JUDGE_API_KEY") or os.environ.get("JUDGE_API_KEY") or LLM_API_KEY
+
 # Backward-compatibility aliases
 NINEROUTER_API_KEY = LLM_API_KEY
 NINEROUTER_BASE_URL = LLM_BASE_URL

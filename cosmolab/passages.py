@@ -31,7 +31,9 @@ STOP = {
     "ada", "cara", "berapa", "harus", "yaitu", "yakni", "tersebut", "merupakan", "menjadi", "seperti",
     "bagi", "hingga", "sampai", "saja", "lain", "setiap", "semua", "beberapa", "banyak", "sangat",
     "pernah", "belum", "lagi", "mana", "kami", "kita", "saya", "anda", "mereka", "dia", "pun",
-    "lalu", "jadi", "sedang", "sejak", "punya", "memiliki", "yakni", "ialah", "adakah",
+    "lalu", "jadi", "sedang", "sejak", "punya", "memiliki", "ialah", "adakah",
+    # Instructions in a question, never the topic.
+    "jelaskan", "sebutkan", "uraikan", "tuliskan", "menurut",
     # English
     "the", "and", "for", "with", "that", "this", "are", "was", "were", "from", "but", "not",
     "has", "have", "had", "its", "their", "which", "what", "how", "why", "who", "when", "where",
@@ -86,7 +88,18 @@ GENERIC = {_stem(w) for w in (
     "analisis", "metode", "model", "sistem", "data", "pengaruh", "faktor", "studi", "penelitian",
     "hasil", "pendekatan", "proses", "tingkat", "dampak", "pengembangan", "kinerja", "teori",
     "harga", "waktu", "nilai", "biaya", "bulan", "tahun", "hari",
+    "strategi", "manajemen", "kualitas", "evaluasi", "prediksi", "peramalan", "regresi", "variabel",
+    "struktur", "pola", "kriteria", "teknik", "aplikasi", "konsep", "peran", "hubungan",
 )}
+
+# Question words that name no topic. They score, never make a match, and are not counted
+# when a question made only of generic words is matched: "perbedaan metode" is not a hit
+# for every methods section.
+FILLER = {_stem(w) for w in (
+    "perbedaan", "persamaan", "contoh", "pengertian", "definisi", "terbaik", "masalah", "kelebihan",
+    "kekurangan", "kelemahan", "manfaat", "tujuan", "jenis", "macam",
+)}
+GENERIC |= FILLER
 
 
 def tokenize(text: str) -> list[str]:
@@ -291,6 +304,12 @@ def search(file_name: str, query: str, top_k: int = 5, extra_terms: str = "", de
     need = min(MIN_QUERY_TERMS, len(q_terms))
     tfs = idx["bm25"].tf
 
+    # A question made only of generic words ("time series forecasting", "harga dan biaya")
+    # may still match on them; otherwise it could never find anything without embeddings.
+    q_core = q_terms - FILLER
+    q_generic_only = bool(q_core) and not (q_terms - GENERIC)
+    need_core = min(MIN_QUERY_TERMS, len(q_core))
+
     def enough(terms, tf, n):
         # n shared words, at least one of them not GENERIC: "data" may help a methods
         # question match, but "time series" alone is no match.
@@ -298,6 +317,8 @@ def search(file_name: str, query: str, top_k: int = 5, extra_terms: str = "", de
         return len(hit) >= n and bool(hit - GENERIC)
 
     def matches(i):
+        if q_generic_only and len(q_core.intersection(tfs[i])) >= need_core:
+            return True
         if need and enough(q_terms, tfs[i], need):
             return True
         if enough(x_terms, tfs[i], MIN_EXTRA_TERMS):

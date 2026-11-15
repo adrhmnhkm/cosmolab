@@ -53,6 +53,21 @@ class PassageGateTests(TempRoot):
                                   extra_terms="time series rail fare replacement strategy", dense=False)
         self.assertEqual(got, [])
 
+    def test_question_of_only_generic_words_still_matches(self):
+        pages = [
+            {"page": 1, "paragraphs": ["We compare forecasting methods for time series data with ARIMA across many datasets."]},
+            {"page": 2, "paragraphs": ["Perbedaan metode yang digunakan dalam penelitian ini dijelaskan pada bagian berikut."]},
+        ]
+        with mock.patch("cosmolab.extract.get_paper_pages", return_value=pages):
+            self.assertEqual([h["page"] for h in passages.search("z.pdf", "time series forecasting", dense=False)], [1])
+            # "perbedaan" names no topic: it must not pull in the methods boilerplate on page 2.
+            self.assertEqual([h["page"] for h in passages.search("z.pdf", "perbedaan metode time series", dense=False)], [1])
+
+    def test_question_words_do_not_unlock_a_match(self):
+        pages = [{"page": 1, "paragraphs": ["Contoh perbedaan yang jelas terlihat pada kelompok kontrol dan perlakuan."]}]
+        with mock.patch("cosmolab.extract.get_paper_pages", return_value=pages):
+            self.assertEqual(passages.search("w.pdf", "contoh perbedaan zakat produktif", dense=False), [])
+
 
 class JudgeTests(unittest.TestCase):
     CUT = '{"results": [{"id": 1, "verdict": "didukung", "reason": "a", "evidence": ["E1"]}, {"id": 2, "verdict": "'
@@ -76,6 +91,54 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual([r["verdict"] for r in rows], ["didukung", "tidak_didukung", "tidak_didukung"])
         self.assertEqual(calls, [[1, 2, 3], [2], [3]])
 
+
+class RoundCitationTests(unittest.TestCase):
+    def test_author_year_in_round_brackets_is_a_claim(self):
+        from cosmolab import entail
+        claims = entail.split_claims(
+            "Al-Ghazali menolak keharusan sebab-akibat alami (Malik, 2025; Craig, 1979, hlm. 3). "
+            "Menurut Hume (1748) kebiasaan membentuk keyakinan sebab-akibat. "
+            "Hume menulis *An Enquiry Concerning Human Understanding* (1748) di Skotlandia."
+        )
+        self.assertEqual(len(claims), 2)
+        self.assertEqual([c["label"] for c in claims[0]["citations"]], ["Malik", "Craig"])
+        self.assertEqual(claims[0]["citations"][1]["page"], "3")
+        self.assertEqual(claims[1]["citations"][0]["label"], "Hume")
+
+    def test_square_citations_are_left_alone(self):
+        from cosmolab import entail
+        claims = entail.split_claims("Kausalitas dan nonlokalitas dijadikan aksioma [Popescu & Rohrlich (1997), Hal. 2].")
+        self.assertEqual(claims[0]["citations"][0]["label"], "Popescu & Rohrlich")
+
+
+class JudgeModelTests(unittest.TestCase):
+    def test_claims_are_judged_by_the_judge_model(self):
+        from cosmolab import entail
+        seen = {}
+
+        class FakeClient:
+            def __init__(self, base_url=None, api_key=None):
+                seen["url"] = base_url
+                self.chat = self
+                self.completions = self
+
+            def create(self, model, **kw):
+                seen["model"] = model
+                msg = mock.Mock(content='{"results": [{"id": 1, "verdict": "didukung", "reason": "r"}]}')
+                return mock.Mock(choices=[mock.Mock(message=msg)])
+
+        with mock.patch.object(config, "JUDGE_MODEL", "pemeriksa"),              mock.patch.object(config, "JUDGE_BASE_URL", "http://judge/v1"),              mock.patch("openai.OpenAI", FakeClient):
+            entail._llm_judge([{"id": 1, "text": "k", "evidence": []}])
+        self.assertEqual(seen, {"url": "http://judge/v1", "model": "pemeriksa"})
+
+
+class DialecticTriggerTests(unittest.TestCase):
+    def test_everyday_words_do_not_start_a_debate(self):
+        from cosmolab.ask_agent import _detect_query_intent as intent
+        self.assertIsNone(intent("Apa perbedaan metode peramalan dalam waktu singkat?")["argument_type"])
+        self.assertFalse(intent("Apa rumusan masalah dan beda kedua model?")["needs_contrast"])
+        got = intent("Bagaimana kritik terhadap argumen kalam?")
+        self.assertEqual((got["argument_type"], got["needs_contrast"]), ("kalam", True))
 
 class RerankTests(TempRoot):
     CANDS = [{"file": f"p{i}.pdf", "title": f"P{i}", "thesis": "t"} for i in range(1, 7)]

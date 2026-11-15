@@ -12,6 +12,7 @@ build/
 
 # Virtual environment (made by "Pasang CosmoLab.bat")
 .venv/
+.env.*
 
 # Local research data: papers, database, caches, usage logs
 data/

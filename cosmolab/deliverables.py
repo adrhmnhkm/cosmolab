@@ -4,8 +4,9 @@ gap report, matrix) into a Word and/or PDF document with the firm's letterhead.
 
 Every deliverable gets a cover page (firm, title, client, date), a header and
 footer with page numbers, and a closing note that names the human reviewer.
-Delivery is refused while the citation check still has open findings, unless
-the reviewer explicitly accepts them.
+Delivery is refused while the citation check still has open findings, or while
+a cited claim is not backed by the paper it cites, unless the reviewer
+explicitly accepts them.
 """
 
 import re
@@ -17,6 +18,7 @@ from pathlib import Path
 from markdown_it import MarkdownIt
 
 from . import config
+from . import entail
 from . import verify
 
 MONTHS_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli",
@@ -29,6 +31,23 @@ class DeliveryBlocked(Exception):
     def __init__(self, report: "verify.VerificationReport"):
         self.report = report
         super().__init__(f"{len(report.blocking)} sitasi belum terverifikasi")
+
+
+class ClaimsBlocked(Exception):
+    """Raised when cited claims are not backed by their paper, or could not be checked."""
+
+    def __init__(self, claims_report: dict):
+        self.claims_report = claims_report
+        self.problems = entail.blocking_claims(claims_report)
+        self.skipped = claims_report.get("skipped", 0)
+        msg = f"{len(self.problems)} klaim tidak didukung sumber atau belum bisa dicek"
+        if self.skipped:
+            msg += f", {self.skipped} klaim melewati batas pemeriksaan"
+        super().__init__(msg)
+
+
+# Cited sentences checked before delivery. Beyond this the rest are counted as not checked.
+DELIVERY_MAX_CLAIMS = 100
 
 
 @dataclass
@@ -416,11 +435,17 @@ def deliver(
     title: str | None = None,
     online: bool = True,
     allow_unverified: bool = False,
+    allow_unsupported_claims: bool = False,
+    claims_report: dict | None = None,
 ) -> dict:
-    """Check citations, then write the client files to <project>/deliverables/.
+    """Check citations and cited claims, then write the client files to <project>/deliverables/.
 
-    Returns {"report": VerificationReport, "qa_report": Path, "files": [Path, ...]}.
+    Returns {"report": VerificationReport, "qa_report": Path, "files": [Path, ...],
+    "claims": claim report or None}.
     Raises DeliveryBlocked when citations are not verified and allow_unverified is False.
+    Raises ClaimsBlocked when a cited claim is not supported, its source is missing, or it
+    could not be judged, and allow_unsupported_claims is False. `claims_report` reuses a
+    check already run, so accepting the findings does not run the LLM again.
     """
     reviewer = (reviewer or "").strip()
     if not reviewer:
@@ -431,6 +456,14 @@ def deliver(
     qa_path = verify.save_report(report)
     if not report.ok and not allow_unverified:
         raise DeliveryBlocked(report)
+
+    # Every cited sentence is judged against the paper it cites (the paper's own text only).
+    if claims_report is None and not allow_unsupported_claims:
+        body_only, _ = verify.split_reference_section(md)
+        claims_report = entail.check_answer(body_only, max_claims=DELIVERY_MAX_CLAIMS)
+    if claims_report is not None and not allow_unsupported_claims:
+        if entail.blocking_claims(claims_report) or claims_report.get("skipped"):
+            raise ClaimsBlocked(claims_report)
 
     h1, body = split_title(md)
     meta = default_meta(title or h1 or Path(source).stem.replace("_", " "), reviewer)
@@ -443,4 +476,4 @@ def deliver(
         files.append(build_docx(body, meta, out_dir / f"{stem}.docx"))
     if "pdf" in formats:
         files.append(build_pdf(body, meta, out_dir / f"{stem}.pdf"))
-    return {"report": report, "qa_report": qa_path, "files": files}
+    return {"report": report, "qa_report": qa_path, "files": files, "claims": claims_report}

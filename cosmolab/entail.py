@@ -38,7 +38,7 @@ VERDICT_LABELS = {
 _BRACKET = re.compile(r"\[([^\[\]\n]{2,300}?)\](?!\()")
 _YEAR = re.compile(r"\b(1[5-9]\d\d|20\d\d)[a-z]?\b|\bn\.d\.")
 _BIBLIO = re.compile(r"^\s*\[\d+\]|\b(?:Phys\.|Rev\.|Found\.|vol\.|pp\.|doi:)\s*\w*\s*\d", re.I)
-_PAGE = re.compile(r"\b(?:hal(?:aman)?|p|pp|page)\.?\s*(\d+)", re.I)
+_PAGE = re.compile(r"\b(?:hal(?:aman)?|hlm|p|pp|page)\.?\s*(\d+)", re.I)
 # Sentence end, but not after common abbreviations such as "hlm. 3", "Hal. 2", "dkk.", "et al.", "No. 4".
 _SENT_SPLIT = re.compile(r"(?<![Hh]lm\.)(?<![Hh]al\.)(?<!dkk\.)(?<! al\.)(?<!No\.)(?<=[.!?…])\s+(?=[\"“'(\[A-Z0-9])")
 _BRACKET_ANY = re.compile(r"\[[^\[\]\n]*\]")
@@ -110,12 +110,47 @@ def _drop_citation(m: re.Match, sentence: str) -> str:
     return ", ".join(c["label"] for c in parse_citation(m.group(1)) if c["label"])
 
 
+# Author-year citations in round brackets, as articles write them: "(Malik, 2025)",
+# "(Craig, 1979; Hume, 1748, hlm. 3)", and "Craig (1979)" inside a sentence.
+_YEAR_END = r"(?:1[5-9]\d\d|20\d\d)[a-z]?(?:\s*,\s*(?:hlm|hal|halaman|p|pp)\.?\s*\d[\d–-]*)?"
+_ROUND_PART = re.compile(r"^[A-ZÀ-Ý][^;]*?,?\s+" + _YEAR_END + r"$")
+_ROUND = re.compile(r"\(([^()\n]{4,200})\)")
+_NARRATIVE = re.compile(
+    r"(?<![\w*_\[])([A-ZÀ-Ý][\w'’-]+(?:\s+(?:&|dan|and)\s+[A-ZÀ-Ý][\w'’-]+)?(?:\s+(?:dkk\.|et al\.))?)"
+    r"\s+\((" + _YEAR_END + r")\)"
+)
+
+
+def _square_citations(line: str) -> str:
+    """Rewrite round-bracket author-year citations as [..] so they are read like the others.
+
+    A year alone, "(1748)" after a book title, is not a citation: it names no author.
+    """
+    def round_(m):
+        inner = m.group(1).strip()
+        parts = [p.strip() for p in inner.split(";")]
+        return f"[{inner}]" if all(_ROUND_PART.match(p) for p in parts) else m.group(0)
+
+    def outside(seg):
+        seg = _NARRATIVE.sub(lambda m: f"[{m.group(1)} ({m.group(2)})]", seg)
+        return _ROUND.sub(round_, seg)
+
+    # Text already inside [..] (including "[Popescu & Rohrlich (1997)]") is left alone.
+    out, last = [], 0
+    for m in _BRACKET_ANY.finditer(line):
+        out += [outside(line[last:m.start()]), m.group(0)]
+        last = m.end()
+    out.append(outside(line[last:]))
+    return "".join(out)
+
+
 def split_claims(text: str) -> list[dict]:
     """Sentences that carry at least one citation, with their parsed citations."""
     claims = []
     for line in (text or "").splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
+        line = _square_citations(line)
         # Hide bracket contents so a period inside "[..., Hal. 2]" does not end a sentence.
         held: list[str] = []
         masked = _BRACKET_ANY.sub(lambda m: held.append(m.group(0)) or f"{_HOLD_OPEN}{len(held) - 1}{_HOLD_CLOSE}", line.strip())
@@ -207,9 +242,9 @@ def _llm_terms(items: list[dict], model: str = None) -> dict[int, str]:
     from openai import OpenAI
     from .analyze import _parse_response
 
-    client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
+    client = OpenAI(base_url=config.JUDGE_BASE_URL, api_key=config.JUDGE_API_KEY)
     resp = client.chat.completions.create(
-        model=model or config.LLM_MODEL,
+        model=model or config.JUDGE_MODEL,
         messages=[{"role": "system", "content": TERMS_PROMPT},
                   {"role": "user", "content": "\n".join(f"KLAIM {it['id']}: {it['text']}" for it in items)}],
         response_format={"type": "json_object"},
@@ -264,9 +299,9 @@ def _llm_judge(items: list[dict], model: str = None) -> dict[int, dict]:
     for it in items:
         ev = "\n".join(f"  E{i}. [{e['paper']} | {e['page_label']}] {e['text']}" for i, e in enumerate(it["evidence"], 1))
         blocks.append(f"KLAIM {it['id']}: {it['text']}\nBUKTI:\n{ev or '  (tidak ada)'}")
-    client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
+    client = OpenAI(base_url=config.JUDGE_BASE_URL, api_key=config.JUDGE_API_KEY)
     resp = client.chat.completions.create(
-        model=model or config.LLM_MODEL,
+        model=model or config.JUDGE_MODEL,
         messages=[{"role": "system", "content": JUDGE_PROMPT}, {"role": "user", "content": "\n\n".join(blocks)}],
         response_format={"type": "json_object"},
         temperature=0,
@@ -443,7 +478,7 @@ def check_answer(text: str, papers: list[dict] | None = None, model: str = None,
         try:
             from . import audit
 
-            audit.log("cek_klaim", model=model or config.LLM_MODEL,
+            audit.log("cek_klaim", model=model or config.JUDGE_MODEL,
                       prompt_version=audit.prompt_version(JUDGE_PROMPT, TERMS_PROMPT), summary=summary,
                       flagged=[r["text"][:160] for r in results if r["verdict"] in (UNSUPPORTED, NO_SOURCE)])
         except Exception:
@@ -454,3 +489,12 @@ def check_answer(text: str, papers: list[dict] | None = None, model: str = None,
 def needs_attention(report: dict) -> int:
     s = report.get("summary") or {}
     return s.get(UNSUPPORTED, 0) + s.get(NO_SOURCE, 0) + s.get(PARTIAL, 0)
+
+
+# A document for a client must not go out with these: the cited paper does not say it,
+# the cited paper is not in the collection, or the claim could not be judged at all.
+BLOCKING = (UNSUPPORTED, NO_SOURCE, UNCHECKED)
+
+
+def blocking_claims(report: dict) -> list[dict]:
+    return [c for c in report.get("claims") or [] if c.get("verdict") in BLOCKING]

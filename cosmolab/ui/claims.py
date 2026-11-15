@@ -22,7 +22,7 @@ CLAIM_ORDER = [_entail.UNSUPPORTED, _entail.NO_SOURCE, _entail.PARTIAL, _entail.
 def run_claim_check(answer: str, numbered: list[dict] | None = None) -> dict | None:
     try:
         with st.spinner("Memeriksa setiap klaim terhadap isi paper..."):
-            return _entail.check_answer(answer, model=config.LLM_MODEL, numbered=numbered)
+            return _entail.check_answer(answer, model=config.JUDGE_MODEL, numbered=numbered)
     except Exception as e:
         st.warning(f"Pemeriksaan klaim gagal: {e}")
         return None

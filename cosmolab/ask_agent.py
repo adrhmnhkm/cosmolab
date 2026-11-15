@@ -35,6 +35,11 @@ ATURAN KETAT:
 """
 
 
+def _has_word(text: str, terms) -> bool:
+    """True when one of the terms appears as whole words in text."""
+    return any(re.search(r"(?<!\w)" + re.escape(t) + r"(?!\w)", text) for t in terms)
+
+
 def _detect_query_intent(question: str) -> dict:
     """Analyze the user's question to determine argument type, faculty domain, and whether dialectical contrast is needed."""
     q_lower = question.lower()
@@ -52,22 +57,23 @@ def _detect_query_intent(question: str) -> dict:
     elif any(k in q_lower for k in ("nabi", "kenabian", "prophe", "nubuwwat", "mukjizat", "miracle", "wahyu", "kharq")):
         faculty = "agama_filsafat"
 
-    # Detect specific argument type
+    # Detect specific argument type. Whole words only, and no everyday words such as
+    # "waktu" or "cukup": they would pull a set of unrelated papers into any question.
     arg_type = None
-    if any(k in q_lower for k in ("kalam", "mulai ada", "begin to exist", "waktu", "temporal", "huduts")):
+    if _has_word(q_lower, ("kalam", "mulai ada", "begin to exist", "temporal", "huduts")):
         arg_type = "kalam"
-    elif any(k in q_lower for k in ("fine-tuning", "penyetelan", "konstanta", "multiverse")):
+    elif _has_word(q_lower, ("fine-tuning", "penyetelan", "konstanta", "multiverse")):
         arg_type = "fine-tuning"
-    elif any(k in q_lower for k in ("contingency", "kontingensi", "leibniz", "cukup", "psr", "imkan")):
+    elif _has_word(q_lower, ("contingency", "kontingensi", "leibniz", "alasan cukup", "psr", "imkan")):
         arg_type = "contingency"
-    elif any(k in q_lower for k in ("first cause", "sebab pertama", "aquinas")):
+    elif _has_word(q_lower, ("first cause", "sebab pertama", "aquinas")):
         arg_type = "first-cause"
 
-    # Detect if contrast / objection is requested
-    needs_contrast = any(k in q_lower for k in (
-        "bantah", "kritik", "sanggah", "objeksi", "lawan", "kontra", "debat",
-        "beda", "perbedaan", "banding", "apakah benar", "masalah", "kelemahan",
-        "vs", "versus"
+    # Detect if contrast / objection is requested ("masalah" and "beda" are too common to count).
+    needs_contrast = _has_word(q_lower, (
+        "bantah", "membantah", "bantahan", "kritik", "mengkritik", "kritikan", "sanggah", "sanggahan",
+        "objeksi", "keberatan", "lawan", "kontra", "debat", "perdebatan", "bandingkan", "membandingkan",
+        "apakah benar", "kelemahan", "vs", "versus",
     ))
 
     return {

@@ -358,18 +358,24 @@ def ask(
     else:
         answer, numbered = _ask.ask(question=question, model=model, top_k=top_k), None
     if check:
-        _print_claim_report(answer, model, numbered)
+        # Judged by JUDGE_MODEL, not by the model that wrote the answer.
+        _print_claim_report(answer, None, numbered)
 
 
 CLAIM_STYLES = {"didukung": "green", "sebagian": "yellow", "tidak_didukung": "red", "sumber_tidak_ada": "red", "belum_dicek": "dim"}
 
 
 def _print_claim_report(text: str, model: str = None, numbered: list[dict] | None = None):
-    from rich.table import Table
     from . import entail
 
     console.print("[cyan]CEK KLAIM[/cyan] [dim]Mencocokkan setiap kalimat bersitasi dengan isi paper...[/dim]")
-    report = entail.check_answer(text, model=model, numbered=numbered)
+    return _show_claim_report(entail.check_answer(text, model=model, numbered=numbered))
+
+
+def _show_claim_report(report: dict) -> dict:
+    from rich.table import Table
+    from . import entail
+
     if not report["total"]:
         console.print("[dim]Tidak ada kalimat bersitasi untuk dicek.[/dim]")
         return report
@@ -390,7 +396,7 @@ def _print_claim_report(text: str, model: str = None, numbered: list[dict] | Non
 @app.command("cek-klaim")
 def check_claims(
     path: str = typer.Argument(..., help="Markdown or text file to check, e.g. a draft article"),
-    model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+    model: str = typer.Option(config.JUDGE_MODEL, "--model", "-m", help="LLM model name (default JUDGE_MODEL)"),
 ):
     """Check every cited sentence in a draft against the papers it cites."""
     from pathlib import Path
@@ -678,6 +684,10 @@ def deliver(
         False, "--sudah-cek-manual",
         help="Saya sudah memeriksa manual sitasi yang tidak bisa diverifikasi otomatis",
     ),
+    claims_checked: bool = typer.Option(
+        False, "--klaim-sudah-dicek",
+        help="Saya sudah memeriksa manual klaim yang tidak didukung sumber atau belum bisa dicek",
+    ),
 ):
     """Buat dokumen Word/PDF berkop firma untuk klien, setelah sitasi diperiksa."""
     from . import deliverables as _deliv
@@ -688,7 +698,15 @@ def deliver(
     try:
         path = _deliv.resolve_source(file)
         result = _deliv.deliver(path, reviewer=reviewer, formats=formats, title=title,
-                                online=not offline, allow_unverified=manual_checked)
+                                online=not offline, allow_unverified=manual_checked,
+                                allow_unsupported_claims=claims_checked)
+    except _deliv.ClaimsBlocked as e:
+        _show_claim_report(e.claims_report)
+        console.print(
+            f"[red]Dokumen belum dibuat:[/red] {e}. Perbaiki atau hapus klaim yang ditandai, atau periksa "
+            "manual lalu jalankan ulang dengan [bold]--klaim-sudah-dicek[/bold]."
+        )
+        raise typer.Exit(2)
     except _deliv.DeliveryBlocked as e:
         _print_verification(e.report)
         console.print(

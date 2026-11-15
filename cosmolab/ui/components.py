@@ -110,8 +110,9 @@ def render_client_delivery(md_path: Path, key: str):
     """Citation check + Word/PDF export with firm letterhead for one Markdown result."""
     st.markdown("##### Kirim ke Klien (Word / PDF berkop firma)")
     st.caption(
-        "Sitasi diperiksa dulu ke koleksi proyek dan Crossref. Dokumen hanya dibuat kalau semua sitasi "
-        "terverifikasi, atau peneliti menyatakan sudah memeriksa manual."
+        "Sitasi diperiksa dulu ke koleksi proyek dan Crossref, lalu setiap kalimat bersitasi dicocokkan "
+        "dengan isi paper yang dikutip. Dokumen hanya dibuat kalau semuanya lolos, atau peneliti "
+        "menyatakan sudah memeriksa manual."
     )
     state_key = f"verify_report_{key}"
     col_v1, col_v2 = st.columns([1, 1])
@@ -147,17 +148,38 @@ def render_client_delivery(md_path: Path, key: str):
             key=f"manual_{key}",
         )
 
+    # Claim check result from an earlier click, kept only while the file is unchanged.
+    claims_key = f"claims_report_{key}"
+    mtime = md_path.stat().st_mtime if md_path.exists() else None
+    held = st.session_state.get(claims_key)
+    claims_report = held[1] if held and held[0] == (str(md_path), mtime) else None
+    claims_ok = False
+    if claims_report is not None:
+        from cosmolab.ui.claims import render_claim_report
+
+        render_claim_report(claims_report)
+        st.warning("Ada klaim yang tidak didukung paper yang dikutip, sumbernya tidak ada, atau belum bisa dicek.")
+        claims_ok = st.checkbox(
+            "Saya sudah memeriksa manual semua klaim yang ditandai dan menyetujuinya.",
+            key=f"claims_manual_{key}",
+        )
+
     reviewer = st.text_input("Nama peneliti pemeriksa (tercantum di dokumen):", key=f"reviewer_{key}")
     title_override = st.text_input("Judul dokumen (kosongkan untuk memakai judul artikel):", key=f"title_{key}")
     if st.button("Buat Word & PDF", key=f"deliver_btn_{key}", type="primary",
-                 disabled=not (manual_ok and reviewer.strip()), use_container_width=True):
+                 disabled=not (manual_ok and reviewer.strip()) or (claims_report is not None and not claims_ok),
+                 use_container_width=True):
         try:
-            with st.spinner("Menyusun dokumen klien..."):
+            with st.spinner("Memeriksa klaim dan menyusun dokumen klien..."):
                 result = _deliverables.deliver(
                     md_path, reviewer=reviewer, title=title_override or None,
                     online=report.online, allow_unverified=manual_ok,
+                    allow_unsupported_claims=claims_ok, claims_report=claims_report,
                 )
             st.session_state[f"deliver_files_{key}"] = [str(f) for f in result["files"]]
+        except _deliverables.ClaimsBlocked as e:
+            st.session_state[claims_key] = ((str(md_path), mtime), e.claims_report)
+            st.rerun()
         except Exception as e:
             st.error(f"Gagal membuat dokumen: {e}")
 
