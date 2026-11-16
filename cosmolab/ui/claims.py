@@ -13,10 +13,11 @@ CLAIM_TONES = {
     _entail.UNSUPPORTED: "bad",
     _entail.NO_SOURCE: "bad",
     _entail.UNCHECKED: "muted",
+    _entail.NO_CITATION: "bad",
 }
 
 
-CLAIM_ORDER = [_entail.UNSUPPORTED, _entail.NO_SOURCE, _entail.PARTIAL, _entail.UNCHECKED, _entail.SUPPORTED]
+CLAIM_ORDER = [_entail.UNSUPPORTED, _entail.NO_SOURCE, _entail.NO_CITATION, _entail.PARTIAL, _entail.UNCHECKED, _entail.SUPPORTED]
 
 
 def run_claim_check(answer: str, numbered: list[dict] | None = None) -> dict | None:

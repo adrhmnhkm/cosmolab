@@ -2,14 +2,17 @@
 Claim entailment gatekeeper.
 
 Checks an AI answer (or any draft text) sentence by sentence. Every sentence
-that cites a paper, e.g. `[Title (2020), Hal. 4]`, is a claim. For each claim:
+that makes a factual statement is checked:
 
-1. The citation is matched to a paper in the collection. A citation that
-   matches no paper is flagged at once: the source does not exist here.
+1. A sentence with a citation, e.g. `[Title (2020), Hal. 4]`, is matched to
+   a paper in the collection. A citation that matches no paper is flagged at once:
+   `sumber_tidak_ada`.
 2. Evidence is gathered from that paper: verbatim passages from its pages that
    best match the claim, plus the thesis and conclusion from its analysis.
 3. An LLM judge decides whether the evidence entails the claim:
    supported, partly supported, or not supported.
+4. A factual sentence that carries no citation (and is not an analyst note) is
+   flagged at once as `tanpa_sitasi` without calling an LLM.
 
 Nothing is removed from the answer. The report tells the reader which
 sentences are safe to cite and which need checking.
@@ -25,6 +28,7 @@ PARTIAL = "sebagian"
 UNSUPPORTED = "tidak_didukung"
 NO_SOURCE = "sumber_tidak_ada"
 UNCHECKED = "belum_dicek"
+NO_CITATION = "tanpa_sitasi"
 
 VERDICT_LABELS = {
     SUPPORTED: "Didukung sumber",
@@ -32,6 +36,7 @@ VERDICT_LABELS = {
     UNSUPPORTED: "Tidak ditemukan di sumber",
     NO_SOURCE: "Sumber tidak ada di koleksi",
     UNCHECKED: "Belum bisa dicek",
+    NO_CITATION: "Pernyataan faktual tanpa sitasi",
 }
 
 # [anything with a year or n.d.], but not a markdown link [text](url)
@@ -45,6 +50,23 @@ _BRACKET_ANY = re.compile(r"\[[^\[\]\n]*\]")
 _HOLD_OPEN, _HOLD_CLOSE = "\uE000", "\uE001"  # private-use marks, never in real text
 _HELD = re.compile(_HOLD_OPEN + r"(\d+)" + _HOLD_CLOSE)
 _MD = re.compile(r"(\*\*|__|\*|`|^#+\s*|^>\s*|^\s*(?:[-*+]|\d+[.)])\s+)", re.M)
+_ANALYST_NOTE = re.compile(
+    r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*|__|\*|_)?\s*(?:catatan(?:\s+analis)?|analyst\s+note)\s*(?:\*\*|__|\*|_)?\s*:",
+    re.I,
+)
+_ABSTAIN = re.compile(
+    r"\b(?:tidak\s+ditemukan\s+di\s+korpus|tidak\s+ada\s+di\s+korpus|not\s+found\s+in\s+corpus)\b",
+    re.I,
+)
+_NAV_WORDS = {"lihat", "baca", "kunjungi", "see", "visit", "link", "url", "situs", "site", "saja", "only"}
+
+
+def _is_nav_or_link(s: str) -> bool:
+    plain = _plain(s).strip(" .;:!?-*+")
+    tokens = [w.lower() for w in re.findall(r"[^\W\d_]+", plain)]
+    if not tokens:
+        return True
+    return all(t in _NAV_WORDS for t in tokens)
 
 JUDGE_PROMPT = """Kamu adalah pemeriksa fakta akademik yang ketat (natural language inference).
 Untuk setiap klaim, nilai apakah BUKTI yang diberikan mendukung klaim tersebut.
@@ -144,8 +166,12 @@ def _square_citations(line: str) -> str:
     return "".join(out)
 
 
-def split_claims(text: str) -> list[dict]:
-    """Sentences that carry at least one citation, with their parsed citations."""
+def split_claims(text: str, include_uncited: bool = True) -> list[dict]:
+    """Sentences that carry citations, or factual statements without citation.
+
+    include_uncited=True includes uncited factual sentences (marked with citations=[])
+    so they can be audited and flagged as `tanpa_sitasi`.
+    """
     claims = []
     for line in (text or "").splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
@@ -168,7 +194,23 @@ def split_claims(text: str) -> list[dict]:
                 if _is_citation(inner):
                     cites += parse_citation(inner)
             if not cites:
+                if not include_uncited:
+                    continue
+                if _ANALYST_NOTE.search(s) or _ABSTAIN.search(s):
+                    continue
+                if s.strip().rstrip("\"'”)").endswith("?"):
+                    continue
+                if _is_nav_or_link(s):
+                    continue
+                claim = _plain(s)
+                claim = re.sub(r"\s+([.,;:])", r"\1", claim).strip()
+                words = [w for w in re.findall(r"[^\W\d_]{2,}", s)
+                         if w.lower() not in {"bagian", "hlm", "hal", "halaman", "bab", "section", "page", "pp"}]
+                if len(claim) < 12 or len(words) < 3:
+                    continue
+                claims.append({"text": claim, "sentence": _plain(s), "citations": []})
                 continue
+
             claim = _plain(_BRACKET.sub(lambda m: _drop_citation(m, s), s))
             claim = re.sub(r"\s+([.,;:])", r"\1", claim).strip()
             # Skip source headers such as "[Popescu (1997)] — Bagian I (Introduction), hlm. 1:"
@@ -337,7 +379,7 @@ def _complete_results(content: str) -> list[dict]:
 
 def _normalize_verdict(v: str) -> str:
     v = (v or "").strip().lower().replace(" ", "_")
-    if v in (SUPPORTED, PARTIAL, UNSUPPORTED):
+    if v in (SUPPORTED, PARTIAL, UNSUPPORTED, NO_SOURCE, NO_CITATION):
         return v
     if v.startswith("tidak") or v in ("unsupported", "contradicted", "refuted"):
         return UNSUPPORTED
@@ -345,6 +387,8 @@ def _normalize_verdict(v: str) -> str:
         return PARTIAL
     if v.startswith("didukung") or v in ("supported", "entailed"):
         return SUPPORTED
+    if v.startswith("tanpa") or v in ("no_citation", "uncited"):
+        return NO_CITATION
     return UNCHECKED
 
 
@@ -399,8 +443,12 @@ def _judge_claims(claims: list[dict], model, judge, evidence_fn, use_analysis: b
             "evidence": evidence, "verdict": UNCHECKED, "reason": "", "evidence_used": [],
         }
         if not matched:
-            row["verdict"] = NO_SOURCE
-            row["reason"] = "Sitasi ini tidak cocok dengan paper mana pun di koleksi. Bisa jadi sumbernya dikarang atau salah tulis."
+            if c.get("citations"):
+                row["verdict"] = NO_SOURCE
+                row["reason"] = "Sitasi ini tidak cocok dengan paper mana pun di koleksi. Bisa jadi sumbernya dikarang atau salah tulis."
+            else:
+                row["verdict"] = NO_CITATION
+                row["reason"] = "Pernyataan faktual ini tidak mencantumkan sitasi sumber."
         else:
             to_judge.append(row)
         results.append(row)
@@ -480,7 +528,7 @@ def check_answer(text: str, papers: list[dict] | None = None, model: str = None,
 
             audit.log("cek_klaim", model=model or config.JUDGE_MODEL,
                       prompt_version=audit.prompt_version(JUDGE_PROMPT, TERMS_PROMPT), summary=summary,
-                      flagged=[r["text"][:160] for r in results if r["verdict"] in (UNSUPPORTED, NO_SOURCE)])
+                      flagged=[r["text"][:160] for r in results if r["verdict"] in (UNSUPPORTED, NO_SOURCE, NO_CITATION)])
         except Exception:
             pass
     return {"claims": results, "summary": summary, "total": len(results), "skipped": len(all_claims) - len(claims)}
@@ -488,12 +536,12 @@ def check_answer(text: str, papers: list[dict] | None = None, model: str = None,
 
 def needs_attention(report: dict) -> int:
     s = report.get("summary") or {}
-    return s.get(UNSUPPORTED, 0) + s.get(NO_SOURCE, 0) + s.get(PARTIAL, 0)
+    return s.get(UNSUPPORTED, 0) + s.get(NO_SOURCE, 0) + s.get(PARTIAL, 0) + s.get(NO_CITATION, 0)
 
 
 # A document for a client must not go out with these: the cited paper does not say it,
-# the cited paper is not in the collection, or the claim could not be judged at all.
-BLOCKING = (UNSUPPORTED, NO_SOURCE, UNCHECKED)
+# the cited paper is not in the collection, the claim has no citation, or the claim could not be judged at all.
+BLOCKING = (UNSUPPORTED, NO_SOURCE, UNCHECKED, NO_CITATION)
 
 
 def blocking_claims(report: dict) -> list[dict]:

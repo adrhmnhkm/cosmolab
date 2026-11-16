@@ -26,9 +26,21 @@ class SplitClaimsTests(unittest.TestCase):
         self.assertEqual([(c["label"], c["year"], c["page"]) for c in claims[0]["citations"]],
                          [("Smith", "2001", ""), ("Lee", "2003", "4")])
 
-    def test_ignores_headings_links_and_uncited_sentences(self):
-        text = "## Judul [Bab (2020)]\nKalimat tanpa sumber sama sekali.\n- Lihat [situs](http://x.org) saja."
+    def test_ignores_headings_links_and_analyst_notes(self):
+        text = ("## Judul [Bab (2020)]\n"
+                "Catatan analis: Penilaian subjektif analis tidak perlu dicek.\n"
+                "- Lihat [situs](http://x.org) saja.")
         self.assertEqual(entail.split_claims(text), [])
+
+    def test_uncited_factual_sentences_become_claims(self):
+        text = "Kalimat faktual tanpa sumber sama sekali."
+        claims = entail.split_claims(text)
+        self.assertEqual(len(claims), 1)
+        self.assertEqual(claims[0]["text"], "Kalimat faktual tanpa sumber sama sekali.")
+        self.assertEqual(claims[0]["citations"], [])
+
+        # Opt-out option
+        self.assertEqual(entail.split_claims(text, include_uncited=False), [])
 
     def test_citation_as_subject_keeps_names(self):
         claims = entail.split_claims("[Popescu & Rohrlich (1997)] membantah tuduhan paradoks kausal.\n"
@@ -126,6 +138,21 @@ class CheckAnswerTests(unittest.TestCase):
         text = " ".join(f"Klaim nomor {i} cukup panjang [Popescu (1997)]." for i in range(5))
         r = entail.check_answer(text, PAPERS, max_claims=3, judge=lambda items, m: {}, evidence_fn=fake_evidence)
         self.assertEqual((r["total"], r["skipped"]), (3, 2))
+
+    def test_uncited_claim_gets_no_citation_verdict(self):
+        text = ("Kausalitas tidak cukup menurunkan mekanika kuantum [Popescu (1997)].\n"
+                "UMKM syariah selalu untung dua kali lipat tanpa sitasi.\n"
+                "Catatan analis: ini opini tidak perlu sitasi.")
+        r = entail.check_answer(text, PAPERS,
+                                judge=lambda items, m: {1: {"verdict": "didukung", "reason": "cocok", "evidence": ["E1"]}},
+                                evidence_fn=fake_evidence)
+        self.assertEqual(len(r["claims"]), 2)
+        self.assertEqual(r["claims"][0]["verdict"], entail.SUPPORTED)
+        self.assertEqual(r["claims"][1]["verdict"], entail.NO_CITATION)
+        self.assertEqual(r["claims"][1]["citations"], [])
+        self.assertIn("tidak mencantumkan sitasi", r["claims"][1]["reason"])
+        self.assertIn(r["claims"][1], entail.blocking_claims(r))
+        self.assertEqual(entail.needs_attention(r), 1)
 
 
 if __name__ == "__main__":

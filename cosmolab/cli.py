@@ -495,7 +495,14 @@ def trace_search(
         _print_claim_report(text, None)
 
 
-CLAIM_STYLES = {"didukung": "green", "sebagian": "yellow", "tidak_didukung": "red", "sumber_tidak_ada": "red", "belum_dicek": "dim"}
+CLAIM_STYLES = {
+    "didukung": "green",
+    "sebagian": "yellow",
+    "tidak_didukung": "red",
+    "sumber_tidak_ada": "red",
+    "belum_dicek": "dim",
+    "tanpa_sitasi": "red",
+}
 
 
 def _print_claim_report(text: str, model: str = None, numbered: list[dict] | None = None):

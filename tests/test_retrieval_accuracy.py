@@ -125,7 +125,8 @@ class RoundCitationTests(unittest.TestCase):
         claims = entail.split_claims(
             "Al-Ghazali menolak keharusan sebab-akibat alami (Malik, 2025; Craig, 1979, hlm. 3). "
             "Menurut Hume (1748) kebiasaan membentuk keyakinan sebab-akibat. "
-            "Hume menulis *An Enquiry Concerning Human Understanding* (1748) di Skotlandia."
+            "Hume menulis *An Enquiry Concerning Human Understanding* (1748) di Skotlandia.",
+            include_uncited=False,
         )
         self.assertEqual(len(claims), 2)
         self.assertEqual([c["label"] for c in claims[0]["citations"]], ["Malik", "Craig"])
