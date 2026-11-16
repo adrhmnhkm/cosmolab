@@ -63,13 +63,13 @@ CRITICAL INSTRUCTIONS — FULL-TEXT CORPUS DISSECTION:
      * 2-3 quotes from Results & Discussion (empirical data, findings, arguments, or solution mechanisms)
      * 1 quote from Conclusion / Recommendations
    - Preserve original language of the text.
-   - Provide 'page_hint' indicating section name / approximate page (e.g., "Results & Discussion, p. 235").
+   - Provide 'page_hint' with the section name only (e.g., "Results & Discussion", "Conclusion"). Do NOT guess or invent page numbers; leave the number out if you are not certain.
 3. RESEARCH METHODOLOGY ('research_method'):
    - Identify concrete research methodology (e.g., "Structured Literature Review", "Quantitative Multiple Linear Regression", "Normative Juridical", "Empirical Case Study", etc.).
 4. CORE FINDINGS ('key_findings'):
    - List 3-5 concrete empirical/substantive findings from the Results & Discussion section.
 5. LOGICAL PREMISES ('premises'):
-   - Formulate 4-7 structured premises in English reflecting the logical derivation of the thesis.
+   - List the premises that are explicitly stated or directly implied by the paper's argumentation (not invented). Include at most 7. Return an empty list if the paper makes no structured argument.
 6. ARGUMENT TYPE:
    - Select closest match: "empiris_kuantitatif"|"kualitatif_studi_kasus"|"yuridis_normatif"|"kajian_literatur"|"filosofis_rasional"|"konseptual_teoretis"|"komparatif"|"other".
 7. LITERATURE REVIEW FIELDS (what a consultant needs to compare papers):
@@ -111,13 +111,13 @@ PENTING — PRINSIP ANALISIS MENYELURUH (DEEP CORPUS EXTRACTION):
      * Bagian Hasil dan Pembahasan (data empiris, temuan faktual, kutipan wawancara/statistik, analisis regulasi, atau solusi teknis)
      * Bagian Kesimpulan / Rekomendasi (implikasi akhir)
    - Gunakan BAHASA ASLI teks tempat kalimat itu berada (jika naskah berbahasa Indonesia, kutip kalimat Bahasa Indonesianya; jika berbahasa Inggris, kutip kalimat Bahasa Inggrisnya). JANGAN membatasi kutipan hanya pada bahasa Inggris!
-   - Cantumkan 'page_hint' dengan nama bab dan estimasi halaman (contoh: "Pendahuluan, hlm. 232", "Hasil dan Pembahasan, hlm. 235", "Kesimpulan").
+   - Cantumkan 'page_hint' dengan nama bab saja (contoh: "Pendahuluan", "Hasil dan Pembahasan", "Kesimpulan"). JANGAN menebak atau mengarang nomor halaman; kosongkan nomor jika tidak yakin.
 3. METODOLOGI RISET ('research_method'):
    - Identifikasi pendekatan metodologi konkret yang digunakan (misal: "Kajian Literatur Terstruktur", "Kuantitatif Regresi Linier Berganda", "Yuridis Normatif", "Eksperimental", "Studi Kasus Kualitatif", dll).
 4. TEMUAN INTI ('key_findings'):
    - Sebutkan 3-5 poin temuan substantif dari bab Hasil dan Pembahasan (bukan sekadar pengulangan abstrak).
 5. PREMIS & ALUR LOGIS ('premises'):
-   - Rumuskan 4-7 premis logis dalam Bahasa Indonesia yang mencerminkan alur pembuktian lengkap dari data dan analisis di pembahasan.
+   - Daftarkan premis yang secara eksplisit dinyatakan atau secara langsung tersirat dari argumentasi paper (bukan dikarang). Paling banyak 7. Kembalikan daftar kosong jika paper tidak menggunakan argumen terstruktur.
 6. ARGUMENT TYPE:
    - Pilih salah satu: "empiris_kuantitatif", "kualitatif_studi_kasus", "yuridis_normatif", "kajian_literatur", "filosofis_rasional", "konseptual_teoretis", "komparatif", atau "other".
 7. ISIAN TINJAUAN PUSTAKA (yang dibutuhkan konsultan untuk membandingkan paper):
