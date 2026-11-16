@@ -188,7 +188,7 @@ class TestReviewIntegration(unittest.TestCase):
         self.assertEqual(stages, ["baca", "sitasi", "komentar", "kemiripan"])
         self.assertEqual([d["stage"] for k, _, d in events if k == "stage_done"], stages)
         self.assertIn("Membaca draf: 6 paragraf, 1 entri pustaka", [m for m, _ in plog.finished])
-        self.assertIn("batch 1/1", [m for k, m, _ in events if k == "item"])
+        self.assertTrue(any(m.startswith("batch 1/1") for k, m, _ in events if k == "item"))
         self.assertTrue(plog.finished[-1][0].startswith("Cek kemiripan:"))
         self.assertEqual(plog.fraction, 1.0)
 
@@ -202,6 +202,27 @@ class TestReviewIntegration(unittest.TestCase):
             review.review_text(DRAFT, online=False, progress_cb=plog.handle, chat=boom)
         self.assertTrue(plog.label.startswith("Komentar AI"))
         self.assertEqual(review.fmt_duration(75), "1:15 mnt")
+
+    def test_progress_inside_a_batch(self):
+        """The streamed AI call moves the bar inside a batch: thinking first, then writing."""
+        def fake_stream(messages, model=None, on_tokens=None):
+            for written, thought in [(0, 400), (0, 900), (300, 900), (1200, 900)]:
+                on_tokens(written, thought)
+            return '{"comments": [], "strengths": [], "priorities": []}'
+
+        events = []
+        with mock.patch.object(review, "_default_chat", fake_stream), \
+                mock.patch.object(review, "_STREAMING_CHAT", fake_stream):
+            review.review_text(DRAFT, online=False, feedback=True, similarity=False,
+                               progress_cb=lambda k, m, d=None: events.append((k, m, d)))
+        done = [d["done"] for k, m, d in events if k == "item" and d.get("stage") == "komentar"]
+        self.assertEqual(done[0], 0)
+        self.assertEqual(done, sorted(done))
+        self.assertTrue(0.5 < done[-1] < 1.0)
+        msgs = [m for k, m, d in events if k == "item" and d.get("stage") == "komentar"]
+        self.assertIn("batch 1/1 · AI berpikir 400 token", msgs)
+        self.assertIn("batch 1/1 · AI menulis 1,200 token", msgs)
+        self.assertLessEqual(review._batch_fraction(10**6, 10**6), 0.95)
 
     def test_estimate(self):
         est = review.estimate(DRAFT, online=False, feedback=True)

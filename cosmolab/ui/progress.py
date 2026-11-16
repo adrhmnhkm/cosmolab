@@ -62,11 +62,13 @@ class StepProgress:
         if key in self.steps:
             s = self.steps[key]
             started = s["state"] != "run"
+            # A new message before any progress (e.g. "sending to AI") must show even if it comes right after the start.
+            first_note = bool(detail) and detail != s["detail"] and not s["frac"]
             s["state"], s["detail"] = "run", detail or s["detail"]
             if frac is not None:
                 s["frac"] = max(0.0, min(frac, 1.0))
             # A step that just started always shows; live counters are throttled.
-            self._render(force=started or frac is None)
+            self._render(force=started or frac is None or first_note)
 
     def ok(self, key: str, detail: str = ""):
         self._set(key, "ok", detail)
@@ -90,6 +92,8 @@ class StepProgress:
         for k in self.order:
             if self.steps[k]["state"] == "todo":
                 self.steps[k]["state"] = "skip"
+            elif self.steps[k]["state"] == "run":
+                self.steps[k]["state"] = "ok"
         self._final = ("ok", text)
         self._render(force=True)
 
@@ -122,6 +126,9 @@ class StepProgress:
         else:
             running = next((self.steps[k]["label"] for k in self.order if self.steps[k]["state"] == "run"), "Menyiapkan")
             text = f"{int(pct * 100)}% · {running} · {elapsed}"
+            if 0.05 <= pct < 0.99:  # too early, the guess swings too much
+                left = (now - self.t0) * (1 - pct) / pct
+                text += f" · sisa ±{_secs(max(left, 1))}"
         self._bar.progress(min(max(pct, 0.0), 1.0), text=text)
         lines = []
         for k in self.order:
@@ -224,3 +231,63 @@ def analyze_with_progress(file_name: str, title: str = "", lang: str = "id", for
         return False
     sp.finish("analisis tersimpan")
     return True
+
+
+# Draft review ---------------------------------------------------------------
+
+def review_steps(est: dict, similarity: bool = True) -> list[tuple[str, str, float]]:
+    """Steps of a draft review, weighted by review.estimate so the bar moves with time, not stage count."""
+    def mid(span):
+        return (span[0] + span[1]) / 2
+
+    crossref = mid(est["crossref"]) if est.get("online") else 0.0
+    steps = [("baca", "Baca draf", 1.0),
+             ("sitasi", "Cek daftar pustaka ke Crossref" if est.get("online") else "Cek daftar pustaka",
+              max(crossref, 1.0))]
+    if est.get("feedback"):
+        batches = est.get("batches") or 1
+        steps.append(("komentar", f"Komentar pembimbing dari AI ({batches} batch)",
+                      max(mid(est["with_ai"]) - mid(est["without_ai"]), 5.0)))
+    if similarity:
+        steps.append(("kemiripan", "Cek kemiripan", max(mid(est["without_ai"]) - crossref, 2.0)))
+    steps.append(("simpan", "Simpan hasil review", 0.5))
+    return steps
+
+
+def review_handler(sp: StepProgress):
+    """progress_cb for review.review_text: stage, item and stage_done events, keyed by data["stage"]."""
+    def cb(kind, msg, data=None):
+        data = data or {}
+        key = data.get("stage")
+        if key not in sp.steps:
+            return
+        if kind == "stage":
+            sp.run(key, f"AI: {config.LLM_MODEL}" if key == "komentar" else "")
+        elif kind == "item":
+            total = data.get("total")
+            sp.run(key, msg, frac=min(data.get("done", 0) / total, 1.0) if total else None)
+        elif kind == "stage_done":
+            sp.ok(key, f"{msg.split(': ', 1)[-1]} · {_secs(data.get('seconds'))}")
+    return cb
+
+
+FILL_STEPS = [("sumber", "Cari teks lengkap sumber yang dikutip", 3.0), ("kemiripan", "Cek kemiripan ulang", 1.0)]
+SIMILARITY_STEPS = [("kemiripan", "Cek kemiripan", 1.0)]
+
+
+def similarity_handler(sp: StepProgress):
+    """progress_cb for review.fill_sources, review.run_similarity and coverage.fill."""
+    def cb(kind, msg, data=None):
+        data = data or {}
+        total = data.get("total")
+        frac = min(data.get("done", 0) / total, 1.0) if total else None
+        compare = msg.startswith(("abstrak sumber", "membandingkan"))
+        if kind == "start":
+            sp.run("sumber", msg)
+        elif kind == "item" and compare:
+            if sp.steps.get("sumber", {}).get("state") == "run":
+                sp.ok("sumber")
+            sp.run("kemiripan", msg, frac=frac)
+        elif kind == "item":
+            sp.run("sumber", msg, frac=frac)
+    return cb

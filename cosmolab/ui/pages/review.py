@@ -12,7 +12,6 @@ consultant hides them.
 
 import math
 import tempfile
-import time
 from pathlib import Path
 
 import streamlit as st
@@ -24,6 +23,7 @@ from cosmolab import coverage as _coverage
 from cosmolab import verify as _verify
 from cosmolab.ui.components import _badge, _e, render_hero, render_table
 from cosmolab.ui.context import AppContext
+from cosmolab.ui import progress as _progress
 
 SEVERITY_TONES = {_review.PENTING: "bad", _review.SARAN: "warn", _review.CATATAN: "muted"}
 SIM_TONES = {_similarity.NO_CITATION: "bad", _similarity.WRONG_SOURCE: "warn", _similarity.TOO_CLOSE: "info"}
@@ -70,36 +70,26 @@ def _run(uploaded, pasted: str, title: str, level: str, online: bool, feedback: 
                                feedback=feedback, similarity=similarity, progress_cb=progress_cb)
 
 
-def _run_with_log(*args) -> dict | None:
-    """Run the review inside a status box: progress bar, finished stages with durations, elapsed time."""
-    plog = _review.ProgressLog()
-    with st.status("Memulai review...", expanded=True) as box:
-        bar = st.progress(0.0)
-        log = st.empty()
-
-        def lines(extra: str = "") -> str:
-            out = [f"- {_e(msg)} · {_review.fmt_duration(sec)}" for msg, sec in plog.finished]
-            return "\n".join(out + ([extra] if extra else []))
-
-        def cb(kind, msg, data=None):
-            plog.handle(kind, msg, data)
-            box.update(label=f"{plog.label} · {_review.fmt_duration(plog.elapsed)} berjalan")
-            bar.progress(plog.fraction, text=_e(plog.now))
-            log.markdown(lines())
-
-        try:
-            report = _run(*args, progress_cb=cb)
-            t = time.monotonic()
-            _review.save(report)
-            plog.finished.append(("Menyimpan hasil", time.monotonic() - t))
-        except Exception as e:
-            box.update(label=f"Gagal saat: {plog.label}", state="error", expanded=True)
-            log.markdown(lines(f"- **Gagal saat {_e(plog.label)}:** {_e(str(e))}"))
-            return None
-        bar.progress(1.0, text="Selesai")
-        log.markdown(lines())
-        box.update(label=f"Review selesai dalam {_review.fmt_duration(plog.elapsed)}", state="complete",
-                   expanded=False)
+def _run_with_log(uploaded, pasted: str, title: str, level: str, online: bool, feedback: bool,
+                  similarity: bool) -> dict | None:
+    """Run the review inside a progress box: one line per stage with live details, overall bar, time left."""
+    md = _uploaded_md(uploaded) if uploaded is not None else pasted
+    est = _review.estimate(md, online=online, feedback=feedback, similarity=similarity)
+    name = uploaded.name if uploaded is not None else (title or "teks ditempel")
+    sp = _progress.StepProgress(f"Review draf: {name}", _progress.review_steps(est, similarity=similarity))
+    try:
+        report = _run(uploaded, pasted, title, level, online, feedback, similarity,
+                      progress_cb=_progress.review_handler(sp))
+        sp.run("simpan", "menyimpan review")
+        _review.save(report)
+        sp.ok("simpan", "tersimpan")
+    except Exception as e:
+        sp.fail_current(str(e)[:200])
+        st.error(f"Review gagal: {e}")
+        return None
+    s = report.get("summary") or {}
+    sp.finish(f"{len(report['comments'])} komentar AI"
+              + (f", kemiripan {s.get('similarity_score')}%" if s.get("similarity_score") is not None else ""))
     return report
 
 
@@ -132,12 +122,17 @@ def _on_hide(key: str, stem: str, fid: str):
     _review.save(report)
 
 
-def _on_rerun_similarity(stem: str, online: bool):
-    report = _review.load(stem)
+def _rerun_similarity(stem: str, online: bool = True):
+    """Run (or rerun) the similarity check on a saved review inside a progress box."""
+    sp = _progress.StepProgress("Cek kemiripan", _progress.SIMILARITY_STEPS)
     try:
-        _review.save(_review.run_similarity(report, online=online))
+        _review.save(_review.run_similarity(_review.load(stem), online=online,
+                                            progress_cb=_progress.similarity_handler(sp)))
     except ValueError as e:
+        sp.fail_current(str(e)[:200])
         st.session_state[f"{stem}_sim_error"] = str(e)
+        return
+    sp.finish("cek kemiripan diperbarui")
 
 
 def _on_accept_grounded(stem: str):
@@ -262,25 +257,16 @@ def _comments_panel(key: str, stem: str):
 
 
 def _run_fill(stem: str):
-    """Download the cited works with a live log, then rerun the similarity check."""
+    """Download the cited works inside a progress box, then rerun the similarity check."""
     report = _review.load(stem)
-    with st.status("Mencari teks lengkap sumber yang dikutip...", expanded=True) as box:
-        bar = st.progress(0.0)
-        log = st.empty()
-        lines = []
-
-        def cb(kind, msg, data=None):
-            data = data or {}
-            if kind == "item" and data.get("total"):
-                bar.progress(data["done"] / data["total"], text=f"{data['done']} dari {data['total']} sumber")
-            lines.append(msg)
-            log.markdown("\n".join(f"- {_e(x)}" for x in lines[-8:]))
-
-        try:
-            _review.save(_review.fill_sources(report, progress_cb=cb))
-            box.update(label="Selesai. Cek kemiripan dijalankan ulang dengan sumber baru.", state="complete")
-        except Exception as e:
-            box.update(label=f"Gagal: {e}", state="error")
+    sp = _progress.StepProgress("Lengkapi pembanding dari daftar pustaka", _progress.FILL_STEPS)
+    try:
+        _review.save(_review.fill_sources(report, progress_cb=_progress.similarity_handler(sp)))
+    except Exception as e:
+        sp.fail_current(str(e)[:200])
+        st.error(f"Gagal: {e}")
+        return
+    sp.finish("cek kemiripan dijalankan ulang dengan sumber baru")
 
 
 def _coverage_section(key: str, report: dict):
@@ -315,8 +301,10 @@ def _coverage_section(key: str, report: dict):
                 up = st.file_uploader("PDF sumber", type=["pdf"], key=_wkey(key, stem, f"src{it['i']}", "up"),
                                       label_visibility="collapsed")
                 if up is not None and st.button("Simpan sumber ini", key=_wkey(key, stem, f"src{it['i']}", "save")):
-                    with st.spinner("Membaca PDF dan menjalankan ulang cek kemiripan..."):
-                        _review.save(_review.add_source_upload(_review.load(stem), it["i"], up.getvalue(), up.name))
+                    sp = _progress.StepProgress(f"Simpan sumber: {up.name}", _progress.SIMILARITY_STEPS)
+                    sp.run("kemiripan", "membaca PDF dan menjalankan ulang cek kemiripan")
+                    _review.save(_review.add_source_upload(_review.load(stem), it["i"], up.getvalue(), up.name))
+                    sp.finish("sumber tersimpan")
                     st.rerun()
                 st.divider()
 
@@ -329,8 +317,9 @@ def _similarity_tab(key: str, report: dict):
     if not sim:
         if report.get("draft_md"):
             st.info("Cek kemiripan belum dijalankan untuk review ini.")
-            st.button("Jalankan cek kemiripan", key=f"{key}_{stem}_sim_run", on_click=_on_rerun_similarity,
-                      args=(stem, True), type="primary")
+            if st.button("Jalankan cek kemiripan", key=f"{key}_{stem}_sim_run", type="primary"):
+                _rerun_similarity(stem)
+                st.rerun()
         else:
             st.info("Review ini dibuat sebelum cek kemiripan ada. Unggah ulang drafnya untuk menjalankan cek.")
         return
@@ -345,8 +334,9 @@ def _similarity_tab(key: str, report: dict):
     if sim.get("top_sources"):
         render_table([{"Sumber": _similarity.source_label(t), "Asal": "Koleksi" if t["kind"] == "korpus" else "Dikutip",
                        "Porsi draf": f"{t['pct']}%"} for t in sim["top_sources"]])
-    st.button("Jalankan ulang (misalnya setelah menambah paper)", key=f"{key}_{stem}_sim_rerun",
-              on_click=_on_rerun_similarity, args=(stem, True))
+    if st.button("Jalankan ulang (misalnya setelah menambah paper)", key=f"{key}_{stem}_sim_rerun"):
+        _rerun_similarity(stem)
+        st.rerun()
 
     _coverage_section(key, report)
 

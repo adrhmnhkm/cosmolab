@@ -162,18 +162,62 @@ def opening(text: str, words: int = 12) -> str:
 # LLM feedback
 # ---------------------------------------------------------------------------
 
-def _default_chat(messages: list[dict], model: str | None = None) -> str:
+def _default_chat(messages: list[dict], model: str | None = None, on_tokens=None) -> str:
+    """One AI call, streamed so a progress display can follow it.
+
+    on_tokens(written, thought) is called about twice a second: tokens of the answer so far, and
+    tokens a reasoning model spent thinking before it started writing.
+    """
     from openai import OpenAI
 
+    from . import usage as _usage
+
+    model = model or config.LLM_MODEL
     client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
-    resp = client.chat.completions.create(
-        model=model or config.LLM_MODEL,
+    stream = client.chat.completions.create(
+        model=model,
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.2,
         timeout=180,
+        stream=True,
+        stream_options={"include_usage": True},
     )
-    return resp.choices[0].message.content or ""
+    parts, written, thought, usage, last = [], 0, 0, None, 0.0
+    for chunk in stream:
+        if getattr(chunk, "usage", None):
+            usage = chunk.usage
+        d = chunk.choices[0].delta if chunk.choices else None
+        if d is None:
+            continue
+        if d.content:
+            parts.append(d.content)
+            written += 1
+        elif getattr(d, "reasoning_content", None) or getattr(d, "reasoning", None):
+            thought += 1
+        else:
+            continue
+        now = time.monotonic()
+        if on_tokens and now - last >= 0.5:
+            last = now
+            on_tokens(written, thought)
+    # Streamed calls are not seen by the usage wrapper, so record them here.
+    est_input = sum(len(m.get("content") or "") for m in messages) // 4
+    _usage.record(model=model, prompt_tokens=getattr(usage, "prompt_tokens", None) or est_input,
+                  completion_tokens=getattr(usage, "completion_tokens", None) or written + thought, feature="review")
+    return "".join(parts)
+
+
+# llm_feedback streams only with this function; a chat passed in (tests, other callers) takes two arguments.
+_STREAMING_CHAT = _default_chat
+# Rough size of one batch's answer, for the progress bar inside a batch.
+EXPECTED_BATCH_TOKENS = 1500
+
+
+def _batch_fraction(written: int, thought: int) -> float:
+    """How far one batch's AI call is, 0..0.95. Thinking has no known length, so it creeps toward 20%."""
+    think = 0.2 * thought / (thought + 1000)
+    return min(0.95, think + 0.75 * written / EXPECTED_BATCH_TOKENS) if written else think
 
 
 def _batches(paragraphs: list[dict], limit: int = BATCH_CHARS) -> list[list[dict]]:
@@ -243,12 +287,23 @@ def llm_feedback(paragraphs: list[dict], level: str = "s2", model: str | None = 
     system = FEEDBACK_PROMPT.format(level=LEVELS.get(level, LEVELS["s2"]))
     comments, strengths, priorities = [], [], []
     batches = list(_batches(paragraphs))
+    total = len(batches)
     for b, batch in enumerate(batches, 1):
-        fire_cb(progress_cb, "item", f"batch {b}/{len(batches)}", {"done": b - 1, "total": len(batches)})
+        fire_cb(progress_cb, "item", f"batch {b}/{total} · mengirim {len(batch)} paragraf ke AI",
+                {"done": b - 1, "total": total, "batch": b})
         user = "\n\n".join(
             f"P{p['n']}" + (f" [bagian: {p['section']}]" if p["section"] else "") + f"\n{p['text']}" for p in batch
         )
-        data = _parse_response(chat([{"role": "system", "content": system}, {"role": "user", "content": user}], model))
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        if chat is _STREAMING_CHAT:
+            def on_tokens(written, thought, b=b):
+                what = f"menulis {written:,} token" if written else f"berpikir {thought:,} token"
+                fire_cb(progress_cb, "item", f"batch {b}/{total} · AI {what}",
+                        {"done": b - 1 + _batch_fraction(written, thought), "total": total, "batch": b})
+            raw = chat(messages, model, on_tokens=on_tokens)
+        else:
+            raw = chat(messages, model)
+        data = _parse_response(raw)
         texts = {p["n"]: p["text"] for p in batch}
         for raw in data.get("comments") or []:
             c = _clean_comment(raw if isinstance(raw, dict) else {}, texts)
