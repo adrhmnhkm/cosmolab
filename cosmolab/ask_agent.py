@@ -196,7 +196,11 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
         if p.get("key_defense"):
             block += f"- Tanggapan: {p.get('key_defense')}\n"
         if p.get("quotes"):
-            quotes_str = " | ".join(f"\"{q.get('text', '')}\" (Hal. {q.get('page_hint', 'N/A')})" for q in p.get("quotes")[:2])
+            # Quotes checked against the PDF carry the PDF page they were found on; older ones only the AI's guess.
+            quotes_str = " | ".join(
+                f"\"{q.get('text', '')}\" (hal. PDF {q['page']})" if q.get("page")
+                else f"\"{q.get('text', '')}\" (perkiraan AI: {q.get('page_hint') or 'tanpa halaman'})"
+                for q in p.get("quotes")[:2])
             block += f"- Kutipan Ringkasan: {quotes_str}\n"
 
         # P1: Attach exact page-grounded passages

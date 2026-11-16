@@ -24,7 +24,7 @@ _ICON = {
 }
 
 # Steps of an AI analysis, appended to an import or used alone. The AI step carries most of the weight.
-ANALYSIS_STEPS = [("ai", "AI menganalisis naskah", 6.0), ("hasil", "Simpan hasil analisis", 0.5)]
+ANALYSIS_STEPS = [("ai", "AI menganalisis naskah", 6.0), ("hasil", "Cek kutipan ke PDF dan simpan", 0.5)]
 
 
 def _mb(n) -> str:
@@ -212,10 +212,14 @@ def analysis_handler(sp: StepProgress):
         elif event == "selesai":
             sp.ok("ai", f"{state['model']} · {info.get('tokens', 0):,} token · {_secs(info.get('elapsed'))}")
         elif event == "simpan":
-            sp.run("hasil", "menyimpan dan memperbarui koleksi")
+            sp.run("hasil", "mencocokkan kutipan AI ke teks PDF")
+        elif event == "kutipan":
+            sp.run("hasil", f"{info.get('text')} · menyimpan")
         elif event == "beres":
             tokens = info.get("tokens")
-            sp.ok("hasil", f"total {tokens:,} token" if isinstance(tokens, int) else "tersimpan")
+            parts = [info.get("quotes") or "", f"total {tokens:,} token" if isinstance(tokens, int) else "tersimpan"]
+            note = " · ".join(x for x in parts if x)
+            sp.ok("hasil", f":orange[{note}]" if "dibuang" in note else note)
     return on_step
 
 

@@ -131,6 +131,58 @@ def check_quotes(analysis: dict, pages: list[dict]) -> list[dict]:
     return out
 
 
+def verify_quotes(analysis: dict, file_name: str, pages: list[dict] | None = None) -> dict:
+    """Check a fresh analysis's quotes against the PDF text before it is saved. No AI is used.
+
+    Each kept quote gets "verified" (ditemukan / mirip) and "page" (the PDF page where it was found).
+    A quote that is not in the PDF is moved from "quotes" to "quotes_rejected", so it never reaches
+    answers or exports as a verbatim line. Returns counts; when the paper's text cannot be read, the
+    quotes are left as they are and "checked" is False.
+    """
+    quotes = analysis.get("quotes") or []
+    summary = {"checked": False, "total": len(quotes), "found": 0, "close": 0, "missing": 0}
+    if not quotes:
+        return summary
+    if pages is None:
+        from . import extract
+
+        try:
+            pages = extract.get_paper_pages(file_name)
+        except Exception:
+            pages = []
+    if not pages:
+        return summary
+    kept, rejected = [], []
+    for q, res in zip(quotes, check_quotes(analysis, pages)):
+        q = dict(q) if isinstance(q, dict) else {"text": str(q), "page_hint": None}
+        q["verified"], q["page"] = res["status"], res["page"]
+        if res["status"] == QUOTE_MISSING:
+            rejected.append(q)
+            summary["missing"] += 1
+        else:
+            kept.append(q)
+            summary["found" if res["status"] == QUOTE_FOUND else "close"] += 1
+    analysis["quotes"] = kept
+    if rejected:
+        analysis["quotes_rejected"] = rejected
+    summary["checked"] = True
+    return summary
+
+
+def quote_summary_text(summary: dict) -> str:
+    """One line for logs and progress boxes, e.g. "3/4 kutipan ada di PDF, 1 dibuang"."""
+    if not summary.get("total"):
+        return "tidak ada kutipan"
+    if not summary.get("checked"):
+        return f"{summary['total']} kutipan belum dicek (teks PDF tidak terbaca)"
+    text = f"{summary['found']}/{summary['total']} kutipan ada di PDF"
+    if summary.get("close"):
+        text += f", {summary['close']} mirip"
+    if summary.get("missing"):
+        text += f", {summary['missing']} dibuang karena tidak ada di PDF"
+    return text
+
+
 # --------------------------------------------------------------- whole paper
 
 def check_paper(file_name: str, model: str = None, judge=None, evidence_fn=None, pages=None,

@@ -118,6 +118,14 @@ def paper_badges(p: dict) -> str:
         if sc.get("checked"):
             tone = "good" if not sc["flagged"] else "warn"
             out.append(_badge(f"Cek PDF: {sc['supported']}/{sc['statements']} didukung", tone))
+        try:
+            qc = (json.loads(p.get("raw_json") or "{}").get("_meta") or {}).get("quote_check") or {}
+        except (TypeError, json.JSONDecodeError):
+            qc = {}
+        if qc.get("missing"):
+            out.append(_badge(f"{qc['missing']} kutipan AI dibuang (tidak ada di PDF)", "warn"))
+        elif qc.get("checked") and qc.get("total"):
+            out.append(_badge(f"Kutipan cocok PDF {qc['found'] + qc['close']}/{qc['total']}", "good"))
     if not _authors.as_list(p.get("authors")):
         out.append(_badge("Penulis belum diketahui", "warn"))
     elif p.get("authors_source") == "pdf_ai":
@@ -241,10 +249,24 @@ def render_analysis_detail(p: dict):
             if not isinstance(q, dict) or not q.get("text"):
                 continue
             hint = q.get("page_hint") or ""
-            src = f"<div class='an-quote-src'>{_e(hint)}</div>" if hint else ""
+            if q.get("verified") == _acheck.QUOTE_FOUND:
+                note = _badge(f"Ada di PDF, hal. {q['page']}" if q.get("page") else "Ada di PDF", "good")
+            elif q.get("verified") == _acheck.QUOTE_CLOSE:
+                note = _badge(f"Mirip teks PDF hal. {q['page']}, tidak persis" if q.get("page") else "Mirip, tidak persis",
+                              "warn")
+            else:
+                note = _badge("Belum dicek ke PDF", "muted")
+            src = f"<div class='an-quote-src'>{note} {_e(hint)}</div>"
             q_html.append(f"<div class='an-quote'><div class='an-quote-text'>&ldquo;{_e(q['text'])}&rdquo;</div>{src}</div>")
         if q_html:
             st.markdown("<div class='an-section'>Kutipan kunci</div>" + "".join(q_html), unsafe_allow_html=True)
+    rejected = [q for q in (raw.get("quotes_rejected") or []) if isinstance(q, dict) and q.get("text")]
+    if rejected:
+        with st.expander(f"Kutipan AI yang dibuang karena tidak ada di PDF ({len(rejected)})"):
+            st.caption("AI menulis kalimat ini sebagai kutipan, tetapi kalimatnya tidak ditemukan di teks PDF. "
+                       "Kutipan ini tidak dipakai di jawaban atau ekspor.")
+            for q in rejected:
+                st.markdown(f"- “{_e(q['text'])}”")
 
     st.markdown(f"<div class='an-foot'>Sumber data: {_e(p.get('source') or 'web')} · File: {_e(p.get('file') or '')}</div>",
                 unsafe_allow_html=True)

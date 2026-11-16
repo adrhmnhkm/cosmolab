@@ -48,6 +48,23 @@ class AnalysisCheckTests(TempRoot):
         self.assertTrue(q[0]["page_ok"])
         self.assertEqual(q[1]["status"], analysis_check.QUOTE_MISSING)
 
+    def test_verify_quotes_sets_aside_invented_quotes(self):
+        analysis = json.loads(json.dumps(ANALYSIS))
+        summary = analysis_check.verify_quotes(analysis, "p.pdf", pages=PAGES)
+        self.assertEqual((summary["checked"], summary["found"], summary["missing"]), (True, 1, 1))
+        self.assertEqual([q["verified"] for q in analysis["quotes"]], [analysis_check.QUOTE_FOUND])
+        self.assertEqual(analysis["quotes"][0]["page"], 1)
+        self.assertEqual(analysis["quotes_rejected"][0]["text"], ANALYSIS["quotes"][1]["text"])
+        self.assertEqual(analysis_check.quote_summary_text(summary),
+                         "1/2 kutipan ada di PDF, 1 dibuang karena tidak ada di PDF")
+
+        # No readable text: quotes stay as they are, marked unchecked.
+        untouched = json.loads(json.dumps(ANALYSIS))
+        summary = analysis_check.verify_quotes(untouched, "p.pdf", pages=[])
+        self.assertFalse(summary["checked"])
+        self.assertEqual(untouched["quotes"], ANALYSIS["quotes"])
+        self.assertNotIn("quotes_rejected", untouched)
+
     def test_check_paper_judges_without_the_analysis_as_evidence(self):
         seen = {}
 

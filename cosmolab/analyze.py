@@ -270,6 +270,26 @@ def _step(on_step, event: str, **info) -> None:
             pass
 
 
+def _check_quotes(result: dict, file_name: str, label: str, on_step=None) -> dict:
+    """Check the AI's quotes against the PDF before the analysis is saved (no AI).
+
+    Quotes not found in the PDF are set aside in "quotes_rejected"; see analysis_check.verify_quotes.
+    """
+    from . import analysis_check
+
+    try:
+        qs = analysis_check.verify_quotes(result, file_name)
+    except Exception as e:
+        console.print(f"[yellow]PERINGATAN {label}: kutipan tidak bisa dicek ke PDF: {str(e)[:100]}[/yellow]")
+        qs = {"checked": False, "total": len(result.get("quotes") or []), "found": 0, "close": 0, "missing": 0}
+    text = analysis_check.quote_summary_text(qs)
+    color = "yellow" if qs.get("missing") or (qs.get("total") and not qs.get("checked")) else "cyan"
+    console.print(f"[{color}]KUTIPAN  [/{color}]{label}: {text}")
+    _step(on_step, "kutipan", text=text, **qs)
+    result.setdefault("_meta", {})["quote_check"] = qs
+    return {**qs, "text": text}
+
+
 def _analyze_one(client: OpenAI, text: str, model: str, lang: str = "id", timeout: int = 180, max_retries: int = 3,
                  on_step=None, label: str = "", expected: int | None = None) -> dict:
     """Analyze a single paper with the LLM, with retries and usage tracking.
@@ -463,6 +483,7 @@ def analyze_all(model: str = None, concurrency: int = 4, lang: str = "id", force
                 "completion_tokens": analysis_meta.get("completion_tokens"),
                 "total_tokens": analysis_meta.get("total_tokens"),
             }
+            qs = _check_quotes(result, rec["file"], paper_title[:50], paper_step)
             write_json(out, result)
             try:
                 from . import audit
@@ -475,7 +496,7 @@ def analyze_all(model: str = None, concurrency: int = 4, lang: str = "id", force
             console.print(f"[green]BERES    [/green]{paper_title[:70]} [dim]({analysis_meta.get('elapsed_seconds', '?')} dtk, "
                           f"{analysis_meta.get('total_tokens') or '?'} token)[/dim]")
             _step(on_step, "beres", stem=stem, title=paper_title, elapsed=analysis_meta.get("elapsed_seconds"),
-                  tokens=analysis_meta.get("total_tokens"))
+                  tokens=analysis_meta.get("total_tokens"), quotes=qs["text"])
             with lock:
                 stats["ok"] += 1
             return {"ok": True, "title": paper_title, "stem": stem, "result": result}
@@ -571,6 +592,7 @@ def analyze_single_paper(paper_file_or_stem: str, model: str = None, lang: str =
         "total_tokens": analysis_meta.get("total_tokens"),
     }
 
+    qs = _check_quotes(result, file_key, title[:50], on_step)
     write_json(out_path, result)
     try:
         from . import audit
@@ -587,6 +609,6 @@ def analyze_single_paper(paper_file_or_stem: str, model: str = None, lang: str =
     console.print(f"[green]BERES    [/green]{title[:70]} [dim]({analysis_meta.get('elapsed_seconds', '?')} dtk, "
                   f"{analysis_meta.get('total_tokens') or '?'} token)[/dim]")
     _step(on_step, "beres", title=title, elapsed=analysis_meta.get("elapsed_seconds"),
-          tokens=analysis_meta.get("total_tokens"))
+          tokens=analysis_meta.get("total_tokens"), quotes=qs["text"])
 
     return result
