@@ -41,6 +41,9 @@ config._set_root(_test_root)
 config.EMBED_MODEL = ""
 # use_project(None) resets to the default root; keep that inside the copy too.
 config._default_root = lambda: _test_root
+# The AI picked in the dashboard is saved in shared/; tests never read or change that choice.
+config.AI_CHOICE_FILE = _tmp / "shared" / "ai_aktif.json"
+config.apply_ai("utama")
 
 # The SINTA journal list is shared by all projects and lives outside data/.
 from cosmolab import sinta  # noqa: E402

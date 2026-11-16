@@ -8,9 +8,9 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from openai import OpenAI
 from rich.console import Console
 from . import config
+from . import llm as _llm
 from . import db
 from . import faculties as _faculties
 
@@ -172,57 +172,12 @@ DATA LITERATUR KORPUS (Rujukan Pendukung):
 
 Tuliskan artikel siap baca yang utuh dan lengkap sekarang:"""
 
-    def _safe_extract(res_obj) -> str:
-        if not res_obj:
-            return ""
-        choices = getattr(res_obj, "choices", None)
-        if not choices or len(choices) == 0:
-            return ""
-        choice = choices[0]
-        if not choice:
-            return ""
-        message = getattr(choice, "message", None)
-        if not message:
-            return ""
-        return (getattr(message, "content", "") or "").strip()
-
-    client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY, timeout=75.0)
-
     try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.35,
-        )
-        content = _safe_extract(resp)
-        if not content or "上游错误" in content:
-            console.print("[yellow]Primary model returned empty/error. Switching to gemini-3-8-flash fallback...[/yellow]")
-            fb = client.chat.completions.create(
-                model="gemini-3-8-flash",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.35,
-            )
-            content = _safe_extract(fb)
+        content = _llm.chat_text(system_prompt, user_prompt, model=model, temperature=0.35, timeout=180.0,
+                                 label="Tulis artikel")
     except Exception as e:
-        console.print(f"[red]Error writing article with {model}: {e}. Trying gemini-3-8-flash fallback...[/red]")
-        try:
-            fb = client.chat.completions.create(
-                model="gemini-3-8-flash",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.35,
-            )
-            content = _safe_extract(fb)
-        except Exception as e2:
-            content = f"# Gagal Menyusun Artikel\n\nTerjadi kesalahan: {e2}"
+        console.print(f"[red]GAGAL    [/red]Tulis artikel: {e}")
+        content = f"# Gagal Menyusun Artikel\n\nTerjadi kesalahan: {e}"
 
     reading_time = _estimate_reading_time(content)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")

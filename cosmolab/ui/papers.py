@@ -3,7 +3,6 @@
 import json
 from datetime import datetime
 import streamlit as st
-from cosmolab import config
 from cosmolab import db
 from cosmolab import faculties as _faculties
 from cosmolab import authors as _authors
@@ -289,7 +288,7 @@ def render_analysis_review(p: dict, key: str):
         if st.button("Cek ulang" if report else "Cek ke PDF", key=f"acheck_{key}", width="stretch"):
             with st.spinner("Membandingkan analisis dengan teks PDF..."):
                 try:
-                    report = _acheck.check_paper(f, model=config.LLM_MODEL)
+                    report = _acheck.check_paper(f)  # judged by JUDGE_MODEL on the judge's server
                 except Exception as e:
                     st.error(f"Cek gagal: {e}")
 

@@ -280,7 +280,8 @@ def run(k: int = 3, expand: bool = True, rerank: bool = True, reviewed_only: boo
     checked = entail.check_claims(
         [{"text": it["claim"], "paper": by_file.get(it["file"]) or {"file": it["file"], "title": it.get("title")}}
          for it in claim_items],
-        model=model, judge=judge, evidence_fn=evidence_fn,
+        # The claim checker runs on its own server with JUDGE_MODEL; `model` is the main AI used for retrieval.
+        model=None, judge=judge, evidence_fn=evidence_fn,
     ) if claim_items else []
     claim_rows, confusion = [], {}
     for it, row in zip(claim_items, checked):

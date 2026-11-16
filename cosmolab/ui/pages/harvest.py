@@ -12,6 +12,8 @@ from cosmolab import extract as _extract
 from cosmolab import analyze as _analyze
 from cosmolab import snowball as _snowball
 from cosmolab.ui.components import _e
+from cosmolab.ui.components import active_ai
+from cosmolab.ui import progress as _progress
 from cosmolab.ui.components import render_hero
 from cosmolab.ui.components import render_table
 from cosmolab.ui.context import AppContext
@@ -179,10 +181,17 @@ def render_snowball_tab(ctx: AppContext):
             for c in chosen:
                 r = _snowball.import_candidate(c, faculty=None if sb_fac == "auto" else sb_fac)
                 (done if r.get("ok") else failed).append((c, r))
-        if sb_an and done:
-            with st.spinner(f"Menganalisis {len(done)} paper..."):
-                _analyze.analyze_all(model=config.LLM_MODEL, lang="id", force=True, files=[r["file"] for _, r in done])
         db.sync_all()
+        if sb_an and done:
+            ai = active_ai()
+            with st.spinner(f"Menganalisis {len(done)} paper dengan {ai['label']}..."):
+                try:
+                    _analyze.analyze_all(concurrency=ai["concurrency"], lang="id", force=True,
+                                         files=[r["file"] for _, r in done])
+                except Exception as err:
+                    st.error(f"Paper sudah masuk koleksi, tetapi analisis gagal: {err}. "
+                             "Coba lagi di tab analisis, atau ganti AI di sidebar.")
+            db.sync_all()
         if done:
             st.success(f"{len(done)} paper masuk koleksi: " + "; ".join(r["title"][:60] for _, r in done))
         for c, r in failed:
@@ -192,6 +201,7 @@ def render_snowball_tab(ctx: AppContext):
 
 def render(ctx: AppContext):
     """Panen Paper Ilmiah."""
+    ai = active_ai()
     all_papers = ctx.all_papers
     faculty_labels = ctx.faculty_labels
     faculty_list = ctx.faculty_list
@@ -326,11 +336,9 @@ def render(ctx: AppContext):
 
             # Step 3: Analysis
             if auto_analyze and counters["downloaded"] > 0:
-                status_box.info(f"**AI ({config.LLM_MODEL}) sedang membedah naskah utuh (Metodologi, Temuan Pembahasan & Kesimpulan)...**")
-                try:
-                    an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=config.LLM_CONCURRENCY, lang="id", progress_cb=_ui_cb, files=target_files if target_files else None)
-                except TypeError:
-                    an_stats = _analyze.analyze_all(model=config.LLM_MODEL, concurrency=config.LLM_CONCURRENCY, lang="id")
+                status_box.info(f"**AI ({ai['label']}) sedang membedah naskah utuh (Metodologi, Temuan Pembahasan & Kesimpulan)...**")
+                an_stats = _analyze.analyze_all(concurrency=ai["concurrency"], lang="id", progress_cb=_ui_cb,
+                                                files=target_files if target_files else None)
 
             # Sync DB (again: adds the analyses)
             db.sync_all()
@@ -349,7 +357,7 @@ def render(ctx: AppContext):
         except Exception as e:
             status_box.error(f"Terjadi kesalahan saat proses panen: {e}")
 
-    def run_live_analyze_process(target_files: list[str], model: str, lang: str, workers: int):
+    def run_live_analyze_process(target_files: list[str], lang: str, workers: int):
         console_box = st.container(border=True)
         with console_box:
             st.markdown("#### Proses analisis berjalan")
@@ -392,8 +400,8 @@ def render(ctx: AppContext):
             status_box.info(f"Menyiapkan teks naskah untuk {total} berkas...")
             _extract.extract_all(progress_cb=_an_cb, files=target_files)
             db.sync_all()
-            status_box.info(f"Membedah {total} naskah dengan AI ({model})...")
-            _analyze.analyze_all(model=model, concurrency=workers, lang=lang, force=True, progress_cb=_an_cb, files=target_files)
+            status_box.info(f"Membedah {total} naskah dengan {ai['label']}...")
+            _analyze.analyze_all(concurrency=workers, lang=lang, force=True, progress_cb=_an_cb, files=target_files)
             db.sync_all()
             progress_bar.progress(1.0, text="Seluruh naskah berhasil dibedah!")
             status_box.success(f"Pembedahan selesai! {counters['analyzed']} paper berhasil dianalisis.")
@@ -601,26 +609,7 @@ def render(ctx: AppContext):
                 manual_fac = st.selectbox("Simpan ke bidang", [f.id for f in faculty_list], format_func=lambda x: faculty_labels.get(x, x), key="manual_fac_select")
                 auto_an_upload = st.checkbox("Langsung analisis", value=True, key="manual_auto_an")
 
-                if st.button("Unggah", type="primary", key="btn_import_pdf", use_container_width=True):
-                    if not uploaded_pdf:
-                        st.error("Pilih file PDF dulu.")
-                    else:
-                        with st.spinner("Menyimpan PDF dan mengekstrak teks..."):
-                            res = _harvest.import_local_pdf(
-                                file_bytes=uploaded_pdf.read(),
-                                filename=uploaded_pdf.name,
-                                title=manual_title,
-                                faculty=manual_fac
-                            )
-                            st.success(f"Berhasil mengimpor: {res['title']}!")
-
-                        if auto_an_upload:
-                            with st.spinner("Menganalisis paper ini..."):
-                                _analyze.analyze_single_paper(res["file"], model=config.LLM_MODEL, lang="id")
-                                st.success("Analisis selesai.")
-
-                        db.sync_all()
-                        st.rerun()
+                go_upload = st.button("Unggah", type="primary", key="btn_import_pdf", use_container_width=True)
 
             with col_m_doi:
                 st.markdown("#### Dari DOI")
@@ -629,22 +618,43 @@ def render(ctx: AppContext):
                 auto_an_doi = st.checkbox("Langsung analisis", value=True, key="doi_auto_an")
                 st.caption("Hanya berhasil kalau paper punya versi terbuka (open access).")
 
-                if st.button("Cari & unduh", type="primary", key="btn_import_doi", use_container_width=True):
-                    if not input_doi.strip():
-                        st.error("Isi DOI dulu.")
-                    else:
-                        with st.spinner("Mencari versi terbuka paper ini..."):
-                            doi_res = _harvest.import_by_doi(doi=input_doi, faculty=doi_fac)
-                            if "error" in doi_res:
-                                st.error(doi_res["error"])
-                            else:
-                                st.success(f"Berhasil mengunduh: {doi_res['title']}!")
-                                if auto_an_doi:
-                                    with st.spinner("Menganalisis paper ini..."):
-                                        _analyze.analyze_single_paper(doi_res["file"], model=config.LLM_MODEL, lang="id")
-                                        st.success("Analisis selesai.")
-                                db.sync_all()
-                                st.rerun()
+                go_doi = st.button("Cari & unduh", type="primary", key="btn_import_doi", use_container_width=True)
+
+            # The job runs below both columns, so its progress box gets the full width.
+            if go_upload and not uploaded_pdf:
+                st.error("Pilih file PDF dulu.")
+            elif go_upload:
+                steps = _progress.import_steps("upload") + (_progress.ANALYSIS_STEPS if auto_an_upload else [])
+                sp = _progress.StepProgress(f"Unggah {uploaded_pdf.name}", steps)
+                try:
+                    res = _harvest.import_local_pdf(file_bytes=uploaded_pdf.getvalue(), filename=uploaded_pdf.name,
+                                                    title=manual_title, faculty=manual_fac,
+                                                    on_step=_progress.import_handler(sp))
+                except Exception as err:
+                    sp.fail_current(str(err)[:200])
+                    st.error(f"Unggah gagal: {err}")
+                    st.stop()
+                db.sync_all()
+                if not auto_an_upload or _progress.analyze_with_progress(res["file"], res["title"], sp=sp):
+                    sp.finish(f"{res['title'][:60]} masuk koleksi" + (" dan sudah dianalisis" if auto_an_upload else ""))
+                    db.sync_all()
+                    st.success(f"Berhasil: {res['title']}. Lihat di menu Koleksi paper.")
+
+            if go_doi and not input_doi.strip():
+                st.error("Isi DOI dulu.")
+            elif go_doi:
+                steps = _progress.import_steps("doi") + (_progress.ANALYSIS_STEPS if auto_an_doi else [])
+                sp = _progress.StepProgress(f"Impor DOI {input_doi.strip()}", steps)
+                doi_res = _harvest.import_by_doi(doi=input_doi, faculty=doi_fac, on_step=_progress.import_handler(sp))
+                if "error" in doi_res:
+                    sp.fail_current(doi_res["error"])
+                    st.error(doi_res["error"])
+                else:
+                    db.sync_all()
+                    if not auto_an_doi or _progress.analyze_with_progress(doi_res["file"], doi_res["title"], sp=sp):
+                        sp.finish(f"{doi_res['title'][:60]} masuk koleksi" + (" dan sudah dianalisis" if auto_an_doi else ""))
+                        db.sync_all()
+                        st.success(f"Berhasil: {doi_res['title']}. Lihat di menu Koleksi paper.")
 
     with tab_h5:
         st.caption("Analisis paper yang belum dianalisis, atau ulangi analisis paper tertentu.")
@@ -682,8 +692,9 @@ def render(ctx: AppContext):
                     lit_lang = col_l1.selectbox("Bahasa hasil", ["id", "en"], key="lit_lang_opt",
                                                 format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English")
                     lit_workers = col_l2.slider("Paper sekaligus", min_value=1, max_value=8,
-                                                 value=min(3, config.LLM_CONCURRENCY), key="lit_workers_opt",
+                                                 value=min(3, ai["concurrency"]), key="lit_workers_opt",
                                                  help="Untuk AI lokal (llama.cpp), pakai 1.")
+                    st.caption(f"AI: {ai['label']}. Ganti di sidebar.")
                     lit_map = {p.get("file"): f"{p.get('title') or p.get('file')} ({p.get('year', 'n.d.')})"
                                for p in incomplete_all}
                     lit_chosen = st.multiselect("Pilih paper (kosongkan untuk semua)", options=list(lit_map),
@@ -691,8 +702,7 @@ def render(ctx: AppContext):
                     lit_targets = lit_chosen or list(lit_map)
                     if st.button(f"Lengkapi {len(lit_targets)} paper", type="primary", key="btn_run_lit_batch",
                                  use_container_width=True):
-                        run_live_analyze_process(target_files=lit_targets, model=config.LLM_MODEL, lang=lit_lang,
-                                                 workers=lit_workers)
+                        run_live_analyze_process(target_files=lit_targets, lang=lit_lang, workers=lit_workers)
                         st.rerun()
 
         with tab_sub1:
@@ -702,10 +712,10 @@ def render(ctx: AppContext):
                 with st.container(border=True):
                     st.caption("AI membaca naskah utuh lalu mengekstrak tesis, metodologi, temuan, dan kutipan dengan nomor halaman. Sekitar 1 menit per paper.")
 
-                    col_opt1, col_opt2, col_opt3 = st.columns([2, 1, 1])
-                    studio_model = col_opt1.selectbox("Model AI", [config.LLM_MODEL, "gemini-3-8-flash", "gemini-2.5-flash"], index=0, key="studio_model_opt")
+                    st.caption(f"AI: {ai['label']}. Ganti di sidebar.")
+                    col_opt2, col_opt3 = st.columns(2)
                     studio_workers = col_opt2.slider("Paper sekaligus", min_value=1, max_value=8,
-                                                     value=config.LLM_CONCURRENCY, key="studio_workers_opt",
+                                                     value=ai["concurrency"], key="studio_workers_opt",
                                                      help="Untuk AI lokal (llama.cpp), pakai 1.")
                     studio_lang = col_opt3.selectbox("Bahasa hasil", ["id", "en"], format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English", key="studio_lang_opt")
 
@@ -724,7 +734,6 @@ def render(ctx: AppContext):
                     if st.button(btn_text, type="primary", key="btn_run_studio_batch", use_container_width=True):
                         run_live_analyze_process(
                             target_files=target_files,
-                            model=studio_model,
                             lang=studio_lang,
                             workers=studio_workers
                         )
@@ -741,15 +750,14 @@ def render(ctx: AppContext):
                             st.markdown(f"**{u_idx}. {up.get('title') or up.get('file')}**")
                             st.caption(f"{u_fname} · {up.get('year', 'n.d.')}")
                         with col_ui2:
-                            if st.button("Analisis", key=f"btn_single_studio_{u_idx}_{up.get('file')}", use_container_width=True):
-                                with st.spinner(f"Menganalisis '{(up.get('title') or '')[:30]}...'"):
-                                    try:
-                                        _analyze.analyze_single_paper(up.get("file"), model=studio_model, lang=studio_lang)
-                                        db.sync_all()
-                                        st.success("Analisis berhasil!")
-                                        st.rerun()
-                                    except Exception as err:
-                                        st.error(f"Gagal analisis: {err}")
+                            go_single = st.button("Analisis", key=f"btn_single_studio_{u_idx}_{up.get('file')}",
+                                                  use_container_width=True)
+                        # Outside the narrow column, so the progress box gets the full width.
+                        if go_single and _progress.analyze_with_progress(up.get("file"), up.get("title") or "",
+                                                                         lang=studio_lang, force=False):
+                            db.sync_all()
+                            st.toast("Analisis selesai.", icon=":material/check_circle:")
+                            st.rerun()
 
         with tab_sub2:
             with st.container(border=True):
@@ -771,16 +779,10 @@ def render(ctx: AppContext):
                         else:
                             st.caption("Paper ini belum dianalisis.")
 
-                        col_re1, col_re2 = st.columns(2)
-                        re_model = col_re1.selectbox("Model LLM:", [config.LLM_MODEL, "gemini-3-8-flash", "gemini-2.5-flash"], key="re_model_single")
-                        re_lang = col_re2.selectbox("Bahasa Analisis:", ["id", "en"], format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English", key="re_lang_single")
+                        st.caption(f"AI: {ai['label']}. Ganti di sidebar.")
+                        re_lang = st.selectbox("Bahasa Analisis:", ["id", "en"], format_func=lambda x: "Bahasa Indonesia" if x == "id" else "English", key="re_lang_single")
 
                         if st.button("Analisis ulang", type="primary", key="btn_exec_single_re", use_container_width=True):
-                            with st.spinner(f"Menganalisis naskah '{chosen_file}' dengan {re_model}..."):
-                                try:
-                                    _analyze.analyze_single_paper(chosen_file, model=re_model, lang=re_lang, force=True)
-                                    db.sync_all()
-                                    st.success(f"Pembedahan ulang selesai untuk: {chosen_file}")
-                                    st.rerun()
-                                except Exception as err:
-                                    st.error(f"Gagal analisis: {err}")
+                            if _progress.analyze_with_progress(chosen_file, target_rec.get("title") or "", lang=re_lang):
+                                db.sync_all()
+                                st.success(f"Analisis ulang selesai: {target_rec.get('title') or chosen_file}")

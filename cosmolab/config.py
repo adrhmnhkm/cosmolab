@@ -214,3 +214,64 @@ LLM_CACHE = _env("COSMOLAB_LLM_CACHE", "1").strip().lower() not in ("0", "false"
 # Skip the LLM rerank when BM25 and embeddings agree on one clear winner.
 # Set COSMOLAB_RERANK_ALWAYS=1 to rerank every time.
 RERANK_ALWAYS = _env("COSMOLAB_RERANK_ALWAYS", "0").strip().lower() in ("1", "true", "yes", "on")
+
+# Active AI. Every feature reads LLM_BASE_URL / LLM_API_KEY / LLM_MODEL above, so switching
+# them here switches the whole app: the dashboard sidebar and `cosmolab ai` pick one of two.
+#   utama: the main AI in .env (often a local llama.cpp server)
+#   api:   a paid API. It uses the claim checker's server and key unless PAID_LLM_BASE_URL /
+#          PAID_LLM_API_KEY are set.
+# The choice is saved in shared/ai_aktif.json, so it holds for every project, the CLI, and the
+# whole team. The claim checker (JUDGE_*) and embeddings (EMBED_*) are not switched: they were
+# set from .env above.
+PAID_LLM_BASE_URL = _env("PAID_LLM_BASE_URL") or JUDGE_BASE_URL
+PAID_LLM_API_KEY = _env("PAID_LLM_API_KEY") or JUDGE_API_KEY
+PAID_LLM_MODEL = _env("PAID_LLM_MODEL", "deepseek-v4-pro")
+PAID_LLM_CONCURRENCY = _concurrency(_env("PAID_LLM_CONCURRENCY", "4"))
+AI_CHOICE_FILE = PROJECT_ROOT / "shared" / "ai_aktif.json"
+DEFAULT_AI = _env("COSMOLAB_AI", "api").strip().lower()
+
+_ENV_AI = {"base_url": LLM_BASE_URL, "api_key": LLM_API_KEY, "model": LLM_MODEL, "concurrency": LLM_CONCURRENCY}
+
+
+def ai_choices() -> dict:
+    """The AIs the app can run on, keyed by id, each with a label for the dashboard."""
+    local = any(h in _ENV_AI["base_url"] for h in ("127.0.0.1", "localhost", "[::1]"))
+    return {
+        "api": {"label": f"API berbayar ({PAID_LLM_MODEL})", "base_url": PAID_LLM_BASE_URL,
+                "api_key": PAID_LLM_API_KEY, "model": PAID_LLM_MODEL, "concurrency": PAID_LLM_CONCURRENCY},
+        "utama": {"label": f"{'AI lokal' if local else 'AI utama'} ({_ENV_AI['model']})", **_ENV_AI},
+    }
+
+
+def _saved_ai() -> str:
+    try:
+        ai = json.loads(AI_CHOICE_FILE.read_text(encoding="utf-8")).get("ai")
+    except (OSError, ValueError, AttributeError):
+        ai = None
+    return ai if ai in ai_choices() else (DEFAULT_AI if DEFAULT_AI in ai_choices() else "utama")
+
+
+def apply_ai(ai: str) -> None:
+    """Point every feature at one AI for this process."""
+    global ACTIVE_AI, LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, LLM_CONCURRENCY
+    global NINEROUTER_BASE_URL, NINEROUTER_API_KEY, NINEROUTER_MODEL
+    choice = ai_choices()[ai]
+    ACTIVE_AI = ai
+    LLM_BASE_URL = NINEROUTER_BASE_URL = choice["base_url"]
+    LLM_API_KEY = NINEROUTER_API_KEY = choice["api_key"]
+    LLM_MODEL = NINEROUTER_MODEL = choice["model"]
+    LLM_CONCURRENCY = choice["concurrency"]
+
+
+def set_ai(ai: str) -> None:
+    """Save the choice for every project and the CLI, and use it now."""
+    if ai not in ai_choices():
+        raise ValueError(f"Pilihan AI tidak dikenal: {ai}. Pilih: {', '.join(ai_choices())}")
+    AI_CHOICE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    AI_CHOICE_FILE.write_text(json.dumps({"ai": ai, "updated": datetime.now().isoformat(timespec="seconds")}),
+                              encoding="utf-8")
+    apply_ai(ai)
+
+
+ACTIVE_AI = "utama"
+apply_ai(_saved_ai())

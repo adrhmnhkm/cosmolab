@@ -13,22 +13,19 @@ from .utils import fire_cb
 
 console = Console(force_terminal=True, legacy_windows=False)
 
-# Lazy singleton OpenAI client (Fix 2)
+# One lazily created OpenAI client per server (Fix 2)
 _client_lock = threading.Lock()
-_client_instance: OpenAI | None = None
+_clients: dict[tuple[str, str], OpenAI] = {}
 
 
 def _get_client() -> OpenAI:
-    """Return a module-level singleton OpenAI client, created lazily on first use."""
-    global _client_instance
-    if _client_instance is None:
+    """Return the shared OpenAI client for the active AI (see config.apply_ai)."""
+    key = (config.LLM_BASE_URL, config.LLM_API_KEY)
+    if key not in _clients:
         with _client_lock:
-            if _client_instance is None:
-                _client_instance = OpenAI(
-                    api_key=config.LLM_API_KEY,
-                    base_url=config.LLM_BASE_URL,
-                )
-    return _client_instance
+            if key not in _clients:
+                _clients[key] = OpenAI(base_url=key[0], api_key=key[1])
+    return _clients[key]
 
 
 class Quote(BaseModel):
@@ -249,16 +246,54 @@ def _parse_response(content: str) -> dict:
             pass
     raise ValueError("No valid JSON found in response")
 
-def _analyze_one(client: OpenAI, text: str, model: str, lang: str = "id", timeout: int = 180, max_retries: int = 3) -> dict:
-    """Analyze a single paper with LLM, with retry logic and usage tracking."""
+def expected_output_tokens(model: str | None = None) -> int:
+    """Typical length of one analysis, from past analyses (same model first), for progress bars."""
+    same, other = [], []
+    for path in config.ANALYSIS_DIR.glob("*.json"):
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8")).get("_meta") or {}
+        except (OSError, ValueError):
+            continue
+        n = meta.get("completion_tokens")
+        if isinstance(n, int) and n > 0:
+            (same if model and meta.get("model") == model else other).append(n)
+    pool = same or other
+    return int(sum(pool) / len(pool)) if pool else 2000
+
+
+def _step(on_step, event: str, **info) -> None:
+    """Report one analysis step to a progress display. A display error never stops the analysis."""
+    if on_step:
+        try:
+            on_step(event, info)
+        except Exception:
+            pass
+
+
+def _analyze_one(client: OpenAI, text: str, model: str, lang: str = "id", timeout: int = 180, max_retries: int = 3,
+                 on_step=None, label: str = "", expected: int | None = None) -> dict:
+    """Analyze a single paper with the LLM, with retries and usage tracking.
+
+    The answer is streamed so progress is visible while the AI writes. on_step(event, info) gets:
+    "kirim" (request sent), "token" (tokens written so far), "ulang" (retry), "selesai" (answer complete).
+    """
+    from . import usage as _usage
+
     prompt = PROMPTS.get(lang, PROMPTS["id"])
     trimmed_text = _trim(text)
+    est_input = len(trimmed_text) // 4
+    expected = expected or expected_output_tokens(model)
+    name = label or "paper"
     last_error = None
 
     for attempt in range(max_retries):
         try:
             t0 = time.monotonic()
-            resp = client.chat.completions.create(
+            console.print(f"[cyan]AI       [/cyan]{name}: kirim ~{est_input:,} token ke {model}"
+                          + (f" (percobaan {attempt + 1})" if attempt else ""))
+            _step(on_step, "kirim", model=model, input_tokens=est_input, chars=len(trimmed_text),
+                  trimmed=len(trimmed_text) < len(text), attempt=attempt + 1)
+            stream = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": prompt},
@@ -267,19 +302,52 @@ def _analyze_one(client: OpenAI, text: str, model: str, lang: str = "id", timeou
                 response_format={"type": "json_object"},
                 temperature=0,
                 timeout=timeout,
+                stream=True,
+                stream_options={"include_usage": True},
             )
+            parts, written, thought, usage, first_at, last_report = [], 0, 0, None, None, 0.0
+            for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    usage = chunk.usage
+                d = chunk.choices[0].delta if chunk.choices else None
+                delta = d.content if d else None
+                if not delta:
+                    # Reasoning models (deepseek-v4-pro) think before they write; report that too,
+                    # so the display does not look stuck.
+                    if d is not None and (getattr(d, "reasoning_content", None) or getattr(d, "reasoning", None)):
+                        thought += 1
+                        now = time.monotonic()
+                        if thought == 1:
+                            console.print(f"[dim]AI       {name}: AI mulai berpikir setelah {now - t0:.1f} dtk[/dim]")
+                        if now - last_report >= 0.25:
+                            last_report = now
+                            _step(on_step, "pikir", tokens=thought, elapsed=now - t0)
+                    continue
+                parts.append(delta)
+                written += 1
+                now = time.monotonic()
+                if first_at is None:
+                    first_at = now - t0
+                    more = f" ({thought:,} token berpikir)" if thought else ""
+                    console.print(f"[dim]AI       {name}: AI mulai menulis setelah {first_at:.1f} dtk{more}[/dim]")
+                if now - last_report >= 0.25:
+                    last_report = now
+                    _step(on_step, "token", tokens=written, expected=expected, elapsed=now - t0)
             elapsed = round(time.monotonic() - t0, 2)
 
-            raw = _parse_response(resp.choices[0].message.content)
-            result = PaperAnalysis(**raw).model_dump()
+            prompt_tokens = getattr(usage, "prompt_tokens", None) if usage else None
+            completion_tokens = getattr(usage, "completion_tokens", None) if usage else None
+            _usage.record(model=model, prompt_tokens=prompt_tokens or est_input,
+                          completion_tokens=completion_tokens or written, feature="analyze")
+            _step(on_step, "selesai", tokens=completion_tokens or written, expected=expected, elapsed=elapsed)
 
-            # Attach usage and timing metadata (Fix 7)
-            usage = resp.usage
+            raw = _parse_response("".join(parts))
+            result = PaperAnalysis(**raw).model_dump()
             result["_analysis_meta"] = {
                 "elapsed_seconds": elapsed,
-                "prompt_tokens": usage.prompt_tokens if usage else None,
-                "completion_tokens": usage.completion_tokens if usage else None,
-                "total_tokens": usage.total_tokens if usage else None,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": (prompt_tokens or 0) + (completion_tokens or 0) if usage else None,
                 "attempt": attempt + 1,
             }
             return result
@@ -287,28 +355,44 @@ def _analyze_one(client: OpenAI, text: str, model: str, lang: str = "id", timeou
         except (RateLimitError,) as e:
             last_error = e
             wait = min(2 ** (attempt + 1), 30)
-            console.print(f"[yellow]RATE-LIMIT  Retry in {wait}s (attempt {attempt+1}/{max_retries}): {str(e)[:60]}[/yellow]")
+            console.print(f"[yellow]ULANG    {name}: batas pemakaian API, coba lagi dalam {wait} dtk "
+                          f"({attempt + 1}/{max_retries}): {str(e)[:80]}[/yellow]")
+            _step(on_step, "ulang", attempt=attempt + 1, max=max_retries, wait=wait, error="batas pemakaian API")
             time.sleep(wait)
         except (APITimeoutError, APIConnectionError) as e:
             last_error = e
             wait = min(2 ** attempt * 3, 30)
-            console.print(f"[yellow]API-RETRY  {type(e).__name__} — retry in {wait}s (attempt {attempt+1}/{max_retries})[/yellow]")
+            why = "AI tidak menjawab tepat waktu" if isinstance(e, APITimeoutError) else \
+                f"tidak bisa terhubung ke {config.LLM_BASE_URL}"
+            console.print(f"[yellow]ULANG    {name}: {why}, coba lagi dalam {wait} dtk ({attempt + 1}/{max_retries})[/yellow]")
+            _step(on_step, "ulang", attempt=attempt + 1, max=max_retries, wait=wait, error=why)
             time.sleep(wait)
         except (ValidationError, ValueError) as e:
             # Parse/validation errors won't be fixed by retrying
+            console.print(f"[red]GAGAL    {name}: jawaban AI bukan JSON analisis yang sah: {str(e)[:120]}[/red]")
             raise
         except Exception as e:
             last_error = e
             if attempt < max_retries - 1:
                 wait = 2 ** attempt
-                console.print(f"[yellow]LLM-ERROR  {str(e)[:60]} — retry in {wait}s (attempt {attempt+1}/{max_retries})[/yellow]")
+                console.print(f"[yellow]ULANG    {name}: {str(e)[:120]}, coba lagi dalam {wait} dtk "
+                              f"({attempt + 1}/{max_retries})[/yellow]")
+                _step(on_step, "ulang", attempt=attempt + 1, max=max_retries, wait=wait, error=str(e)[:120])
                 time.sleep(wait)
 
+    console.print(f"[red]GAGAL    {name}: AI gagal {max_retries} kali: {last_error}[/red]")
     raise RuntimeError(f"LLM analysis failed after {max_retries} attempts: {last_error}")
 
 
 
-def analyze_all(model: str = None, concurrency: int = 4, lang: str = "id", force: bool = False, progress_cb=None, files: list[str] = None) -> dict:
+def analyze_all(model: str = None, concurrency: int = 4, lang: str = "id", force: bool = False, progress_cb=None,
+                files: list[str] = None, on_step=None) -> dict:
+    """Analyze many papers in parallel.
+
+    on_step(event, info), for a live progress display: "rencana" (how many papers), then per paper
+    "mulai", the steps of _analyze_one ("kirim", "token", "ulang", "selesai"), and "beres" or "gagal".
+    Every info dict of a paper carries its "stem" and "title".
+    """
     config.ensure_dirs()
     model = model or config.LLM_MODEL
     client = _get_client()
@@ -338,25 +422,33 @@ def analyze_all(model: str = None, concurrency: int = 4, lang: str = "id", force
 
         if not force and already_analyzed:
             stats["skip"] += 1
-            console.print(f"[dim]SKIP  Already analyzed ({lang}): {stem}[/dim]")
+            console.print(f"[dim]LEWATI   {stem}: sudah dianalisis ({lang})[/dim]")
             continue
         if not txt.exists():
             stats["fail"] += 1
-            console.print(f"[red]FAIL  No text file: {stem}[/red]")
+            console.print(f"[red]GAGAL    {stem}: teks PDF belum ada, jalankan extract dulu[/red]")
             continue
         tasks_to_run.append((rec, stem, txt, out))
 
+    _step(on_step, "rencana", total=len(tasks_to_run), skipped=stats["skip"], failed=stats["fail"], model=model)
     if not tasks_to_run:
+        console.print(f"[dim]ANALISIS tidak ada paper baru ({stats['skip']} sudah dianalisis, {stats['fail']} tanpa teks)[/dim]")
         return stats
 
-    console.print(f"[cyan]RUNNING ANALYSIS ({lang.upper()})[/cyan] [dim]({len(tasks_to_run)} papers in parallel, concurrency={concurrency})...[/dim]")
+    expected = expected_output_tokens(model)
+    console.print(f"[bold cyan]ANALISIS {len(tasks_to_run)} paper[/bold cyan] dengan {model} "
+                  f"({concurrency} sekaligus, bahasa {lang.upper()})")
 
     def _worker(item):
         rec, stem, txt, out = item
         paper_title = rec.get("title") or stem
         try:
-            console.print(f"[cyan]ANALYZE  {stem}[/cyan]")
-            result = _analyze_one(client, txt.read_text(encoding="utf-8"), model, lang=lang)
+            text = txt.read_text(encoding="utf-8")
+            console.print(f"[cyan]MULAI    [/cyan]{paper_title[:70]} [dim]({len(text):,} karakter)[/dim]")
+            _step(on_step, "mulai", stem=stem, title=paper_title, chars=len(text))
+            paper_step = (lambda ev, info: on_step(ev, {**info, "stem": stem, "title": paper_title})) if on_step else None
+            result = _analyze_one(client, text, model, lang=lang, on_step=paper_step, label=paper_title[:50],
+                                  expected=expected)
             analysis_meta = result.pop("_analysis_meta", {})
             result["_meta"] = {
                 "paper_file": rec["file"],
@@ -380,22 +472,26 @@ def analyze_all(model: str = None, concurrency: int = 4, lang: str = "id", force
                           tokens=analysis_meta.get("total_tokens"))
             except Exception:
                 pass
-            elapsed_str = f" ({analysis_meta.get('elapsed_seconds', '?')}s, {analysis_meta.get('total_tokens', '?')} tok)"
-            console.print(f"[green]OK  Analyzed: {stem}{elapsed_str}[/green]")
+            console.print(f"[green]BERES    [/green]{paper_title[:70]} [dim]({analysis_meta.get('elapsed_seconds', '?')} dtk, "
+                          f"{analysis_meta.get('total_tokens') or '?'} token)[/dim]")
+            _step(on_step, "beres", stem=stem, title=paper_title, elapsed=analysis_meta.get("elapsed_seconds"),
+                  tokens=analysis_meta.get("total_tokens"))
             with lock:
                 stats["ok"] += 1
             return {"ok": True, "title": paper_title, "stem": stem, "result": result}
         except (ValidationError, ValueError) as e:
             error_log = config.ANALYSIS_DIR / f"{stem}.error.txt"
             error_log.write_text(f"Error: {e}\nStem: {stem}\n", encoding="utf-8")
-            console.print(f"[red]PARSE_ERROR  {stem} - {str(e)[:60]}[/red]")
+            console.print(f"[red]GAGAL    {paper_title[:70]}: jawaban AI tidak bisa dibaca ({str(e)[:80]})[/red]")
+            _step(on_step, "gagal", stem=stem, title=paper_title, error=f"jawaban AI tidak bisa dibaca: {str(e)[:80]}")
             with lock:
                 stats["fail"] += 1
             return {"ok": False, "title": paper_title, "stem": stem, "error": f"Parse Error: {str(e)[:60]}"}
         except Exception as e:
             error_log = config.ANALYSIS_DIR / f"{stem}.error.txt"
             error_log.write_text(f"API Error: {e}\nStem: {stem}\n", encoding="utf-8")
-            console.print(f"[red]API_ERROR  {stem} - {str(e)[:60]}[/red]")
+            console.print(f"[red]GAGAL    {paper_title[:70]}: {str(e)[:120]}[/red]")
+            _step(on_step, "gagal", stem=stem, title=paper_title, error=str(e)[:120])
             with lock:
                 stats["fail"] += 1
             return {"ok": False, "title": paper_title, "stem": stem, "error": f"API Error: {str(e)[:60]}"}
@@ -410,14 +506,19 @@ def analyze_all(model: str = None, concurrency: int = 4, lang: str = "id", force
             elif res_item and not res_item.get("ok"):
                 fire_cb(progress_cb, "analyze_fail", f"Gagal analisis: {res_item['title'][:40]} ({res_item.get('error', '')})", res_item)
 
+    console.print(f"[bold]SELESAI  [/bold]{stats['ok']} dianalisis, {stats['skip']} dilewati, {stats['fail']} gagal")
     return stats
 
 
-def analyze_single_paper(paper_file_or_stem: str, model: str = None, lang: str = "id", force: bool = True) -> dict:
+def analyze_single_paper(paper_file_or_stem: str, model: str = None, lang: str = "id", force: bool = True,
+                         on_step=None) -> dict:
     """
     Analyze or re-analyze a single paper on demand.
     Extracts text automatically from PDF if missing, runs LLM full-body dissection,
     saves analysis JSON, and syncs only this paper to SQLite database.
+
+    on_step(event, info), for a live progress display: "baca" (text ready), the steps of
+    _analyze_one ("kirim", "token", "ulang", "selesai"), then "simpan" and "beres".
     """
     config.ensure_dirs()
     model = model or config.LLM_MODEL
@@ -429,10 +530,15 @@ def analyze_single_paper(paper_file_or_stem: str, model: str = None, lang: str =
     pdf_path = config.PDF_DIR / (clean_file if clean_file.endswith(".pdf") else f"{stem}.pdf")
     out_path = config.ANALYSIS_DIR / f"{stem}.json"
 
+    rec = next((m for m in read_meta() if Path(m.get("file", "")).stem == stem), {})
+    title = rec.get("title") or stem.replace("_", " ")
+    console.print(f"[bold cyan]ANALISIS [/bold cyan]{title[:80]} dengan {model}")
+
     # 1. Ensure text exists
     if not txt_path.exists() or txt_path.stat().st_size == 0:
         if pdf_path.exists():
             from . import extract
+            console.print(f"[cyan]TEKS     [/cyan]{title[:50]}: teks belum ada, ekstrak dari PDF")
             text = extract._pdf_to_text(pdf_path)
             if not text.strip():
                 raise ValueError(f"Tidak dapat mengekstrak teks dari berkas PDF: {pdf_path.name}")
@@ -441,11 +547,12 @@ def analyze_single_paper(paper_file_or_stem: str, model: str = None, lang: str =
             raise FileNotFoundError(f"Berkas naskah PDF atau teks tidak ditemukan: {stem}")
 
     full_text = txt_path.read_text(encoding="utf-8")
-    result = _analyze_one(client, full_text, model, lang=lang)
+    pages = full_text.count("--- [Halaman ")
+    console.print(f"[cyan]TEKS     [/cyan]{title[:50]}: {len(full_text):,} karakter" + (f", {pages} halaman" if pages else ""))
+    _step(on_step, "baca", chars=len(full_text), pages=pages, title=title)
+    result = _analyze_one(client, full_text, model, lang=lang, on_step=on_step, label=title[:50])
 
-    # Find metadata record if available
-    metadata = read_meta()
-    rec = next((m for m in metadata if Path(m.get("file", "")).stem == stem), {})
+    _step(on_step, "simpan", title=title)
     file_key = rec.get("file") or f"{stem}.pdf"
 
     # Merge analysis timing into _meta
@@ -465,9 +572,21 @@ def analyze_single_paper(paper_file_or_stem: str, model: str = None, lang: str =
     }
 
     write_json(out_path, result)
+    try:
+        from . import audit
+
+        audit.log("analisis", file=file_key, model=model, lang=lang,
+                  prompt_version=audit.prompt_version(PROMPTS.get(lang, PROMPT_ID)),
+                  tokens=analysis_meta.get("total_tokens"))
+    except Exception:
+        pass
 
     # Sync only this paper to database (Fix 6: O(1) instead of O(N))
     from . import db
     db.sync_one(file_key)
+    console.print(f"[green]BERES    [/green]{title[:70]} [dim]({analysis_meta.get('elapsed_seconds', '?')} dtk, "
+                  f"{analysis_meta.get('total_tokens') or '?'} token)[/dim]")
+    _step(on_step, "beres", title=title, elapsed=analysis_meta.get("elapsed_seconds"),
+          tokens=analysis_meta.get("total_tokens"))
 
     return result

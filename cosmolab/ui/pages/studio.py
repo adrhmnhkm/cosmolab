@@ -8,6 +8,7 @@ import streamlit as st
 from cosmolab import config
 from cosmolab import home as _home
 from cosmolab import writer as _writer
+from cosmolab.ui.components import active_ai
 from cosmolab.ui.components import render_hero
 from cosmolab.ui.context import AppContext
 
@@ -70,11 +71,7 @@ def render(ctx: AppContext):
 
             col_cp1, col_cp2 = st.columns([3, 2])
             custom_prompt = col_cp1.text_input("Instruksi tambahan (opsional)", placeholder="contoh: Jelaskan istilah teknis saat pertama kali muncul...")
-            model_choice = col_cp2.selectbox(
-                "Kecepatan",
-                ["gemini-3-8-flash", "deepseek-v4-pro"],
-                format_func=lambda x: "Cepat (±15 detik)" if "gemini" in x else "Mendalam (±90 detik)"
-            )
+            col_cp2.caption(f"AI: {active_ai()['label']}. Ganti di sidebar.")
 
             write_btn = st.button("Tulis artikel", type="primary", use_container_width=True)
 
@@ -89,7 +86,6 @@ def render(ctx: AppContext):
                         custom_instructions=custom_prompt,
                         faculty_id=selected_faculty_id,
                         paper_files=specific_papers,
-                        model=model_choice
                     )
                     st.session_state["current_article"] = art_result
                     saved_files = _writer.save_article(art_result)

@@ -6,10 +6,10 @@ plus an AI-powered dynamic syllabus generator for any custom philosophical subje
 
 import json
 from pathlib import Path
-from openai import OpenAI
 from rich.console import Console
 from . import db
 from . import config
+from . import llm as _llm
 from . import faculties as _faculties
 
 console = Console(force_terminal=True, legacy_windows=False)
@@ -318,43 +318,11 @@ def generate_ai_syllabus(topic_title: str, topic_description: str = "", model: s
     model = model or config.LLM_MODEL
     user_prompt = f"Rancanglah silabus kurikulum universitas yang komprehensif untuk topik berikut:\n\nTOPIK UTAMA: {topic_title}\nDESKRIPSI / FOKUS KHUSUS: {topic_description or 'Kaji secara mendalam dari tradisi Kalam klasik dan filsafat analitik modern.'}"
 
-    client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
-    raw_content = ""
-
     try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": AI_SYLLABUS_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.3,
-        )
-        raw_content = (resp.choices[0].message.content or "").strip()
-        if not raw_content or "上游错误" in raw_content:
-            fb = client.chat.completions.create(
-                model="gemini-3-8-flash",
-                messages=[
-                    {"role": "system", "content": AI_SYLLABUS_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.3,
-            )
-            raw_content = (fb.choices[0].message.content or "").strip()
+        raw_content = _llm.chat_text(AI_SYLLABUS_PROMPT, user_prompt, model=model, temperature=0.3, timeout=180.0,
+                                     label="Silabus")
     except Exception as e:
-        console.print(f"[red]Error calling primary model for syllabus: {e}. Trying fallback...[/red]")
-        try:
-            fb = client.chat.completions.create(
-                model="gemini-3-8-flash",
-                messages=[
-                    {"role": "system", "content": AI_SYLLABUS_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.3,
-            )
-            raw_content = (fb.choices[0].message.content or "").strip()
-        except Exception as e2:
-            return {"error": f"Failed to generate syllabus: {e2}"}
+        return {"error": f"Failed to generate syllabus: {e}"}
 
     # Clean JSON markdown fences if present
     cleaned = raw_content

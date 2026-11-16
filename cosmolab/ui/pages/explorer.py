@@ -1,7 +1,6 @@
 """Dashboard page: Koleksi paper (menu key "Paper Explorer & Korpus")."""
 
 import streamlit as st
-from cosmolab import config
 from cosmolab import db
 from cosmolab import faculties as _faculties
 from cosmolab import analyze as _analyze
@@ -9,6 +8,8 @@ from cosmolab import authors as _authors
 from cosmolab import matrix as _matrix
 from cosmolab import citations as _citations
 from cosmolab.ui.components import _e
+from cosmolab.ui.components import active_ai
+from cosmolab.ui import progress as _progress
 from cosmolab.ui.components import _EMOJI_RE
 from cosmolab.ui.components import render_table
 from cosmolab.ui.components import render_hero
@@ -92,9 +93,10 @@ def render(ctx: AppContext):
                     col_ub1.markdown(f"**{len(unanalyzed_scope)} paper belum dianalisis.**")
                     col_ub1.caption("AI mengekstrak tesis, metodologi, temuan, dan kutipan dengan nomor halaman.")
                     if col_ub2.button(f"Analisis semua ({len(unanalyzed_scope)})", type="primary", key="btn_batch_analyze_all", use_container_width=True):
-                        with st.spinner(f"Sedang membedah {len(unanalyzed_scope)} naskah dengan AI ({config.LLM_MODEL})..."):
+                        ai = active_ai()
+                        with st.spinner(f"Sedang membedah {len(unanalyzed_scope)} naskah dengan {ai['label']}..."):
                             target_f = [p["file"] for p in unanalyzed_scope]
-                            _analyze.analyze_all(model=config.LLM_MODEL, concurrency=config.LLM_CONCURRENCY, lang="id", files=target_f)
+                            _analyze.analyze_all(concurrency=ai["concurrency"], lang="id", files=target_f)
                             db.sync_all()
                             st.success(f"Pembedahan {len(unanalyzed_scope)} naskah selesai!")
                             st.rerun()
@@ -149,20 +151,19 @@ def render(ctx: AppContext):
                     with col_a1:
                         if not p.get("thesis"):
                             st.caption("AI membaca naskah utuh, sekitar 1 menit per paper.")
+                    go_single = False
                     with col_a2:
                         if not p.get("thesis"):
-                            if st.button("Analisis", key=f"btn_an_single_{idx}_{p.get('file')}", type="primary", use_container_width=True):
-                                with st.spinner(f"Menganalisis '{title[:35]}...'"):
-                                    try:
-                                        _analyze.analyze_single_paper(p.get("file"), model=config.LLM_MODEL, lang="id")
-                                        db.sync_all()
-                                        st.success("Analisis selesai.")
-                                        st.rerun()
-                                    except Exception as err:
-                                        st.error(f"Analisis gagal: {err}")
+                            go_single = st.button("Analisis", key=f"btn_an_single_{idx}_{p.get('file')}", type="primary",
+                                                  use_container_width=True)
                     with col_a3:
                         if p.get("url"):
                             st.link_button("Buka sumber", p["url"], use_container_width=True)
+                    # Outside the narrow column, so the progress box gets the full width.
+                    if go_single and _progress.analyze_with_progress(p.get("file"), title, force=False):
+                        db.sync_all()
+                        st.toast("Analisis selesai.", icon=":material/check_circle:")
+                        st.rerun()
 
                     # Logic expander
                     with st.expander("Lihat detail analisis", expanded=False):
@@ -214,15 +215,11 @@ def render(ctx: AppContext):
                         if p.get("thesis"):
                             with st.expander("Bedah Ulang Naskah Ini (Deep Scan v3)"):
                                 st.caption("Jalankan ulang analisis AI jika ingin memperbarui hasil bedah naskah dengan prompt v3 terbaru (metodologi riset & kutipan dari bab pembahasan).")
+                                st.caption(f"AI: {active_ai()['label']}. Ganti di sidebar.")
                                 if st.button("Jalankan Ulang Analisis AI", key=f"btn_re_an_{idx}_{p.get('file')}", use_container_width=True):
-                                    with st.spinner(f"Menganalisis ulang '{title[:35]}...' dengan AI ({config.LLM_MODEL})..."):
-                                        try:
-                                            _analyze.analyze_single_paper(p.get("file"), model=config.LLM_MODEL, lang="id", force=True)
-                                            db.sync_all()
-                                            st.success("Pembedahan ulang naskah selesai!")
-                                            st.rerun()
-                                        except Exception as err:
-                                            st.error(f"Gagal membedah ulang: {err}")
+                                    if _progress.analyze_with_progress(p.get("file"), title):
+                                        db.sync_all()
+                                        st.success("Analisis ulang selesai. Muat ulang halaman untuk melihat hasil baru.")
 
     with tab_pe3:
         from cosmolab.ui.pages import fulltext as _fulltext

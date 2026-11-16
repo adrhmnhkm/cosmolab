@@ -5,9 +5,9 @@ David Hume, Al-Ghazali, Ibn Sina, J.L. Mackie, Daniel Dennett, The Ruthless Crit
 """
 
 import json
-from openai import OpenAI
 from rich.console import Console
 from . import config
+from . import llm as _llm
 from . import db
 
 console = Console(force_terminal=True, legacy_windows=False)
@@ -365,30 +365,9 @@ def spar_with_persona(
 
     prompt += f"""ARGUMEN / PERNYATAAN DARI PENELITI MAHASISWA:\n\"{user_argument}\"\n\nBerikan respons sparring intelektualmu sesuai karakter, doktrin, dan ketajaman analisismu sekarang:"""
 
-    client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
-
     try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": persona["prompt"]},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,
-        )
-        content = (resp.choices[0].message.content or "").strip()
-        if not content or "上游错误" in content:
-            # Fallback
-            fb = client.chat.completions.create(
-                model="gemini-3-8-flash",
-                messages=[
-                    {"role": "system", "content": persona["prompt"]},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-            )
-            content = (fb.choices[0].message.content or "").strip()
-        feedback = content
+        feedback = _llm.chat_text(persona["prompt"], prompt, model=model, temperature=0.3, timeout=120.0,
+                                  label="Sparring")
     except Exception as e:
         feedback = f"Error during sparring session: {e}"
 

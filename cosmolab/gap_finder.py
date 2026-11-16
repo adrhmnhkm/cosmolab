@@ -8,9 +8,9 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from openai import OpenAI
 from rich.console import Console
 from . import config
+from . import llm as _llm
 from . import db
 from . import faculties as _faculties
 
@@ -120,36 +120,8 @@ RINGKASAN LITERATUR KORPUS ({len(papers)} PAPER):
 
 Silakan analisis korpus di atas dan hasilkan JSON analisis celah riset (Research Gap & Novelty Report) yang mendalam."""
 
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
-
-    raw_response = ""
-    try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.4,
-            timeout=85.0
-        )
-        raw_response = _safe_extract(resp)
-    except Exception as e:
-        console.print(f"[yellow]Warn: Gap Finder primary model failed ({e}). Trying fallback to gemini-3-8-flash...[/yellow]")
-        try:
-            resp_fb = client.chat.completions.create(
-                model="gemini-3-8-flash",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3,
-                timeout=45.0
-            )
-            raw_response = _safe_extract(resp_fb)
-        except Exception as e2:
-            console.print(f"[red]Error: Fallback gap analysis failed: {e2}[/red]")
-            raise e2
+    raw_response = _llm.chat_text(system_prompt, user_prompt, model=model, temperature=0.4, timeout=180.0,
+                                  label="Cari celah riset")
 
     # Parse JSON block
     clean_json_str = raw_response.strip()

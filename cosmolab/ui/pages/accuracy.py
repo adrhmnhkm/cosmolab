@@ -54,7 +54,7 @@ def render_accuracy_page(ctx: AppContext):
             go = st.button(f"Cek {len(pick)} paper", type="primary", width="stretch", disabled=not pick, key="acc_go")
         if go:
             bar = st.progress(0.0, text="Mulai...")
-            _acheck.check_many(pick, model=config.LLM_MODEL,
+            _acheck.check_many(pick,
                                progress_cb=lambda d, n, f: bar.progress(d / n, text=f"{d}/{n} selesai"))
             st.rerun()
         render_table([{k: v for k, v in r.items() if k != "_file"} for r in rows])

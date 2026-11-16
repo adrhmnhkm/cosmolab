@@ -30,6 +30,23 @@ from . import team as _team
 
 app = typer.Typer(help="cosmolab - multidisciplinary research assistant")
 console = Console(force_terminal=True, legacy_windows=False)
+
+
+def _live_bar() -> Progress:
+    """Progress display for long jobs: spinner, name, bar, count or details, elapsed time.
+
+    Log lines printed while it runs scroll above it.
+    """
+    from rich.progress import BarColumn, SpinnerColumn, TextColumn, TimeElapsedColumn
+
+    return Progress(
+        SpinnerColumn(style="cyan"),
+        TextColumn("{task.description}", markup=True),
+        BarColumn(bar_width=26, complete_style="cyan", finished_style="green"),
+        TextColumn("{task.fields[info]}", markup=True),
+        TimeElapsedColumn(),
+        console=console,
+    )
 project_app = typer.Typer(help="Kelola proyek klien (satu folder data per proyek)")
 app.add_typer(project_app, name="project")
 sinta_app = typer.Typer(help="Daftar peringkat jurnal SINTA (dicocokkan lewat ISSN)")
@@ -225,10 +242,31 @@ def harvest(
     indonesia: bool = typer.Option(False, "--indonesia", help="Hanya jurnal Indonesia / artikel berbahasa Indonesia (via OpenAlex)"),
 ):
     """Search arXiv, DOAJ, S2 & OpenAlex and download OA PDFs in parallel with smart deduplication."""
-    with Progress() as progress:
-        task = progress.add_task("[cyan]Harvesting papers in parallel...", total=None)
-        stats = _harvest.harvest(query, max_results=max_results, workers=workers, delay=delay, indonesia=indonesia)
-        progress.update(task, completed=1, description="[green]Harvest complete")
+    counts = {"found": 0, "ok": 0, "fail": 0}
+    with _live_bar() as progress:
+        task = progress.add_task("[bold cyan]Cari paper", total=None, info=f"'{query}'")
+
+        def _cb(event, message, data):
+            if event == "paper_found":
+                counts["found"] += 1
+                progress.update(task, info=f"{counts['found']} paper terbuka ditemukan")
+            elif event == "download_batch_start":
+                progress.update(task, description="[bold cyan]Unduh PDF", total=data.get("count") or 1, completed=0,
+                                info=f"0/{data.get('count')} PDF")
+            elif event in ("download_ok", "download_fail"):
+                counts["ok" if event == "download_ok" else "fail"] += 1
+                progress.advance(task)
+                info = f"{counts['ok'] + counts['fail']}/{progress.tasks[0].total} PDF · [green]{counts['ok']} berhasil[/green]"
+                if counts["fail"]:
+                    info += f" · [red]{counts['fail']} gagal[/red]"
+                progress.update(task, info=info)
+            elif event == "no_new":
+                progress.update(task, total=1, completed=1, info="tidak ada paper baru")
+
+        stats = _harvest.harvest(query, max_results=max_results, workers=workers, delay=delay, indonesia=indonesia,
+                                 progress_cb=_cb)
+        total = progress.tasks[0].total or 1
+        progress.update(task, description="[bold green]Panen selesai", total=total, completed=total)
     
     _print_stats_table(stats, title="Harvest Results")
     
@@ -257,26 +295,60 @@ def extract(force: bool = typer.Option(False, "--force", "-f", help="Re-extract 
 @app.command()
 def analyze(
     model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
-    concurrency: int = typer.Option(4, "--concurrency", "-c", help="Number of concurrent LLM analysis workers"),
+    concurrency: int = typer.Option(config.LLM_CONCURRENCY, "--concurrency", "-c",
+                                    help="Number of concurrent LLM analysis workers (default from the active AI)"),
     lang: str = typer.Option("id", "--lang", "-l", help="Output analysis language: 'id' or 'en'"),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-analysis even if JSON already exists")
 ):
     """Run parallel LLM analysis on extracted paper texts using Pydantic structured output."""
-    from .storage import read_meta
-    meta = read_meta()
-    total_texts = len([m for m in meta if (config.TEXT_DIR / (m["file"].replace(".pdf", ".txt"))).exists()])
-    
-    with Progress() as progress:
-        task = progress.add_task(f"[cyan]Analyzing papers with LLM ({lang.upper()}, concurrency={concurrency})...", total=total_texts)
-        stats = _analyze.analyze_all(
-            model=model,
-            concurrency=concurrency,
-            lang=lang,
-            force=force,
-            progress_cb=lambda: progress.advance(task)
-        )
-        progress.update(task, completed=total_texts, description="[green]Analysis complete")
-    
+    import threading
+
+    lock = threading.Lock()
+    rows, done = {}, {"ok": 0, "fail": 0, "total": 0}
+
+    with _live_bar() as progress:
+        overall = progress.add_task("[bold cyan]Analisis paper", total=None, info=f"menyiapkan · {model}")
+
+        def _overall_info():
+            parts = [f"{done['ok'] + done['fail']}/{done['total']} paper", f"[green]{done['ok']} beres[/green]"]
+            if done["fail"]:
+                parts.append(f"[red]{done['fail']} gagal[/red]")
+            return " · ".join(parts)
+
+        def on_step(event, info):
+            stem = info.get("stem")
+            with lock:
+                if event == "rencana":
+                    done["total"] = info["total"]
+                    progress.update(overall, total=info["total"] or 1, completed=0 if info["total"] else 1,
+                                    info=_overall_info() if info["total"] else
+                                    f"tidak ada paper baru ({info['skipped']} sudah dianalisis)")
+                elif event == "mulai":
+                    rows[stem] = progress.add_task(f"  {info['title'][:40]}", total=None,
+                                                   info=f"[dim]{info['chars']:,} karakter[/dim]")
+                elif stem in rows:
+                    row = rows[stem]
+                    if event == "kirim":
+                        progress.update(row, info=f"[dim]menunggu AI membaca ~{info['input_tokens']:,} token[/dim]")
+                    elif event == "pikir":
+                        progress.update(row, info=f"[magenta]berpikir {info['tokens']:,} token[/magenta]")
+                    elif event == "token":
+                        progress.update(row, total=max(info["expected"], info["tokens"] + 1), completed=info["tokens"],
+                                        info=f"{info['tokens']:,}/~{info['expected']:,} token")
+                    elif event == "ulang":
+                        progress.update(row, info=f"[yellow]ulang {info['attempt']}/{info['max']} dalam "
+                                                  f"{info['wait']} dtk: {info['error']}[/yellow]")
+                    elif event == "selesai":
+                        progress.update(row, total=info["tokens"] or 1, completed=info["tokens"] or 1,
+                                        info="[dim]memeriksa dan menyimpan[/dim]")
+                    elif event in ("beres", "gagal"):
+                        progress.remove_task(rows.pop(stem))
+                        done["ok" if event == "beres" else "fail"] += 1
+                        progress.update(overall, advance=1, info=_overall_info())
+
+        stats = _analyze.analyze_all(model=model, concurrency=concurrency, lang=lang, force=force, on_step=on_step)
+        progress.update(overall, description="[bold green]Analisis selesai")
+
     _print_stats_table(stats, title="Analysis Results")
     _db.sync_all()
 
@@ -1005,7 +1077,7 @@ def usage(
 def check_analysis(
     paper: str = typer.Argument(None, help="Paper file name (or part of its title). Leave empty with --semua"),
     all_papers: bool = typer.Option(False, "--semua", help="Check every analysed paper that has not been checked"),
-    model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+    model: str = typer.Option(config.JUDGE_MODEL, "--model", "-m", help="LLM model name (default JUDGE_MODEL)"),
 ):
     """Check a paper's AI analysis (thesis, premises, findings, quotes) against the PDF text."""
     from rich.table import Table
@@ -1217,6 +1289,24 @@ def review_draft(
         console.print(f"  {i}. {p}")
     console.print(f"[green]OK[/green] {paths['md']} (versi internal)")
     console.print("Putuskan setiap komentar di dashboard (Review draf mahasiswa > Review tersimpan), lalu buat Word.")
+
+
+@app.command("ai")
+def choose_ai(
+    pilihan: str = typer.Argument(None, help="'api' (API berbayar) atau 'utama' (AI di .env). Kosong = tampilkan saja."),
+):
+    """Pilih AI yang dipakai semua fitur, di semua proyek, CLI, dan dashboard."""
+    from . import config
+    if pilihan:
+        try:
+            config.set_ai(pilihan.strip().lower())
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+    for ai, choice in config.ai_choices().items():
+        mark = "[green]*[/green]" if ai == config.ACTIVE_AI else " "
+        console.print(f"{mark} {ai:6} {choice['label']}  ({choice['base_url']})")
+    console.print(f"  Pemeriksa klaim: {config.JUDGE_MODEL} ({config.JUDGE_BASE_URL})")
 
 
 @app.command("backup")

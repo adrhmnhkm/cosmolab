@@ -4,6 +4,7 @@ import threading
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
+from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 from difflib import SequenceMatcher
 from rich.console import Console
@@ -495,20 +496,38 @@ def _resolve_unpaywall(doi: str) -> str | None:
     return None
 
 
-def _download(url: str, dest, retries: int = 3) -> bool:
+def _download(url: str, dest, retries: int = 3, on_bytes=None) -> bool:
+    """Download a PDF. on_bytes(done, total) reports progress; total is None when the server does not say."""
     for attempt in range(retries):
         try:
             r = requests.get(url, headers=config.HEADERS, timeout=120, stream=True)
             if r.status_code != 200:
                 return False
+            try:
+                total = int(r.headers.get("Content-Length") or 0) or None
+            except ValueError:
+                total = None
             stream = r.iter_content(chunk_size=8192)
             first = next(stream, b"")
             if not first.startswith(b"%PDF"):
                 return False
+            done, last = len(first), 0.0
             with dest.open("wb") as f:
                 f.write(first)
                 for chunk in stream:
                     f.write(chunk)
+                    done += len(chunk)
+                    if on_bytes and time.monotonic() - last >= 0.2:
+                        last = time.monotonic()
+                        try:
+                            on_bytes(done, total)
+                        except Exception:
+                            pass
+            if on_bytes:
+                try:
+                    on_bytes(done, total or done)
+                except Exception:
+                    pass
             # Ensure file is not truncated/corrupt (at least 1KB)
             if dest.stat().st_size < 1000:
                 dest.unlink(missing_ok=True)
@@ -787,16 +806,55 @@ def import_pdf_url(url: str, title: str, year: str = "", doi: str = "", authors:
     return {"ok": True, "file": fname, "title": title}
 
 
+def _mb(n: int | None) -> str:
+    return f"{(n or 0) / 1_048_576:.1f} MB"
+
+
+def _report(on_step, event: str, **info) -> None:
+    """Report one import step to a progress display. A display error never stops the import."""
+    if on_step:
+        try:
+            on_step(event, info)
+        except Exception:
+            pass
+
+
+def _extract_text(pdf_path, title: str, on_step=None) -> int:
+    """Extract a PDF's text to TEXT_DIR, log it, and return the number of pages with text."""
+    from . import extract
+
+    _report(on_step, "ekstrak")
+    txt_out = config.TEXT_DIR / f"{Path(pdf_path).stem}.txt"
+    try:
+        text = extract._pdf_to_text(pdf_path)
+    except Exception as e:
+        console.print(f"[yellow]PERINGATAN {title[:50]}: teks PDF gagal diekstrak: {e}[/yellow]")
+        _report(on_step, "ekstrak_gagal", error=str(e)[:120])
+        return 0
+    if not text.strip():
+        console.print(f"[yellow]PERINGATAN {title[:50]}: PDF tidak berisi teks (mungkin hasil scan)[/yellow]")
+        _report(on_step, "ekstrak_gagal", error="PDF tidak berisi teks, mungkin hasil scan")
+        return 0
+    txt_out.write_text(text, encoding="utf-8")
+    pages = text.count("--- [Halaman ")
+    console.print(f"[cyan]TEKS     [/cyan]{title[:50]}: {pages} halaman, {len(text):,} karakter")
+    _report(on_step, "ekstrak_ok", pages=pages, chars=len(text))
+    return pages
+
+
 def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty: str = None,
-                     year: str = "", authors: list | None = None) -> dict:
+                     year: str = "", authors: list | None = None, on_step=None) -> dict:
     """Import a manually downloaded PDF (e.g. from PhilPapers, PhilArchive, or personal collection).
 
     year and authors, when given, are stored as is and no author lookup is run.
+    on_step(event, info) reports "simpan", "ekstrak", "ekstrak_ok"/"ekstrak_gagal", "penulis", "beres".
     """
     config.ensure_dirs()
     clean_stem = safe_name(Path(filename).stem)
     dest_name = f"manual_{clean_stem}.pdf"
     dest_path = config.PDF_DIR / dest_name
+    console.print(f"[bold cyan]UNGGAH   [/bold cyan]{filename} ({_mb(len(file_bytes))})")
+    _report(on_step, "simpan", size=len(file_bytes), file=dest_name)
     dest_path.write_bytes(file_bytes)
 
     paper_title = title.strip() or Path(filename).stem.replace("_", " ")
@@ -819,23 +877,23 @@ def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty:
     append_meta(meta_entry)
 
     # Extract text immediately
-    from . import extract
-    txt_out = config.TEXT_DIR / f"{Path(dest_name).stem}.txt"
-    try:
-        text = extract._pdf_to_text(dest_path)
-        if text.strip():
-            txt_out.write_text(text, encoding="utf-8")
-    except Exception as e:
-        console.print(f"[yellow]WARN  Text extraction failed for {dest_name}: {e}[/yellow]")
+    pages = _extract_text(dest_path, paper_title, on_step)
 
     if not authors:
+        _report(on_step, "penulis")
         try:
             names, src = _authors.resolve(meta_entry, use_ai=True)
             if names:
                 _authors.save_entry(dest_name, names, src)
+                more = " dkk." if len(names) > 3 else ""
+                console.print(f"[cyan]PENULIS  [/cyan]{', '.join(names[:3])}{more} [dim]({src})[/dim]")
+            _report(on_step, "penulis_ok", names=names or [], source=src)
         except Exception as e:
-            console.print(f"[yellow]WARN  Author lookup failed for {dest_name}: {e}[/yellow]")
+            console.print(f"[yellow]PERINGATAN {paper_title[:50]}: nama penulis tidak ditemukan: {e}[/yellow]")
+            _report(on_step, "penulis_ok", names=[], source="")
 
+    console.print(f"[green]BERES    [/green]{paper_title[:70]} masuk koleksi [dim]({dest_name})[/dim]")
+    _report(on_step, "beres", file=dest_name, title=paper_title, pages=pages)
     return {
         "ok": True,
         "file": dest_name,
@@ -844,17 +902,24 @@ def import_local_pdf(file_bytes: bytes, filename: str, title: str = "", faculty:
     }
 
 
-def import_by_doi(doi: str, faculty: str = None) -> dict:
-    """Import an academic paper using DOI (resolves OA fulltext via Unpaywall)."""
+def import_by_doi(doi: str, faculty: str = None, on_step=None) -> dict:
+    """Import an academic paper using DOI (resolves OA fulltext via Unpaywall).
+
+    on_step(event, info) reports "cari", "ketemu", "unduh" (bytes), "ekstrak", "ekstrak_ok"/"ekstrak_gagal", "beres".
+    """
     config.ensure_dirs()
     clean_doi = doi.replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
     if not clean_doi:
         return {"error": "DOI tidak boleh kosong"}
 
     # 1. Query Unpaywall for OA PDF
+    console.print(f"[bold cyan]DOI      [/bold cyan]{clean_doi}: cari versi terbuka di Unpaywall")
+    _report(on_step, "cari", doi=clean_doi)
     pdf_url = _resolve_unpaywall(clean_doi)
     if not pdf_url:
+        console.print(f"[red]GAGAL    [/red]{clean_doi}: tidak ada versi open access legal")
         return {"error": f"Tidak ditemukan naskah Open Access legal di Unpaywall untuk DOI: {clean_doi}"}
+    host = urlparse(pdf_url).netloc or pdf_url
 
     # 2. Get metadata
     title = f"Paper DOI {clean_doi}"
@@ -872,8 +937,14 @@ def import_by_doi(doi: str, faculty: str = None) -> dict:
 
     fname = f"{year}_{safe_name(title)}.pdf" if year else f"{safe_name(title)}.pdf"
     dest = config.PDF_DIR / fname
+    console.print(f"[cyan]KETEMU   [/cyan]{title[:70]} ({year or 'tahun?'}), unduh dari {host}")
+    _report(on_step, "ketemu", title=title, year=year, host=host, url=pdf_url)
 
-    if _download(pdf_url, dest):
+    def _bytes(done, total):
+        _report(on_step, "unduh", done=done, total=total, host=host)
+
+    if _download(pdf_url, dest, on_bytes=_bytes):
+        console.print(f"[cyan]UNDUH    [/cyan]{title[:50]}: {_mb(dest.stat().st_size)} tersimpan")
         item_faculty = faculty or _faculties.detect_faculty_from_text(title)
         append_meta({
             "id": f"doi:{clean_doi}",
@@ -888,16 +959,12 @@ def import_by_doi(doi: str, faculty: str = None) -> dict:
             "faculty": item_faculty,
             "authors": doi_authors or _authors.by_doi(clean_doi),
         })
-        from . import extract
-        txt_out = config.TEXT_DIR / f"{Path(fname).stem}.txt"
-        try:
-            text = extract._pdf_to_text(dest)
-            if text.strip():
-                txt_out.write_text(text, encoding="utf-8")
-        except Exception:
-            pass
+        pages = _extract_text(dest, title, on_step)
+        console.print(f"[green]BERES    [/green]{title[:70]} masuk koleksi [dim]({fname})[/dim]")
+        _report(on_step, "beres", file=fname, title=title, pages=pages)
         return {"ok": True, "title": title, "file": fname, "faculty": item_faculty}
     else:
+        console.print(f"[red]GAGAL    [/red]{title[:50]}: PDF tidak bisa diunduh dari {host}")
         return {"error": f"Gagal mengunduh PDF dari URL: {pdf_url}"}
 
 

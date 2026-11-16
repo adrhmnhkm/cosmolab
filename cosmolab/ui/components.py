@@ -5,8 +5,14 @@ import html
 from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
+from cosmolab import config
 from cosmolab import verify as _verify
 from cosmolab import deliverables as _deliverables
+
+
+def active_ai() -> dict:
+    """The AI every feature uses now (picked in the sidebar), with its label and concurrency."""
+    return config.ai_choices()[config.ACTIVE_AI]
 
 
 # Logo files live in cosmolab/assets/

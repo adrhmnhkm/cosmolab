@@ -4,6 +4,7 @@ import streamlit as st
 from cosmolab import config
 from cosmolab import synthesize as _synthesize
 from cosmolab import gap_finder as _gap_finder
+from cosmolab.ui.components import active_ai
 from cosmolab.ui.components import render_hero
 from cosmolab.ui.components import render_client_delivery
 from cosmolab.ui.context import AppContext
@@ -54,7 +55,7 @@ def render(ctx: AppContext):
 
             col_gap1, col_gap2 = st.columns([2, 1])
             gap_focus = col_gap1.text_input("Fokus (opsional)", placeholder="contoh: dampak terhadap UMKM di daerah")
-            gap_model = col_gap2.selectbox("Kecepatan", ["deepseek-v4-pro", "gemini-3-8-flash"], format_func=lambda x: "Mendalam" if "deepseek" in x else "Cepat")
+            col_gap2.caption(f"AI: {active_ai()['label']}. Ganti di sidebar.")
 
             btn_find_gap = st.button("Cari celah riset", type="primary", use_container_width=True)
 
@@ -63,7 +64,6 @@ def render(ctx: AppContext):
                 gap_report = _gap_finder.find_research_gaps(
                     faculty_id=selected_faculty_id,
                     custom_focus=gap_focus,
-                    model=gap_model
                 )
                 st.session_state["current_gap_report"] = gap_report
                 saved_gap = _gap_finder.save_gap_report(gap_report)

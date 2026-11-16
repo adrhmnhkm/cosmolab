@@ -88,6 +88,24 @@ def build_sidebar() -> AppContext:
         format_func=lambda x: faculty_labels.get(x, x),
     )
 
+    # The AI every feature uses. Saved for all projects, the CLI and the whole team, so only
+    # the owner or an admin can change it.
+    ai_choices = config.ai_choices()
+    ai_ids = list(ai_choices)
+    picked = st.sidebar.selectbox(
+        "AI yang dipakai",
+        ai_ids,
+        index=ai_ids.index(config.ACTIVE_AI),
+        format_func=lambda x: ai_choices[x]["label"],
+        disabled=not _home.is_owner(),
+        help=(f"Dipakai semua fitur AI di semua proyek, juga perintah CLI dan seluruh tim. "
+              f"Pemeriksa klaim tetap memakai {config.JUDGE_MODEL}, supaya AI tidak menilai tulisannya sendiri. "
+              f"Hanya pemilik atau admin yang bisa mengganti."),
+    )
+    if picked != config.ACTIVE_AI:
+        config.set_ai(picked)
+        st.rerun()
+
     # Load DB papers (old philosophy field ids are classified again first)
     db.migrate_faculties()
     all_papers = db.get_all_papers_with_analyses()
@@ -142,6 +160,7 @@ def build_sidebar() -> AppContext:
     fac_dist = db.get_faculty_distribution()
     with st.sidebar.expander("Info teknis", expanded=False):
         st.caption(f"Model AI: {config.LLM_MODEL}")
+        st.caption(f"Pemeriksa klaim: {config.JUDGE_MODEL}")
         st.caption("Paper per bidang:")
         for f in faculty_list:
             cnt = fac_dist.get(f.id, 0)
