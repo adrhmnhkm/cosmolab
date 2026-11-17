@@ -35,7 +35,12 @@ def render(ctx: AppContext):
         if gen_synth:
             with st.spinner("Menyusun tinjauan pustaka dari seluruh koleksi. Bisa beberapa menit..."):
                 res = _synthesize.synthesize(model=config.LLM_MODEL, lang=lang_choice)
-                st.success("Laporan selesai.")
+                if res.get("error"):
+                    st.error(res["error"])
+                elif res.get("claims_flagged", 0) > 0:
+                    st.warning(f"Laporan selesai dengan catatan: {res['claims_flagged']} dari {res.get('claims_total', 0)} klaim perlu dicek.")
+                else:
+                    st.success("Laporan selesai dan seluruh klaim terverifikasi.")
 
         st.markdown("#### Laporan tersimpan")
         reports = sorted(list(config.SYNTH_DIR.glob("*.md")), reverse=True)
