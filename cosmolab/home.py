@@ -185,7 +185,7 @@ def describe(row: dict) -> str:
     label = EVENT_LABELS.get(row.get("event"), str(row.get("event", "")).replace("_", " ").capitalize())
     target = row.get("file") or row.get("question") or ""
     if target:
-        target = Path(str(target)).name if row.get("file") else str(target)
+        target = Path(str(target).replace("\\", "/")).name if row.get("file") else str(target)
         label += f": {target[:80]}"
     if row.get("event") == "review_draf" and row.get("comments"):
         label += f", {row['comments']} komentar"
