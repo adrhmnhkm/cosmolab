@@ -1183,22 +1183,33 @@ def evaluation(
     rerank: bool = typer.Option(True, "--rerank/--no-rerank", help="Let the LLM reorder passages"),
     batas: int = typer.Option(0, "--batas", help="At most this many items of each kind (0 = all): a lighter run"),
     model: str = typer.Option(config.LLM_MODEL, "--model", "-m", help="LLM model name"),
+    termasuk_ask: bool = typer.Option(False, "--ask", help="Also draft end-to-end ask items (buat)"),
+    termasuk_abstain: bool = typer.Option(False, "--abstain", help="Also include abstain items (buat)"),
 ):
     """Measure retrieval and claim-check accuracy on the evaluation set."""
     from . import evaluate
 
     pct = lambda x: "-" if x is None else f"{x * 100:.0f}%"
     if action == "buat":
-        new = evaluate.draft_gold(n_papers=n, model=model,
+        draft_model = config.DRAFT_MODEL if (model == config.LLM_MODEL and config.DRAFT_MODEL != config.LLM_MODEL) else model
+        if draft_model and config.JUDGE_MODEL and draft_model == config.JUDGE_MODEL:
+            console.print(f"[yellow]Catatan: model pembuat draf ({draft_model}) sama dengan JUDGE_MODEL ({config.JUDGE_MODEL}). "
+                          "Disarankan memakai model berbeda (set DRAFT_MODEL) untuk menghindari bias evaluasi.[/yellow]")
+        new = evaluate.draft_gold(n_papers=n, model=draft_model, include_ask=termasuk_ask, include_abstain=termasuk_abstain,
                                   progress_cb=lambda d, t, title: console.print(f"[dim]{d}/{t} {title[:70]}[/dim]"))
         console.print(f"[green]{len(new)} soal baru[/green] di {evaluate.gold_path()}. "
                       "Periksa dan set \"reviewed\": true pada soal yang benar.")
         return
     if action == "riwayat":
         for h in evaluate.history():
+            extra = ""
+            if h.get("abstain_rate") is not None:
+                extra += f"  abstain {pct(h['abstain_rate'])}"
+            if h.get("ask_classic_grounded") is not None or h.get("ask_agentic_grounded") is not None:
+                extra += f"  ask (klasik {pct(h.get('ask_classic_grounded'))}, agentic {pct(h.get('ask_agentic_grounded'))})"
             console.print(f"{h['time']}  k={h['k']}  halaman benar {pct(h['recall_at_k'])}  "
                           f"paper benar {pct(h.get('source_recall'))}  tolak di luar topik {pct(h.get('negatives_rejected'))}  "
-                          f"akurasi klaim {pct(h['claim_accuracy'])}  embedding {h.get('embed_model') or '-'}")
+                          f"akurasi klaim {pct(h['claim_accuracy'])}{extra}  embedding {h.get('embed_model') or '-'}")
         return
     problem = evaluate.ai_reachable()
     if problem:
@@ -1212,6 +1223,16 @@ def evaluation(
     console.print(f"Sumber jawaban: paper benar masuk {s['k']} sumber {pct(s['recall'])}, "
                   f"rata-rata {'-' if s['avg_sources'] is None else round(s['avg_sources'], 1)} sumber per soal")
     console.print(f"Di luar topik: {ng['n']} soal, ditolak (tanpa sumber) {pct(ng['rejected'])}")
+    if r.get("abstain") and r["abstain"]["n"] > 0:
+        ab = r["abstain"]
+        console.print(f"Abstain: {ab['n']} soal, ditolak benar {pct(ab['abstain_rate'])} "
+                      f"(klasik {pct(ab.get('classic_rate'))}, agentic {pct(ab.get('agentic_rate'))})")
+    if r.get("ask") and r["ask"]["n"] > 0:
+        ak = r["ask"]
+        c_gr = ak.get("classic", {}).get("grounded_ratio")
+        a_gr = ak.get("agentic", {}).get("grounded_ratio")
+        console.print(f"Jawaban end-to-end (ask): {ak['n']} soal | "
+                      f"Klasik grounded {pct(c_gr)}, Agentic grounded {pct(a_gr)}")
     c = r["claims"]
     console.print(f"Cek klaim: {c['n']} soal, akurasi {pct(c['accuracy'])}, klaim salah tertangkap {pct(c['false_caught'])}, "
                   f"klaim benar lolos {pct(c['true_passed'])}")

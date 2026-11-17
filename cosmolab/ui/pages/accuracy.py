@@ -108,19 +108,23 @@ def render_accuracy_page(ctx: AppContext):
         g2.write("")
         if g2.button("Buat draf soal dengan AI", key="ev_draft"):
             bar = st.progress(0.0, text="Mulai...")
-            new = _evaluate.draft_gold(n_papers=int(n_new), model=config.LLM_MODEL,
+            new = _evaluate.draft_gold(n_papers=int(n_new), model=config.DRAFT_MODEL or config.LLM_MODEL,
                                        progress_cb=lambda d, n, t: bar.progress(d / n, text=f"{d}/{n}: {t[:60]}"))
             st.success(f"{len(new)} soal baru ditambahkan. Periksa dulu sebelum dipakai sebagai patokan.")
             gold = _evaluate.load_gold()
         if gold:
             st.caption("Centang Diperiksa untuk soal yang sudah benar. Ubah teks atau jawaban bila perlu, lalu simpan.")
+            kind_labels = {"retrieval": "Pencarian", "claim": "Klaim", "negative": "Luar topik",
+                           "abstain": "Abstain", "ask": "Ask (E2E)"}
             table = [{
                 "id": g["id"],
-                "Jenis": "Pencarian" if g["kind"] == "retrieval" else "Klaim",
+                "Jenis": kind_labels.get(g["kind"], g["kind"]),
                 "Soal": g.get("question") or g.get("claim"),
-                "Jawaban benar": f"halaman {', '.join(map(str, g.get('pages') or []))}" if g["kind"] == "retrieval"
-                else g.get("expected"),
-                "Paper": (g.get("title") or g.get("file"))[:60],
+                "Jawaban benar": (f"halaman {', '.join(map(str, g.get('pages') or []))}" if g["kind"] == "retrieval"
+                                 else ("Tidak ditemukan" if g["kind"] in ("negative", "abstain")
+                                 else ("Grounded" if g["kind"] == "ask"
+                                 else g.get("expected", "-")))),
+                "Paper": (g.get("title") or g.get("file") or "-")[:60],
                 "Diperiksa": bool(g.get("reviewed")),
                 "Hapus": False,
             } for g in gold]
@@ -140,7 +144,7 @@ def render_accuracy_page(ctx: AppContext):
                     if row["Hapus"]:
                         continue
                     g["reviewed"] = bool(row["Diperiksa"])
-                    g["question" if g["kind"] == "retrieval" else "claim"] = row["Soal"]
+                    g["question" if g["kind"] in ("retrieval", "negative", "abstain", "ask") else "claim"] = row["Soal"]
                     out.append(g)
                 _evaluate.save_gold(out)
                 st.success("Tersimpan.")
@@ -155,12 +159,24 @@ def render_accuracy_page(ctx: AppContext):
                     st.session_state["ev_last"] = _evaluate.run(k=int(k), reviewed_only=only_rev, model=config.LLM_MODEL)
         last = st.session_state.get("ev_last")
         if last:
-            m1, m2, m3, m4 = st.columns(4)
             pct = lambda x: "-" if x is None else f"{x * 100:.0f}%"
+            m1, m2, m3, m4 = st.columns(4)
             m1.metric(f"Halaman benar di {last['settings']['k']} teratas", pct(last["retrieval"]["recall_at_k"]))
             m2.metric("Akurasi cek klaim", pct(last["claims"]["accuracy"]))
-            m3.metric("Klaim salah yang tertangkap", pct(last["claims"]["false_caught"]))
-            m4.metric("Klaim benar yang lolos", pct(last["claims"]["true_passed"]))
+            m3.metric("Klaim salah tertangkap", pct(last["claims"]["false_caught"]))
+            m4.metric("Klaim benar lolos", pct(last["claims"]["true_passed"]))
+
+            extra_cols = []
+            if last.get("abstain") and last["abstain"]["n"] > 0:
+                extra_cols.append(("Abstain ditolak", pct(last["abstain"]["abstain_rate"])))
+            if last.get("ask") and last["ask"]["n"] > 0:
+                ak = last["ask"]
+                extra_cols.append(("Ask Klasik grounded", pct(ak["classic"]["grounded_ratio"])))
+                extra_cols.append(("Ask Agentic grounded", pct(ak["agentic"]["grounded_ratio"])))
+            if extra_cols:
+                cols = st.columns(len(extra_cols))
+                for c, (lbl, val) in zip(cols, extra_cols):
+                    c.metric(lbl, val)
             wrong = [r for r in last["claims"]["rows"] if not r["ok"]]
             if wrong:
                 with st.expander(f"{len(wrong)} klaim dinilai keliru oleh pemeriksa"):
@@ -172,6 +188,7 @@ def render_accuracy_page(ctx: AppContext):
             render_table([{"Waktu": h["time"].replace("T", " ")[:16], "k": str(h["k"]), "Halaman benar": pct(h["recall_at_k"]),
                            "MRR": "" if h["mrr"] is None else f"{h['mrr']:.2f}", "Akurasi klaim": pct(h["claim_accuracy"]),
                            "Salah tertangkap": pct(h["false_caught"]), "Benar lolos": pct(h["true_passed"]),
+                           "Abstain": pct(h.get("abstain_rate")), "Ask Klasik": pct(h.get("ask_classic_grounded")),
                            "Embedding": h.get("embed_model") or "-"} for h in hist])
 
     with tab_log:

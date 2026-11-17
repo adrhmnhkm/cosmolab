@@ -177,6 +177,82 @@ class EvaluateTests(TempRoot):
         self.assertEqual(len(evaluate.history()), 1)
         self.assertEqual(audit.read(event="evaluasi")[0]["n_claims"], 2)
 
+    def test_draft_with_ask_and_abstain_and_model_separation(self):
+        drafter = lambda passage, model: {"question": "Apa isi?", "true_claim": "Benar.", "false_claim": "Salah."}
+        long = "The equivalence principle and the constancy of light give special relativity. " * 5
+        with mock.patch("cosmolab.extract.get_paper_pages", return_value=[{"page": 2, "paragraphs": [long]}]) as _,              mock.patch.object(config, "JUDGE_MODEL", "model-judge"),              mock.patch.object(config, "DRAFT_MODEL", "model-draft"):
+            new = evaluate.draft_gold(n_papers=1, drafter=drafter, papers=[PAPER],
+                                      include_ask=True, include_abstain=True)
+        kinds = [it["kind"] for it in new]
+        self.assertIn("ask", kinds)
+        self.assertIn("abstain", kinds)
+        self.assertEqual([it["kind"] for it in new[:4]], ["retrieval", "claim", "claim", "ask"])
+
+        # Test warning when draft model equals judge model
+        with mock.patch("cosmolab.extract.get_paper_pages", return_value=[{"page": 2, "paragraphs": [long]}]),              mock.patch.object(config, "JUDGE_MODEL", "same-model"),              mock.patch.object(config, "DRAFT_MODEL", "same-model"):
+            import warnings
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                evaluate.draft_gold(n_papers=1, drafter=drafter, papers=[{"file": "p2.pdf"}])
+                self.assertTrue(any("JUDGE_MODEL" in str(item.message) for item in w))
+
+    def test_run_abstain_scoring(self):
+        items = [
+            {"id": "ab1", "kind": "abstain", "question": "Cara tanam hidroponik?", "reviewed": True},
+            {"id": "ab2", "kind": "abstain", "question": "Ganti oli motor?", "reviewed": True},
+        ]
+        # ab1 abstains on both; ab2 only abstains on classic, hallucinates on agentic
+        def mock_ask(q, model=None):
+            return "Tidak ditemukan di korpus ini untuk pertanyaan tersebut."
+
+        def mock_agent(q, model=None):
+            if "hidroponik" in q:
+                return {"answer": "Tidak ditemukan di korpus ini."}
+            return {"answer": "Langkah mengganti oli motor adalah membuka baut bawah."}
+
+        r = evaluate.run(items=items, expand=False, rerank=False, ask_fn=mock_ask,
+                         ask_agent_fn=mock_agent, save=False)
+        self.assertEqual(r["abstain"]["n"], 2)
+        self.assertEqual(r["abstain"]["classic_rate"], 1.0)
+        self.assertEqual(r["abstain"]["agentic_rate"], 0.5)
+        self.assertEqual(r["abstain"]["abstain_rate"], 0.5)
+        self.assertTrue(r["abstain"]["rows"][0]["ok"])
+        self.assertFalse(r["abstain"]["rows"][1]["ok"])
+
+    def test_run_ask_end_to_end_scoring(self):
+        items = [
+            {"id": "a1", "kind": "ask", "question": "Apa itu kausalitas?", "file": "p.pdf", "reviewed": True},
+        ]
+
+        def mock_ask(q, model=None):
+            return "Kausalitas adalah prinsip fisika. [Paper 1 (1997)]."
+
+        def mock_agent(q, model=None):
+            return {"answer": "Nonlokalitas melanggar ketidaksamaan Bell. [Paper 1 (1997)]. Kalimat tanpa rujukan."}
+
+        def mock_check_answer(text, **kwargs):
+            if "prinsip fisika" in text:
+                return {"claims": [{"verdict": entail.SUPPORTED, "text": text}], "summary": {entail.SUPPORTED: 1}}
+            else:
+                return {
+                    "claims": [
+                        {"verdict": entail.SUPPORTED, "text": "Nonlokalitas"},
+                        {"verdict": entail.NO_CITATION, "text": "Kalimat tanpa rujukan"},
+                    ],
+                    "summary": {entail.SUPPORTED: 1, entail.NO_CITATION: 1},
+                }
+
+        r = evaluate.run(items=items, expand=False, rerank=False, ask_fn=mock_ask,
+                         ask_agent_fn=mock_agent, check_answer_fn=mock_check_answer, save=False)
+        self.assertEqual(r["ask"]["n"], 1)
+        # Classic: 1 supported out of 1 claim = 100%
+        self.assertEqual(r["ask"]["classic"]["grounded_ratio"], 1.0)
+        self.assertEqual(r["ask"]["classic"]["attention_claims"], 0)
+        # Agentic: 1 supported out of 2 claims = 50%, 1 attention claim (tanpa sitasi)
+        self.assertEqual(r["ask"]["agentic"]["grounded_ratio"], 0.5)
+        self.assertEqual(r["ask"]["agentic"]["attention_claims"], 1)
+        self.assertEqual(r["ask"]["agentic"]["uncited_claims"], 1)
+
 
 class AuditTests(TempRoot):
     def test_log_read_csv_and_methods(self):

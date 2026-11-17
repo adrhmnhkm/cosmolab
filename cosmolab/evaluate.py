@@ -9,6 +9,8 @@ The gold file (<root>/eval/gold.jsonl) holds one test item per line:
   {"id": "r1", "kind": "retrieval", "question": "...", "file": "x.pdf", "pages": [3], "reviewed": false}
   {"id": "c1", "kind": "claim", "claim": "...", "file": "x.pdf", "expected": "didukung", "reviewed": false}
   {"id": "n1", "kind": "negative", "question": "...", "reviewed": true}
+  {"id": "ab1", "kind": "abstain", "question": "...", "reviewed": true}
+  {"id": "a1", "kind": "ask", "question": "...", "file": "x.pdf", "reviewed": true}
 
 Retrieval items are scored twice: is the right page among the passages of the
 right paper, and is the right paper among the sources an answer would use.
@@ -31,7 +33,7 @@ from datetime import datetime
 
 from . import config
 
-KINDS = ("retrieval", "claim", "negative")
+KINDS = ("retrieval", "claim", "negative", "abstain", "ask")
 SOURCES_K = 5  # papers an answer uses (ask: top_k=5)
 
 # Questions no academic collection here should answer. Override with "negative" items in gold.jsonl.
@@ -101,7 +103,7 @@ def _llm_draft(passage: str, model: str = None) -> dict:
 
     client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
     resp = client.chat.completions.create(
-        model=model or config.LLM_MODEL,
+        model=model or config.DRAFT_MODEL or config.LLM_MODEL,
         messages=[{"role": "system", "content": DRAFT_PROMPT}, {"role": "user", "content": passage}],
         response_format={"type": "json_object"},
         temperature=0.3,
@@ -111,13 +113,23 @@ def _llm_draft(passage: str, model: str = None) -> dict:
 
 
 def draft_gold(n_papers: int = 10, model: str = None, seed: int = 7, drafter=None, papers=None,
-               progress_cb=None) -> list[dict]:
+               progress_cb=None, include_ask: bool = False, include_abstain: bool = False) -> list[dict]:
     """Add draft items for up to n_papers papers that are not in the gold set yet.
 
     Each paper gives 1 retrieval item and 2 claim items (one true, one false).
+    If include_ask is True, also adds an end-to-end ask item.
+    If include_abstain is True, adds abstain test questions.
     Returns the new items; they are also appended to gold.jsonl.
     """
+    import warnings
     from . import db
+
+    draft_model = model or config.DRAFT_MODEL or config.LLM_MODEL
+    if draft_model and config.JUDGE_MODEL and draft_model == config.JUDGE_MODEL:
+        warnings.warn(
+            f"Model pembuat draf ({draft_model}) sama dengan JUDGE_MODEL. "
+            "Disarankan menggunakan model berbeda (set DRAFT_MODEL) untuk menghindari bias evaluasi."
+        )
 
     drafter = drafter or _llm_draft
     rng = random.Random(seed)
@@ -137,7 +149,7 @@ def draft_gold(n_papers: int = 10, model: str = None, seed: int = 7, drafter=Non
         if not psg:
             continue
         try:
-            d = drafter(psg["text"], model)
+            d = drafter(psg["text"], draft_model)
         except Exception:
             continue
         if not d.get("question"):
@@ -151,10 +163,19 @@ def draft_gold(n_papers: int = 10, model: str = None, seed: int = 7, drafter=Non
         if d.get("false_claim"):
             new.append({"id": f"c{next_id}b", "kind": "claim", "claim": d["false_claim"],
                         "expected": "tidak_didukung", **base})
+        if include_ask:
+            new.append({"id": f"a{next_id}", "kind": "ask", "question": d["question"], **base})
         next_id += 1
         done += 1
         if progress_cb:
             progress_cb(done, n_papers, p.get("title") or p["file"])
+
+    if include_abstain:
+        for i, q in enumerate(NEGATIVE_DEFAULTS[:n_papers], 1):
+            if not any(it.get("kind") == "abstain" and it.get("question") == q for it in gold + new):
+                new.append({"id": f"ab{next_id}", "kind": "abstain", "question": q,
+                            "reviewed": True, "source": "auto"})
+                next_id += 1
 
     save_gold(gold + new)
     return new
@@ -214,7 +235,8 @@ def ai_reachable(timeout: float = 5.0) -> str | None:
 
 def run(k: int = 3, expand: bool = True, rerank: bool = True, reviewed_only: bool = False, model: str = None,
         judge=None, evidence_fn=None, items: list[dict] | None = None, save: bool = True,
-        limit: int | None = None, progress_cb=None) -> dict:
+        limit: int | None = None, progress_cb=None,
+        ask_fn=None, ask_agent_fn=None, check_answer_fn=None) -> dict:
     """Score retrieval (recall@k, MRR) and the claim checker (accuracy) on the gold set.
 
     limit: at most this many items of each kind (a quicker, lighter run).
@@ -273,6 +295,147 @@ def run(k: int = 3, expand: bool = True, rerank: bool = True, reviewed_only: boo
         except Exception as e:
             neg_rows.append({"id": it["id"], "ok": False, "sources": [], "error": str(e)[:120]})
 
+    # Questions the system should abstain from ("tidak ditemukan")
+    abstain_items = [it for it in items if it.get("kind") == "abstain"]
+    abstain_rows = []
+    if abstain_items:
+        say(f"cek {len(abstain_items)} soal abstain")
+        ask_call = ask_fn
+        if ask_call is None:
+            from . import ask as _ask
+            ask_call = _ask.ask
+        agent_call = ask_agent_fn
+        if agent_call is None:
+            from . import ask_agent as _agent
+            agent_call = _agent.ask_agentic
+
+        for n, it in enumerate(abstain_items, 1):
+            say(f"abstain {n}/{len(abstain_items)}")
+            q = it["question"]
+            try:
+                c_res = ask_call(q, model=model)
+                c_text = c_res if isinstance(c_res, str) else (c_res.get("answer", "") if isinstance(c_res, dict) else str(c_res))
+                c_ok = bool(re.search(r"tidak\s+ditemukan", c_text, re.I))
+            except Exception as e:
+                c_text, c_ok = f"error: {e}", False
+
+            try:
+                a_res = agent_call(q, model=model)
+                a_text = a_res if isinstance(a_res, str) else (a_res.get("answer", "") if isinstance(a_res, dict) else str(a_res))
+                a_ok = bool(re.search(r"tidak\s+ditemukan", a_text, re.I))
+            except Exception as e:
+                a_text, a_ok = f"error: {e}", False
+
+            abstain_rows.append({
+                "id": it["id"],
+                "question": q,
+                "classic_ok": c_ok,
+                "classic_answer": c_text[:160],
+                "agentic_ok": a_ok,
+                "agentic_answer": a_text[:160],
+                "ok": c_ok and a_ok,
+            })
+    n_ab = len(abstain_rows)
+    abstain_rate = (sum(r["ok"] for r in abstain_rows) / n_ab) if n_ab else None
+    classic_rate = (sum(r["classic_ok"] for r in abstain_rows) / n_ab) if n_ab else None
+    agentic_rate = (sum(r["agentic_ok"] for r in abstain_rows) / n_ab) if n_ab else None
+
+    # End-to-end ask questions evaluated with entail.check_answer
+    ask_items = [it for it in items if it.get("kind") == "ask"]
+    ask_rows = []
+    if ask_items:
+        say(f"cek {len(ask_items)} soal ask end-to-end")
+        ask_call = ask_fn
+        if ask_call is None:
+            from . import ask as _ask
+            ask_call = _ask.ask
+        agent_call = ask_agent_fn
+        if agent_call is None:
+            from . import ask_agent as _agent
+            agent_call = _agent.ask_agentic
+        checker = check_answer_fn
+        if checker is None:
+            from . import entail as _entail
+            checker = _entail.check_answer
+
+        for n, it in enumerate(ask_items, 1):
+            say(f"ask end-to-end {n}/{len(ask_items)}")
+            q = it["question"]
+            try:
+                c_res = ask_call(q, model=model)
+                c_text = c_res if isinstance(c_res, str) else (c_res.get("answer", "") if isinstance(c_res, dict) else str(c_res))
+                c_rep = checker(c_text, judge=judge, evidence_fn=evidence_fn)
+                c_cls = c_rep.get("claims", [])
+                c_tot = len(c_cls)
+                c_supp = sum(1 for cl in c_cls if cl.get("verdict") == entail.SUPPORTED)
+                c_att = entail.needs_attention(c_rep)
+                c_uncited = sum(1 for cl in c_cls if cl.get("verdict") == entail.NO_CITATION)
+            except Exception as e:
+                c_text, c_cls, c_tot, c_supp, c_att, c_uncited = f"error: {e}", [], 0, 0, 0, 0
+
+            try:
+                a_res = agent_call(q, model=model)
+                a_text = a_res if isinstance(a_res, str) else (a_res.get("answer", "") if isinstance(a_res, dict) else str(a_res))
+                a_rep = checker(a_text, judge=judge, evidence_fn=evidence_fn)
+                a_cls = a_rep.get("claims", [])
+                a_tot = len(a_cls)
+                a_supp = sum(1 for cl in a_cls if cl.get("verdict") == entail.SUPPORTED)
+                a_att = entail.needs_attention(a_rep)
+                a_uncited = sum(1 for cl in a_cls if cl.get("verdict") == entail.NO_CITATION)
+            except Exception as e:
+                a_text, a_cls, a_tot, a_supp, a_att, a_uncited = f"error: {e}", [], 0, 0, 0, 0
+
+            ask_rows.append({
+                "id": it["id"],
+                "question": q,
+                "file": it.get("file"),
+                "classic": {
+                    "answer": c_text[:200],
+                    "total_claims": c_tot,
+                    "supported_claims": c_supp,
+                    "attention_claims": c_att,
+                    "uncited_claims": c_uncited,
+                    "grounded_ratio": (c_supp / c_tot) if c_tot else None,
+                },
+                "agentic": {
+                    "answer": a_text[:200],
+                    "total_claims": a_tot,
+                    "supported_claims": a_supp,
+                    "attention_claims": a_att,
+                    "uncited_claims": a_uncited,
+                    "grounded_ratio": (a_supp / a_tot) if a_tot else None,
+                },
+            })
+
+    c_tot_all = sum(r["classic"]["total_claims"] for r in ask_rows)
+    c_supp_all = sum(r["classic"]["supported_claims"] for r in ask_rows)
+    c_att_all = sum(r["classic"]["attention_claims"] for r in ask_rows)
+    c_unc_all = sum(r["classic"]["uncited_claims"] for r in ask_rows)
+
+    a_tot_all = sum(r["agentic"]["total_claims"] for r in ask_rows)
+    a_supp_all = sum(r["agentic"]["supported_claims"] for r in ask_rows)
+    a_att_all = sum(r["agentic"]["attention_claims"] for r in ask_rows)
+    a_unc_all = sum(r["agentic"]["uncited_claims"] for r in ask_rows)
+
+    ask_summary = {
+        "n": len(ask_rows),
+        "classic": {
+            "grounded_ratio": (c_supp_all / c_tot_all) if c_tot_all else None,
+            "total_claims": c_tot_all,
+            "supported_claims": c_supp_all,
+            "attention_claims": c_att_all,
+            "uncited_claims": c_unc_all,
+        },
+        "agentic": {
+            "grounded_ratio": (a_supp_all / a_tot_all) if a_tot_all else None,
+            "total_claims": a_tot_all,
+            "supported_claims": a_supp_all,
+            "attention_claims": a_att_all,
+            "uncited_claims": a_unc_all,
+        },
+        "rows": ask_rows,
+    }
+
     claim_items = [it for it in items if it.get("kind") == "claim"]
     if claim_items:
         say(f"cek {len(claim_items)} klaim")
@@ -315,6 +478,14 @@ def run(k: int = 3, expand: bool = True, rerank: bool = True, reviewed_only: boo
         "negatives": {"n": len(neg_rows),
                       "rejected": sum(r["ok"] for r in neg_rows) / len(neg_rows) if neg_rows else None,
                       "rows": neg_rows},
+        "abstain": {
+            "n": n_ab,
+            "abstain_rate": abstain_rate,
+            "classic_rate": classic_rate,
+            "agentic_rate": agentic_rate,
+            "rows": abstain_rows,
+        },
+        "ask": ask_summary,
         "claims": {
             "n": n_claim, "failed": len(claim_rows) - n_claim, "accuracy": accuracy, "confusion": confusion,
             "rows": claim_rows,
@@ -329,7 +500,10 @@ def run(k: int = 3, expand: bool = True, rerank: bool = True, reviewed_only: boo
 
             audit.log("evaluasi", model=result["settings"]["model"], n_retrieval=n_ret, n_claims=n_claim,
                       prompt_version=audit.prompt_version(_e.JUDGE_PROMPT, _e.TERMS_PROMPT),
-                      summary={"recall_at_k": recall, "mrr": mrr, "claim_accuracy": accuracy}, k=k)
+                      summary={"recall_at_k": recall, "mrr": mrr, "claim_accuracy": accuracy,
+                               "abstain_rate": abstain_rate,
+                               "ask_classic_grounded": ask_summary["classic"]["grounded_ratio"],
+                               "ask_agentic_grounded": ask_summary["agentic"]["grounded_ratio"]}, k=k)
         except Exception:
             pass
         out = eval_dir() / "runs"
@@ -354,6 +528,9 @@ def history(limit: int = 20) -> list[dict]:
             "true_passed": r["claims"].get("true_passed"), "k": r["settings"]["k"],
             "source_recall": (r.get("sources") or {}).get("recall"),
             "negatives_rejected": (r.get("negatives") or {}).get("rejected"),
+            "abstain_rate": (r.get("abstain") or {}).get("abstain_rate"),
+            "ask_classic_grounded": ((r.get("ask") or {}).get("classic") or {}).get("grounded_ratio"),
+            "ask_agentic_grounded": ((r.get("ask") or {}).get("agentic") or {}).get("grounded_ratio"),
             "embed_model": r["settings"].get("embed_model"),
         })
     return out

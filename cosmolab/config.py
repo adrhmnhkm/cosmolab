@@ -154,6 +154,15 @@ JUDGE_MODEL = env_config.get("JUDGE_MODEL") or os.environ.get("JUDGE_MODEL") or 
 JUDGE_BASE_URL = env_config.get("JUDGE_BASE_URL") or os.environ.get("JUDGE_BASE_URL") or LLM_BASE_URL
 JUDGE_API_KEY = env_config.get("JUDGE_API_KEY") or os.environ.get("JUDGE_API_KEY") or LLM_API_KEY
 
+# Model for drafting gold evaluation questions (should differ from JUDGE_MODEL to avoid shared bias)
+DRAFT_MODEL = (
+    env_config.get("DRAFT_MODEL")
+    or os.environ.get("DRAFT_MODEL")
+    or env_config.get("COSMOLAB_DRAFT_MODEL")
+    or os.environ.get("COSMOLAB_DRAFT_MODEL")
+    or LLM_MODEL
+)
+
 # Backward-compatibility aliases
 NINEROUTER_API_KEY = LLM_API_KEY
 NINEROUTER_BASE_URL = LLM_BASE_URL
