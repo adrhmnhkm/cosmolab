@@ -69,17 +69,20 @@ def _detect_query_intent(question: str) -> dict:
     elif _has_word(q_lower, ("first cause", "sebab pertama", "aquinas")):
         arg_type = "first-cause"
 
-    # Detect if contrast / objection is requested ("masalah" and "beda" are too common to count).
-    needs_contrast = _has_word(q_lower, (
+    # Detect if contrast / objection / synthesis is requested
+    is_synth = retrieval.is_synthesis_query(question)
+    needs_contrast = is_synth or _has_word(q_lower, (
         "bantah", "membantah", "bantahan", "kritik", "mengkritik", "kritikan", "sanggah", "sanggahan",
         "objeksi", "keberatan", "lawan", "kontra", "debat", "perdebatan", "bandingkan", "membandingkan",
-        "apakah benar", "kelemahan", "vs", "versus",
+        "apakah benar", "kelemahan", "vs", "versus", "bertentang", "bertentangan", "pertentangan",
+        "kontradiksi", "berlawanan", "silang pendapat",
     ))
 
     return {
         "faculty": faculty,
         "argument_type": arg_type,
         "needs_contrast": needs_contrast,
+        "is_synthesis": is_synth,
     }
 
 
@@ -148,6 +151,19 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
                     referenced_papers.append(summary)
                     seen_files.add(f)
 
+    # For general synthesis or dialectical queries across collection, augment with active papers
+    if intent.get("is_synthesis") and (not referenced_papers or len(referenced_papers) < top_k):
+        all_known = db.get_all_papers_with_analyses()
+        for p in all_known:
+            f = p.get("file")
+            if f and f not in seen_files:
+                summary = db.get_paper_knowledge_summary(f)
+                if summary and summary.get("thesis"):
+                    referenced_papers.append(summary)
+                    seen_files.add(f)
+            if len(referenced_papers) >= top_k:
+                break
+
     pro_count = len([p for p in referenced_papers if p.get("supports_or_critiques") == "supports"])
     contra_count = len([p for p in referenced_papers if p.get("supports_or_critiques") == "critiques"])
     step2_msg = f"Menjelajahi Second Brain: Menemukan {len(referenced_papers)} paper terstruktur ({pro_count} pendukung, {contra_count} pengkritik)."
@@ -159,12 +175,18 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
     all_grounded_citations = []
     found = retrieval.grounded_passages_batch([p.get("file") for p in referenced_papers], question, top_k=2, model=model)
     # A passage marked "fallback" is only the paper's opening, not a match for the question.
-    # A paper with no matching passage of its own text is left out of the sources.
     found = {f: [psg for psg in (psgs or []) if not psg.get("fallback")] for f, psgs in found.items()}
-    dropped = [p for p in referenced_papers if not found.get(p.get("file"))]
-    referenced_papers = [p for p in referenced_papers if found.get(p.get("file"))]
-    if dropped:
-        thought_steps.append(f"{len(dropped)} paper dikeluarkan karena teksnya tidak memuat bagian yang cocok dengan pertanyaan.")
+
+    if intent.get("is_synthesis"):
+        # For cross-document synthesis queries, retain all referenced papers for comparative reasoning
+        dropped = []
+        thought_steps.append(f"Menganalisis sintesis komparatif terhadap {len(referenced_papers)} paper dalam koleksi.")
+    else:
+        # A paper with no matching passage of its own text is left out of specific needle sources.
+        dropped = [p for p in referenced_papers if not found.get(p.get("file"))]
+        referenced_papers = [p for p in referenced_papers if found.get(p.get("file"))]
+        if dropped:
+            thought_steps.append(f"{len(dropped)} paper dikeluarkan karena teksnya tidak memuat bagian yang cocok dengan pertanyaan.")
 
     if not referenced_papers:
         thought_steps.append("Tidak ada paper di koleksi yang teksnya cocok dengan pertanyaan. AI tidak dipanggil.")

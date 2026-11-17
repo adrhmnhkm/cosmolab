@@ -35,6 +35,9 @@ STOP = {
     "lalu", "jadi", "sedang", "sejak", "punya", "memiliki", "ialah", "adakah",
     # Instructions in a question, never the topic.
     "jelaskan", "sebutkan", "uraikan", "tuliskan", "menurut",
+    # Document meta-words (asked about papers, not their topic content)
+    "paper", "papers", "artikel", "article", "articles", "naskah", "manuskrip",
+    "makalah", "jurnal", "journal", "dokumen", "document", "tulisan", "korpus", "corpus", "koleksi",
     # English
     "the", "and", "for", "with", "that", "this", "are", "was", "were", "from", "but", "not",
     "has", "have", "had", "its", "their", "which", "what", "how", "why", "who", "when", "where",
@@ -90,14 +93,14 @@ GENERIC = {_stem(w) for w in (
     "hasil", "pendekatan", "proses", "tingkat", "dampak", "pengembangan", "kinerja", "teori",
     "harga", "waktu", "nilai", "biaya", "bulan", "tahun", "hari",
     "strategi", "manajemen", "kualitas", "evaluasi", "prediksi", "peramalan", "regresi", "variabel",
-    "struktur", "pola", "kriteria", "teknik", "aplikasi", "konsep", "peran", "hubungan",
+    "struktur", "pola", "kriteria", "teknik", "aplikasi", "konsep", "peran", "hubungan", "masalah",
 )}
 
 # Question words that name no topic. They score, never make a match, and are not counted
 # when a question made only of generic words is matched: "perbedaan metode" is not a hit
 # for every methods section.
 FILLER = {_stem(w) for w in (
-    "perbedaan", "persamaan", "contoh", "pengertian", "definisi", "terbaik", "masalah", "kelebihan",
+    "perbedaan", "persamaan", "contoh", "pengertian", "definisi", "terbaik", "kelebihan",
     "kekurangan", "kelemahan", "manfaat", "tujuan", "jenis", "macam",
 )}
 GENERIC |= FILLER

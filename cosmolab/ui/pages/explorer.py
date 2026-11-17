@@ -224,7 +224,7 @@ def render(ctx: AppContext):
     with tab_pe3:
         from cosmolab.ui.pages import fulltext as _fulltext
 
-        _fulltext.render_search()
+        _fulltext.render_search(faculty=selected_faculty_id)
 
     with tab_pe4:
         from cosmolab.ui.pages import export as _export

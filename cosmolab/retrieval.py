@@ -34,6 +34,44 @@ DOMAIN_CONCEPT_MAP = {
 }
 
 
+# Patterns for corpus-level, dialectical, comparative, or synthesis queries
+SYNTHESIS_PATTERNS = [
+    r"\bbertentang\w*",
+    r"\bpertentangan\b",
+    r"\bkontradiksi\b",
+    r"\bberlawanan\b",
+    r"\bbentrok\b",
+    r"\bsilang\s+pendapat\b",
+    r"\bperdebatan\b",
+    r"\bpolemik\b",
+    r"\bpro\s+(?:dan\s+)?kontra\b",
+    r"\bbanding\w*",
+    r"\bperbandingan\b",
+    r"\bkomparasi\b",
+    r"\bperbedaan\b",
+    r"\bpersamaan\b",
+    r"\bhubungan\s+antar\w*",
+    r"\bketerkaitan\b",
+    r"\bsemua\s+paper\b",
+    r"\bseluruh\s+paper\b",
+    r"\bpaper[- ]paper\b",
+    r"\bkoleksi\b",
+    r"\bkorpus\b",
+    r"\bantar[- ]paper\b",
+    r"\btemuan\s+utama\b",
+    r"\bgap\s+riset\b",
+    r"\bpeta\s+riset\b",
+    r"\bkesimpulan\s+umum\b",
+    r"\bapa\s+saja\s+yang\s+dibahas\b",
+]
+_SYNTH_REGEX = re.compile("|".join(SYNTHESIS_PATTERNS), re.IGNORECASE)
+
+
+def is_synthesis_query(query: str) -> bool:
+    """Return True if the query asks for synthesis, comparison, or dialectical contrast across papers."""
+    return bool(_SYNTH_REGEX.search(query or ""))
+
+
 def expand_academic_query(query: str, client: OpenAI = None, model: str = None) -> list[str]:
     """Expand a user query (Indonesian, casual, or conceptual) into precise academic English keywords.
     
@@ -100,6 +138,7 @@ def hybrid_search(
     expand_concepts: bool = True,
     client: OpenAI = None,
     model: str = None,
+    faculty: str | None = None,
 ) -> list[dict]:
     """Execute hybrid retrieval combining exact weighted FTS5 with conceptual expansion via RRF.
     
@@ -107,7 +146,7 @@ def hybrid_search(
       RRF_score(d) = sum( 1.0 / (k + rank) )
     """
     # 1. Base weighted FTS5 on literal query
-    raw_results = db.search(query, limit=limit * 2)
+    raw_results = db.search(query, limit=limit * 2, faculty=faculty) if faculty else db.search(query, limit=limit * 2)
 
     if not expand_concepts:
         return raw_results[:limit]
@@ -118,7 +157,7 @@ def hybrid_search(
         return raw_results[:limit]
 
     concept_query = " ".join(expanded_terms)
-    expanded_results = db.search(concept_query, limit=limit * 2)
+    expanded_results = db.search(concept_query, limit=limit * 2, faculty=faculty) if faculty else db.search(concept_query, limit=limit * 2)
 
     # 3. Reciprocal Rank Fusion (k = 60 standard constant)
     k = 60.0
@@ -421,19 +460,39 @@ def select_sources(question: str, top_k: int = 5, model: str = None, expand: boo
                    rerank: bool = True, passages: int = 2) -> tuple[list[dict], dict[str, list[dict]]]:
     """The papers an answer may use, and their passages: (papers, {file: passages}).
 
-    Search, let the LLM rerank, then keep only papers whose own text has a
-    passage matching the question. A "fallback" passage (the paper's opening,
-    returned when nothing matched) does not count. Empty = the collection
-    does not cover the question.
+    For needle/specific queries, search, rerank, then keep only papers whose own
+    text has a passage matching the question (fallback opening does not count).
+    For cross-document synthesis or dialectical queries (e.g. contradictions, comparisons),
+    candidate papers from the collection are retained to enable comparative reasoning.
     """
+    synth = is_synthesis_query(question)
     candidates = hybrid_search(question, limit=top_k * 3, expand_concepts=expand, model=model)
+    if synth and (not candidates or len(candidates) < top_k):
+        # Augment with existing analyzed papers from the active collection for comparative synthesis
+        all_papers = db.get_all_papers_with_analyses()
+        seen = {c.get("file") for c in candidates}
+        for p in all_papers:
+            if p.get("file") and p.get("file") not in seen:
+                candidates.append(p)
+                seen.add(p.get("file"))
+            if len(candidates) >= top_k * 2:
+                break
+
     if not candidates:
         return [], {}
+
     ranked = rerank_papers(question, candidates, top_k=top_k, model=model) if rerank else candidates[:top_k]
     found = grounded_passages_batch([r.get("file") for r in ranked], question, top_k=passages,
                                     rerank=None if rerank else False, model=model, expand=expand)
     found = {f: [p for p in (psgs or []) if not p.get("fallback")] for f, psgs in found.items()}
-    kept = [r for r in ranked if found.get(r.get("file"))]
+
+    if synth:
+        # Retain papers needed for comparative reasoning, attaching verbatim passages where found
+        kept = ranked[:top_k]
+    else:
+        # Specific needle queries enforce strict passage grounding
+        kept = [r for r in ranked if found.get(r.get("file"))]
+
     trace.add("select", question=question, kept=[r.get("file") for r in kept],
               dropped=[r.get("file") for r in ranked if not found.get(r.get("file"))],
               titles={r.get("file"): r.get("title") for r in ranked},

@@ -90,8 +90,14 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
         context_blocks.append(block)
 
     full_context = "\n\n".join(context_blocks)
-    user_prompt = (f"Corpus Context (AI summaries are unverified; only 'Bukti Verbatim' is the paper's own text):"
-                   f"\n{full_context}\n\nUser Question:\n{question}")
+    if retrieval.is_synthesis_query(question):
+        prompt_header = (
+            "Corpus Context (Compare the papers' theses, stances, and methods across the collection; "
+            "cite claims with [Title (Year)] and refer to 'Bukti Verbatim' where available for verified quotes):"
+        )
+    else:
+        prompt_header = "Corpus Context (AI summaries are unverified; only 'Bukti Verbatim' is the paper's own text):"
+    user_prompt = f"{prompt_header}\n{full_context}\n\nUser Question:\n{question}"
 
     client = OpenAI(
         api_key=config.NINEROUTER_API_KEY,

@@ -458,7 +458,7 @@ STOP_WORDS = {
 }
 
 
-def search(query: str, limit: int = 10) -> list[dict]:
+def search(query: str, limit: int = 10, faculty: str | None = None) -> list[dict]:
     """Search papers using SQLite FTS5 with weighted columns and fallback to LIKE pattern.
     
     Weights configuration:
@@ -493,37 +493,50 @@ def search(query: str, limit: int = 10) -> list[dict]:
 
     results = []
     mode = "fts5"
+    fac_filter = ""
+    params = [fts_query]
+    if faculty and faculty != "all":
+        fac_filter = " AND p.faculty = ? "
+        params.append(faculty)
+    params.append(limit)
+
     try:
-        cur = con.execute("""
+        cur = con.execute(f"""
             SELECT 
-                p.file, p.title, p.year, p.doi, p.arxiv_id, p.faculty,
+                p.file, p.title, p.year, p.doi, p.url, p.source, p.arxiv_id, p.faculty, p.authors,
                 a.argument_type, a.supports_or_critiques, a.thesis, a.conclusion,
-                a.key_objection, a.key_defense, a.premises_json,
-                snippet(papers_fts, 3, '[b][yellow]', '[/yellow][/b]', '...', 25) as snippet,
+                a.key_objection, a.key_defense, a.premises_json, a.raw_json, a.quotes_json,
+                snippet(papers_fts, -1, '[b][yellow]', '[/yellow][/b]', '...', 25) as snippet,
                 bm25(papers_fts, 0.0, 10.0, 5.0, 3.0, 4.0, 1.0, 3.0) as rank
             FROM papers_fts
             JOIN papers p ON p.file = papers_fts.paper_file
             LEFT JOIN analyses a ON a.paper_file = p.file
-            WHERE papers_fts MATCH ?
+            WHERE papers_fts MATCH ? {fac_filter}
             ORDER BY rank
             LIMIT ?
-        """, (fts_query, limit))
+        """, tuple(params))
         results = [dict(r) for r in cur.fetchall()]
     except Exception:
         # Fallback to simple LIKE search if FTS query syntax error
         mode = "like"
-        cur = con.execute("""
+        like_filter = ""
+        like_params = [f"%{query}%", f"%{query}%", f"%{query}%"]
+        if faculty and faculty != "all":
+            like_filter = " AND p.faculty = ? "
+            like_params.append(faculty)
+        like_params.append(limit)
+        cur = con.execute(f"""
             SELECT 
-                p.file, p.title, p.year, p.doi, p.arxiv_id, p.faculty,
+                p.file, p.title, p.year, p.doi, p.url, p.source, p.arxiv_id, p.faculty, p.authors,
                 a.argument_type, a.supports_or_critiques, a.thesis, a.conclusion,
-                a.key_objection, a.key_defense, a.premises_json,
+                a.key_objection, a.key_defense, a.premises_json, a.raw_json, a.quotes_json,
                 substr(p.full_text, 1, 150) as snippet,
                 0.0 as rank
             FROM papers p
             LEFT JOIN analyses a ON a.paper_file = p.file
-            WHERE p.title LIKE ? OR p.full_text LIKE ? OR p.abstract LIKE ?
+            WHERE (p.title LIKE ? OR p.full_text LIKE ? OR p.abstract LIKE ?) {like_filter}
             LIMIT ?
-        """, (f"%{query}%", f"%{query}%", f"%{query}%", limit))
+        """, tuple(like_params))
         results = [dict(r) for r in cur.fetchall()]
 
     con.close()
