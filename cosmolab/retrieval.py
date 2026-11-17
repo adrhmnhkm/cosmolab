@@ -18,8 +18,9 @@ from . import trace
 
 console = Console(force_terminal=True, legacy_windows=False)
 
-# Heuristic domain mappings for instant zero-latency query expansion fallback
+# Heuristic domain mappings for instant zero-latency query expansion fallback (multidisciplinary)
 DOMAIN_CONCEPT_MAP = {
+    # --- Filsafat, Teologi & Agama ---
     "alam": ["temporal origin", "beginning of universe", "kalam cosmological argument", "cosmic inception"],
     "semesta": ["cosmic expansion", "physical cosmology", "multiverse", "big bang singularity"],
     "awal": ["temporal beginning", "finite past", "actual infinite", "creation ex nihilo"],
@@ -31,6 +32,47 @@ DOMAIN_CONCEPT_MAP = {
     "kontingensi": ["contingency argument", "necessary existence", "wajib al-wujud", "contingent beings"],
     "tak terhingga": ["actual infinite", "hilbert hotel", "cantorian set theory", "temporal regress"],
     "infinit": ["infinite regress", "potential infinite", "transfinite numbers", "successive addition"],
+    # --- Pendidikan & Tarbiyah ---
+    "pembelajaran": ["learning methods", "pedagogical strategies", "instructional design"],
+    "pendidikan": ["education development", "pedagogy", "educational outcomes"],
+    "guru": ["teacher competence", "educator performance", "pedagogical skills"],
+    "siswa": ["student achievement", "learning motivation", "student outcomes"],
+    "karakter": ["character education", "moral habituation", "value formation"],
+    "literasi": ["literacy skills", "reading literacy", "financial literacy"],
+    "kurikulum": ["curriculum implementation", "educational curriculum", "merdeka belajar"],
+    "pbl": ["problem based learning", "active learning", "critical thinking skills"],
+    # --- Ekonomi, Bisnis & Manajemen ---
+    "ekonomi": ["economic growth", "microeconomics", "financial development"],
+    "keuangan": ["financial performance", "corporate finance", "financial literacy"],
+    "bisnis": ["business strategy", "entrepreneurship", "business performance"],
+    "umkm": ["msme performance", "small medium enterprises", "microfinance"],
+    "pajak": ["tax compliance", "tax avoidance", "tax policy"],
+    "perbankan": ["islamic banking", "bank performance", "credit risk"],
+    "akuntansi": ["accounting standards", "financial reporting", "auditing"],
+    # --- Hukum & Kebijakan Publik ---
+    "hukum": ["legal analysis", "jurisprudence", "rule of law"],
+    "pidana": ["criminal law", "penal code", "criminology"],
+    "perdata": ["civil law", "contract law", "private law"],
+    "regulasi": ["regulatory framework", "public policy", "legal enforcement"],
+    "uu pdp": ["personal data protection", "privacy regulation", "data protection act"],
+    "hak asasi": ["human rights", "constitutional rights", "legal protection"],
+    # --- Sains, Komputasi & Teknologi ---
+    "teknologi": ["information technology", "technology adoption", "digital transformation"],
+    "algoritma": ["algorithm optimization", "computational complexity", "machine learning"],
+    "siber": ["cybersecurity", "cyber law", "information security"],
+    "data pribadi": ["data privacy", "personal data protection", "information governance"],
+    "ai": ["artificial intelligence", "deep learning", "machine learning"],
+    # --- Kesehatan & Medis ---
+    "kesehatan": ["public health", "healthcare quality", "clinical outcomes"],
+    "pasien": ["patient satisfaction", "patient care", "clinical indicators"],
+    "rumah sakit": ["hospital management", "healthcare facilities", "clinical governance"],
+    # --- Metodologi Riset Universal ---
+    "kuantitatif": ["quantitative methodology", "empirical analysis", "statistical modeling"],
+    "kualitatif": ["qualitative research", "case study", "phenomenological approach"],
+    "regresi": ["regression analysis", "structural equation modeling", "multivariate analysis"],
+    "korelasi": ["correlation analysis", "statistical association", "empirical relationship"],
+    "studi kasus": ["case study design", "qualitative analysis", "contextual analysis"],
+    "validitas": ["construct validity", "instrument testing", "measurement reliability"],
 }
 
 

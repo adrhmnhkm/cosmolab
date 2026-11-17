@@ -90,8 +90,8 @@ Keluarkan output HANYA dalam format JSON valid dengan struktur:
   "unresolved_tensions": [
     {
       "issue": "Nama Isu Perdebatan",
-      "thesis_side": "Argumen kubu teisme / kalam...",
-      "antithesis_side": "Argumen kubu kritik / ateisme analitik...",
+      "thesis_side": "Argumen kubu teori dominan / paradigma konvensional...",
+      "antithesis_side": "Argumen kubu kritik / temuan empiris baru...",
       "why_stuck": "Mengapa perdebatan ini masih buntu atau belum tuntas?"
     }
   ],
@@ -106,7 +106,7 @@ Keluarkan output HANYA dalam format JSON valid dengan struktur:
       "gap_addressed": "Kesenjangan pustaka spesifik yang dijawab oleh proposal ini",
       "research_questions": ["Pertanyaan penelitian 1?", "Pertanyaan penelitian 2?"],
       "proposed_hypothesis": "Hipotesis kerja / tesis awal yang ditawarkan",
-      "theoretical_framework": "Perpaduan teori Turāth dan filsafat/sains kontemporer yang digunakan",
+      "theoretical_framework": "Landasan teori atau kerangka konseptual yang digunakan",
       "expected_novelty": "Nilai kebaruan akademik (novelty) yang membuat riset ini bernilai tinggi"
     }
   ]
@@ -136,18 +136,23 @@ Silakan analisis korpus di atas dan hasilkan JSON analisis celah riset (Research
         # Fallback structured dict
         report_data = {
             "faculty_domain": fac_name,
-            "executive_summary": raw_response[:800],
-            "established_consensus": ["Kausalitas dan awal mula kosmos merupakan perdebatan sentral."],
-            "unresolved_tensions": [{"issue": "Determinisme vs Kuantum", "thesis_side": "Kalam", "antithesis_side": "Fisika", "why_stuck": "Perbedaan definisi sebab"}],
-            "methodological_blindspots": ["Belum banyak studi komparatif kuantum formal."],
+            "executive_summary": raw_response[:800] if raw_response else f"Ringkasan tinjauan literatur dan analisis kesenjangan riset pada bidang {fac_name}.",
+            "established_consensus": [f"Konsensus primer dan kerangka kerja konseptual yang diakui dalam literatur {fac_name}."],
+            "unresolved_tensions": [{
+                "issue": f"Silang Pendapat Teori vs Bukti Empiris ({fac_name})",
+                "thesis_side": "Kubu Teori Dominan / Pendekatan Konvensional",
+                "antithesis_side": "Kubu Bukti Lapangan / Kritik Kontemporer",
+                "why_stuck": "Perbedaan metodologi, variasi sampel data, dan konteks implementasi.",
+            }],
+            "methodological_blindspots": [f"Keterbatasan sampel data dan minimnya integrasi metode campuran (mixed methods) pada riset {fac_name}."],
             "novel_research_proposals": [{
-                "title": f"Rekonstruksi Dialektika Riset di Bidang {fac_name}",
-                "target_level": "Tesis S2",
-                "gap_addressed": "Kesenjangan pemetaan korpus kontemporer",
-                "research_questions": ["Bagaimana sintesis nalar di era modern?"],
-                "proposed_hypothesis": "Sains kontemporer membuka ruang dialog metafisika baru.",
-                "theoretical_framework": "Integrasi Turāth dan Filsafat Sains",
-                "expected_novelty": "Pemetaan dialektis komprehensif"
+                "title": f"Investigasi Komprehensif dan Rekonstruksi Model Riset di Bidang {fac_name}",
+                "target_level": "Tesis S2 / Disertasi S3",
+                "gap_addressed": f"Kesenjangan metodologis dan pemetaan komparatif literatur {fac_name}",
+                "research_questions": [f"Bagaimana efektivitas dan implikasi implementasi model riset terkini di bidang {fac_name}?"],
+                "proposed_hypothesis": "Pendekatan berbasis bukti otentik menghasilkan akurasi yang lebih terukur.",
+                "theoretical_framework": f"Kerangka Konseptual & Teori Kontemporer {fac_name}",
+                "expected_novelty": "Kebaruan metodologis dan resolusi kesenjangan literatur empiris",
             }]
         }
 

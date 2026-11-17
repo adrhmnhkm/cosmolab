@@ -124,8 +124,8 @@ def synthesize(
     console.print(f"[cyan]SYNTHESIZE  {len(analyses)} papers ({lang})...[/cyan]")
 
     client = OpenAI(
-        api_key=config.NINEROUTER_API_KEY,
-        base_url=config.NINEROUTER_BASE_URL,
+        api_key=config.LLM_API_KEY,
+        base_url=config.LLM_BASE_URL,
     )
 
     # Select prompt based on language

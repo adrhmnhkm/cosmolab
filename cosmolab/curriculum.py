@@ -207,10 +207,10 @@ def get_learning_roadmap(faculty_id: str | None = None) -> list[dict]:
     Generates a structured 4-tier progressive reading roadmap from the corpus
     tailored to the chosen faculty (or across all faculties).
     """
-    faculty_id = faculty_id or "ilahiyyat"
+    faculty_id = faculty_id or "all"
     config_tiers = FACULTY_ROADMAP_CONFIGS.get(faculty_id, UNIVERSAL_ROADMAP_TIERS)
     
-    # Retrieve papers for this faculty
+    # Retrieve papers for this faculty (or all faculties)
     all_papers = db.get_papers_by_faculty(faculty_id=faculty_id if faculty_id != "all" else None, limit=200)
 
     # Initialize tier buckets
@@ -231,7 +231,7 @@ def get_learning_roadmap(faculty_id: str | None = None) -> list[dict]:
             "stance": p.get("supports_or_critiques", "neutral"),
             "thesis": p.get("thesis") or "Belum dianalisis",
             "key_objection": p.get("key_objection") or "-",
-            "faculty": p.get("faculty") or faculty_id,
+            "faculty": p.get("faculty") or (faculty_id if faculty_id != "all" else "umum"),
         }
 
         # Check keyword matches against tier configs (reversed from level 4 down to 1)

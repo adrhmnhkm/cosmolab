@@ -16,14 +16,20 @@ def _infer_author(paper: dict) -> str:
         return _authors.display(names)
 
     title = paper.get("title") or ""
-    # Check for patterns like "Al-Ghazali on Causality", "Craig's Kalam Argument", "By John Doe"
+    # Check for patterns like "By John Doe", "Craig's Kalam Argument", "Dewey on Education"
     by_match = re.search(r"\bby\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)", title)
     if by_match:
         return by_match.group(1)
 
-    # Check for canonical classical names
+    possessive_match = re.search(r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:'s|’s)\s+", title)
+    if possessive_match:
+        return possessive_match.group(1)
+
+    # Check for canonical thinkers and foundational scholars across disciplines
     canonical_thinkers = [
+        # Filsafat & Teologi Klasik/Modern
         ("Al-Ghazali", "Al-Ghazālī, Abū Ḥāmid"),
+        ("Ghazali", "Al-Ghazālī, Abū Ḥāmid"),
         ("Ibn Sina", "Ibn Sīnā (Avicenna)"),
         ("Avicenna", "Ibn Sīnā (Avicenna)"),
         ("Ibn Rushd", "Ibn Rushd (Averroës)"),
@@ -37,9 +43,40 @@ def _infer_author(paper: dict) -> str:
         ("Mackie", "Mackie, J. L."),
         ("Swinburne", "Swinburne, Richard"),
         ("Dennett", "Dennett, Daniel"),
+        # Pendidikan & Pedagogi
+        ("Dewey", "Dewey, John"),
+        ("Vygotsky", "Vygotsky, Lev"),
+        ("Piaget", "Piaget, Jean"),
+        ("Freire", "Freire, Paulo"),
+        ("Bruner", "Bruner, Jerome"),
+        # Ekonomi, Bisnis & Manajemen
+        ("Keynesian", "Keynes, John Maynard"),
+        ("Keynes", "Keynes, John Maynard"),
+        ("Adam Smith", "Smith, Adam"),
+        ("Schumpeter", "Schumpeter, Joseph"),
+        ("Friedman", "Friedman, Milton"),
+        ("Hayek", "Hayek, Friedrich"),
+        ("Porter", "Porter, Michael E."),
+        # Sosiologi, Hukum & Kebijakan
+        ("Weber", "Weber, Max"),
+        ("Durkheim", "Durkheim, Émile"),
+        ("Foucault", "Foucault, Michel"),
+        ("Habermas", "Habermas, Jürgen"),
+        ("Bourdieu", "Bourdieu, Pierre"),
+        ("Rawls", "Rawls, John"),
+        # Psikologi & Perilaku
+        ("Kahneman", "Kahneman, Daniel"),
+        ("Bandura", "Bandura, Albert"),
+        ("Skinner", "Skinner, B. F."),
+        # Sains & Komputasi
+        ("Turing", "Turing, Alan"),
+        ("Shannon", "Shannon, Claude"),
+        ("Einstein", "Einstein, Albert"),
+        ("Newton", "Newton, Isaac"),
+        ("Darwin", "Darwin, Charles"),
     ]
     for key, formal in canonical_thinkers:
-        if key.lower() in title.lower():
+        if re.search(r"\b" + re.escape(key) + r"\b", title, re.IGNORECASE):
             return formal
 
     return "Anonim"

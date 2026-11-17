@@ -4,6 +4,7 @@ from openai import OpenAI
 from rich.console import Console
 from . import config
 from . import db
+from . import faculties as _faculties
 from . import retrieval
 
 console = Console(force_terminal=True, legacy_windows=False)
@@ -44,21 +45,12 @@ def _detect_query_intent(question: str) -> dict:
     """Analyze the user's question to determine argument type, faculty domain, and whether dialectical contrast is needed."""
     q_lower = question.lower()
     
-    # Detect faculty domain
-    faculty = "umum"
-    if any(k in q_lower for k in ("epistemol", "mantiq", "tahu", "pengetahuan", "skeptis", "burhan", "silogisme", "justifik")):
-        faculty = "agama_filsafat"
-    elif any(k in q_lower for k in ("sebab", "kausal", "akibat", "takdir", "kasb", "kehendak bebas", "free will", "determinism", "occasionalism", "hume", "iqtiran")):
-        faculty = "agama_filsafat"
-    elif any(k in q_lower for k in ("evil", "kejahatan", "penderitaan", "teodisi", "theodicy", "adil", "keberatan jahat", "derita")):
-        faculty = "agama_filsafat"
-    elif any(k in q_lower for k in ("jiwa", "ruh", "nafs", "pikiran", "mind", "consciousness", "kesadaran", "qualia", "otak", "manusia terbang", "flying man", "ai")):
-        faculty = "agama_filsafat"
-    elif any(k in q_lower for k in ("nabi", "kenabian", "prophe", "nubuwwat", "mukjizat", "miracle", "wahyu", "kharq")):
-        faculty = "agama_filsafat"
+    # Detect faculty domain dynamically using the full faculty registry (core & custom)
+    detected_fac = _faculties.detect_faculty_from_text(question)
+    faculty = detected_fac if detected_fac not in ("umum", "unclassified") else "umum"
 
-    # Detect specific argument type. Whole words only, and no everyday words such as
-    # "waktu" or "cukup": they would pull a set of unrelated papers into any question.
+    # Detect specific argument/study type across disciplines.
+    # Whole words only to prevent accidental false matches.
     arg_type = None
     if _has_word(q_lower, ("kalam", "mulai ada", "begin to exist", "temporal", "huduts")):
         arg_type = "kalam"
@@ -68,6 +60,16 @@ def _detect_query_intent(question: str) -> dict:
         arg_type = "contingency"
     elif _has_word(q_lower, ("first cause", "sebab pertama", "aquinas")):
         arg_type = "first-cause"
+    elif _has_word(q_lower, ("kuantitatif", "regresi", "pengaruh", "korelasi", "survei", "angket", "eksperimen", "statistik")):
+        arg_type = "empiris_kuantitatif"
+    elif _has_word(q_lower, ("kualitatif", "studi kasus", "wawancara", "etnografi", "fenomenologi")):
+        arg_type = "kualitatif_studi_kasus"
+    elif _has_word(q_lower, ("kajian literatur", "tinjauan pustaka", "literature review", "slr", "meta-analisis")):
+        arg_type = "kajian_literatur"
+    elif _has_word(q_lower, ("yuridis", "normatif", "pasal", "peraturan", "undang-undang")):
+        arg_type = "yuridis_normatif"
+    elif _has_word(q_lower, ("komparatif", "studi komparatif", "perbandingan metode")):
+        arg_type = "komparatif"
 
     # Detect if contrast / objection / synthesis is requested
     is_synth = retrieval.is_synthesis_query(question)

@@ -34,7 +34,7 @@ Guidelines:
 def ask(question: str, model: str = None, top_k: int = 5) -> str:
     """Query the research corpus using advanced hybrid retrieval (FTS5 + Conceptual RRF), LLM re-ranking, and page-aware passage grounding."""
     config.ensure_dirs()
-    model = model or config.NINEROUTER_MODEL
+    model = model or config.LLM_MODEL
 
     # Search, rerank, and keep only papers whose own text matches the question.
     console.print("[cyan]RETRIEVING CORPUS[/cyan] [dim](Hybrid FTS5 + Semantic RRF, rerank, passages)...[/dim]")
@@ -100,8 +100,8 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
     user_prompt = f"{prompt_header}\n{full_context}\n\nUser Question:\n{question}"
 
     client = OpenAI(
-        api_key=config.NINEROUTER_API_KEY,
-        base_url=config.NINEROUTER_BASE_URL,
+        api_key=config.LLM_API_KEY,
+        base_url=config.LLM_BASE_URL,
     )
 
     console.print(f"[cyan]QUERYING CORPUS[/cyan] [dim]({len(results)} relevant papers referenced)...[/dim]")

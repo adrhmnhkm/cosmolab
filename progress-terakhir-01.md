@@ -128,5 +128,31 @@ Sesuai rencana pada [perbaikan-ui-carinaskah.md](file:///d:/Cosmolab/cosmolab/pe
 
 ---
 
-## 6. Langkah Selanjutnya yang Disarankan (Next Steps)
-1. **Git Commit & Push:** Melakukan commit untuk mengabadikan seluruh perbaikan arsitektural, mesin pencari Dual-Track, dan UI modern hari ini ke repositori git.
+## 6. Pembersihan Hardcoded Fase 1 & Fase 2 (Selesai Diterapkan)
+
+Telah diselesaikan refaktorisasi 6 modul inti untuk menghilangkan bias domain, tokoh statis, dan variabel legacy:
+1. **Dinamisasi Deteksi Niat & Fakultas (`cosmolab/ask_agent.py`):**
+   - Menghubungkan deteksi fakultas langsung ke `_faculties.detect_faculty_from_text()`, sehingga seluruh 8 fakultas inti dan fakultas kustom pengguna terdeteksi otomatis secara dinamis.
+   - Memperluas klasifikasi jenis kajian `arg_type` ke ranah empiris (`empiris_kuantitatif`, `kualitatif_studi_kasus`, `kajian_literatur`, `yuridis_normatif`, `komparatif`).
+2. **Ekspansi Multidisipliner Fallback Pencarian (`cosmolab/retrieval.py`):**
+   - Memperluas kamus `DOMAIN_CONCEPT_MAP` dari 11 istilah Kalam menjadi kamus komprehensif lintas bidang: Pendidikan/Tarbiyah (*PBL, kurikulum, literasi*), Ekonomi/Bisnis (*UMKM, kinerja keuangan, pajak, perbankan*), Hukum (*pidana, perdata, regulasi, UU PDP*), Sains/Teknologi (*AI, siber, data pribadi*), Kesehatan (*pasien, rumah sakit*), dan Metodologi Ilmiah (*kuantitatif, kualitatif, regresi, korelasi, validitas*).
+3. **Netralisasi Tokoh Kanonikal Sitasi (`cosmolab/citations.py`):**
+   - Menambahkan deteksi nama pengarang berbasis pola kepemilikan judul (*possessive* `'s*).
+   - Memperluas tokoh kanonikal rujukan dari semula hanya 14 filsuf klasik menjadi tokoh lintas disiplin: Pendidikan (*Dewey, Vygotsky, Piaget, Freire, Bruner*), Ekonomi/Bisnis (*Keynes, Adam Smith, Schumpeter, Friedman, Hayek, Porter*), Sosiologi/Hukum (*Weber, Durkheim, Foucault, Habermas, Bourdieu, Rawls*), Psikologi (*Kahneman, Bandura, Skinner*), dan Sains/Komputasi (*Turing, Shannon, Einstein, Newton, Darwin*).
+4. **Netralisasi Contoh JSON & Fallback Celah Riset (`cosmolab/gap_finder.py`):**
+   - Menghilangkan hardcoded contoh prompt *"teisme / kalam vs ateisme analitik"*, diganti dengan rumusan riset umum: *"Kubu Teori Dominan vs Temuan Empiris Baru"*.
+   - Fallback error parsing JSON kini dinamis menyesuaikan nama bidang/fakultas yang sedang dianalisis.
+5. **Netralisasi Default Roadmap Kurikulum (`cosmolab/curriculum.py`):**
+   - Mengubah nilai default `faculty_id` dari `"ilahiyyat"` menjadi `"all"` dengan pemanfaatan `UNIVERSAL_ROADMAP_TIERS`.
+6. **Pembersihan Konfigurasi Legacy (`cosmolab/ask.py`, `cosmolab/synthesize.py`):**
+   - Menghilangkan pemanggilan nama variabel lama `NINEROUTER_API_KEY`, `NINEROUTER_BASE_URL`, dan `NINEROUTER_MODEL`, serta menstandarkannya ke `config.LLM_API_KEY`, `config.LLM_BASE_URL`, dan `config.LLM_MODEL`.
+
+---
+
+## 7. Status Pengujian Pasca-Refaktorisasi
+* Seluruh **240 unit test lulus (100% Passed)** tanpa regresi (`python -m pytest` dalam 41.25 detik).
+
+---
+
+## 8. Langkah Selanjutnya yang Disarankan (Next Steps)
+1. **Git Commit & Push:** Menyimpan pembaruan refaktorisasi Fase 1 & 2 ke repositori git remote.
