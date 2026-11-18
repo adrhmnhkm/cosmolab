@@ -50,7 +50,10 @@ ARGUMENT_TYPES = {"kalam", "contingency", "first-cause", "fine-tuning", "filosof
 
 def _is_argument_paper(p: dict) -> bool:
     """Philosophy/theology papers and reasoning-type analyses get a formal premise view."""
-    if (p.get("argument_type") or "") in ARGUMENT_TYPES:
+    arg_t = p.get("argument_type") or ""
+    if arg_t in EMPIRICAL_TYPES:
+        return False
+    if arg_t in ARGUMENT_TYPES:
         return True
     return _faculties.canonical_id(p.get("faculty")) == "agama_filsafat"
 

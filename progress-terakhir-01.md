@@ -147,12 +147,19 @@ Telah diselesaikan refaktorisasi 6 modul inti untuk menghilangkan bias domain, t
 6. **Pembersihan Konfigurasi Legacy (`cosmolab/ask.py`, `cosmolab/synthesize.py`):**
    - Menghilangkan pemanggilan nama variabel lama `NINEROUTER_API_KEY`, `NINEROUTER_BASE_URL`, dan `NINEROUTER_MODEL`, serta menstandarkannya ke `config.LLM_API_KEY`, `config.LLM_BASE_URL`, dan `config.LLM_MODEL`.
 
+7. **Generalisasi Deteksi Tipe Paper Argumen vs Empiris (`cosmolab/ui/papers.py`):**
+   - Menambahkan pengecualian `if arg_t in EMPIRICAL_TYPES: return False` pada fungsi `_is_argument_paper()`.
+   - Menjamin bahwa paper-paper kajian empiris (kuantitatif, kualitatif, studi kasus) tidak lagi dipaksa masuk ke format silogisme/premis filosofis hanya karena berada di fakultas agama/filsafat, melainkan tampil dengan format empiris (tujuan, metode, sampel, temuan kunci, keterbatasan).
+8. **Optimasi Tampilan Review Draf Tanpa Komentar AI (`cosmolab/ui/pages/review.py`):**
+   - Menuntaskan butir 6 rencana perbaikan pada [PERBAIKAN.md](file:///d:/Cosmolab/cosmolab/PERBAIKAN.md).
+   - Bila review dijalankan tanpa komentar AI (`feedback=False`), sistem secara otomatis menyembunyikan tab *"Komentar per paragraf"* yang kosong dan langsung mengarahkan pengguna ke tab *"Cek kemiripan"* sebagai tab utama.
+
 ---
 
 ## 7. Status Pengujian Pasca-Refaktorisasi
-* Seluruh **240 unit test lulus (100% Passed)** tanpa regresi (`python -m pytest` dalam 41.25 detik).
+* Seluruh **240 unit test lulus (100% Passed)** tanpa regresi (`python -m pytest` dalam 41.08 detik).
 
 ---
 
 ## 8. Langkah Selanjutnya yang Disarankan (Next Steps)
-1. **Git Commit & Push:** Menyimpan pembaruan refaktorisasi Fase 1 & 2 ke repositori git remote.
+1. **Git Commit & Push:** Menyimpan pembaruan `papers.py`, `review.py`, dan `PERBAIKAN.md` ke repositori remote.

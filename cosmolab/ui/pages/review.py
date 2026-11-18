@@ -399,20 +399,7 @@ def _show(stem: str, key: str):
             for p in report["strengths"]:
                 st.markdown(f"- {p}")
 
-    tab_c, tab_s, tab_m = st.tabs(["Komentar per paragraf", "Pemeriksaan sitasi", "Cek kemiripan"])
-    with tab_m:
-        _similarity_tab(key, report)
-    with tab_c:
-        if not with_ai:
-            st.info("Review ini dijalankan tanpa komentar AI: hanya pemeriksaan sitasi dan kemiripan.")
-        st.caption(
-            "Putuskan setiap komentar AI. Hanya komentar yang diterima atau diedit yang masuk ke dokumen mahasiswa. "
-            "“Kutipan tidak ditemukan” berarti AI mengutip kalimat yang tidak ada di paragraf itu: periksa dulu."
-        )
-        st.session_state[f"{key}_{stem}_ready_seen"] = _review.is_ready(report)
-        _comments_panel(key, stem)
-
-    with tab_s:
+    def _render_citations():
         refs = report["citations"]["references"]
         cites = report["citations"]["citations"]
         rows = [{"Rujukan": r["raw"][:140], "Status": _verify.LABELS.get(r["status"], r["status"]), "Catatan": r.get("note", "")}
@@ -424,9 +411,29 @@ def _show(stem: str, key: str):
         else:
             st.info("Tidak ditemukan sitasi atau daftar pustaka di draf.")
 
+    if with_ai:
+        tab_c, tab_s, tab_m = st.tabs(["Komentar per paragraf", "Pemeriksaan sitasi", "Cek kemiripan"])
+        with tab_m:
+            _similarity_tab(key, report)
+        with tab_c:
+            st.caption(
+                "Putuskan setiap komentar AI. Hanya komentar yang diterima atau diedit yang masuk ke dokumen mahasiswa. "
+                "“Kutipan tidak ditemukan” berarti AI mengutip kalimat yang tidak ada di paragraf itu: periksa dulu."
+            )
+            st.session_state[f"{key}_{stem}_ready_seen"] = _review.is_ready(report)
+            _comments_panel(key, stem)
+        with tab_s:
+            _render_citations()
+    else:
+        tab_m, tab_s = st.tabs(["Cek kemiripan", "Pemeriksaan sitasi"])
+        with tab_m:
+            _similarity_tab(key, report)
+        with tab_s:
+            _render_citations()
+
     st.markdown("##### Kirim ke mahasiswa")
     ready = _review.is_ready(report)
-    if not ready:
+    if not ready and with_ai:
         st.info(f"Masih ada {d[_review.PENDING]} komentar yang belum diputuskan. "
                 "Dokumen untuk mahasiswa baru bisa dibuat setelah semua diputuskan.")
     col_d1, col_d2 = st.columns(2, vertical_alignment="bottom")
