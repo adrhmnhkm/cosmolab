@@ -144,7 +144,7 @@ Ada dua peran:
 - **admin**: membuka semua proyek dan data utama, serta melihat bagian **Khusus pemilik** di Beranda (status setup, semua proyek, pemakaian AI).
 - **konsultan**: bekerja di proyek tempat ia menjadi anggota. Tidak melihat bagian pemilik.
 
-Admin mengelola akun di **lobi tim**, tab **Akun** (buat akun, password sementara baru, hapus akun) dan tab **Anggota** (siapa boleh membuka proyek mana). Perintah di command prompt komputer server tetap bisa dipakai:
+Admin mengelola akun di **lobi tim** (tab **Akun** dan **Anggota**) atau langsung di dalam dashboard web pada menu **Admin → Kelola Tim & Proyek**. Anggota tim maupun admin tidak perlu mengetik di terminal CLI untuk membuat atau mengelola proyek. Perintah CLI di komputer server tetap tersedia sebagai opsi teknis:
 
 | Perintah | Fungsi |
 | --- | --- |
@@ -158,18 +158,19 @@ Admin mengelola akun di **lobi tim**, tab **Akun** (buat akun, password sementar
 
 **Pemilik** adalah admin pertama yang dibuat. Hanya pemilik yang bisa membuat, mereset password, atau menghapus akun admin di lobi. Admin lain hanya mengelola akun konsultan. Pindahkan peran pemilik ke admin lain dengan `cosmolab team owner <nama>` di komputer server.
 
-Urutan pertama kali:
+Urutan pertama kali (100% via Browser):
 
-1. Buat akun admin untuk diri sendiri: `cosmolab team add <nama> --role admin`.
-2. Buat akun setiap konsultan, lalu beri akses proyeknya dengan `add-member`.
-3. Berikan password sementara langsung ke orangnya, jangan lewat grup chat. Password sementara hanya tampil sekali.
+1. Buka lobi tim di browser, lalu buka formulir **Inisialisasi Akun Admin Pertama** langsung di web (atau lewat `cosmolab team add <nama> --role admin`).
+2. Masuk sebagai admin, lalu buka tab **Akun** untuk membuat akun setiap konsultan.
+3. Berikan password sementara langsung ke orangnya (hanya tampil sekali).
+4. Buat proyek dan tentukan anggota konsultan di tab **Proyek baru** atau **Anggota**. Konsultan juga bisa membuat proyek klien mereka sendiri langsung di lobi.
 
 Yang perlu diketahui:
 
 - Begitu akun pertama dibuat, password bersama tidak berlaku lagi. Semua orang masuk dengan akunnya.
 - Password disimpan sebagai hash di `shared/team_users.json` di komputer server. File ini tidak ikut ke GitHub. Jangan dikirim ke siapa pun.
 - Akses yang dicabut berlaku pada klik berikutnya, tanpa perlu mematikan server.
-- Dashboard yang dijalankan tanpa mode tim (di komputer pemilik) tetap tanpa login.
+- Dashboard yang dijalankan tanpa mode tim (di komputer pemilik) tetap tanpa login, dan admin bisa mengelola tim di menu **Kelola Tim & Proyek**.
 
 ### Menyalakan server
 
@@ -183,7 +184,7 @@ Yang perlu diketahui:
 Lobi adalah halaman pertama yang dibuka tim. Isinya:
 
 - **Proyek**: daftar proyek yang boleh dibuka akun itu. Klik **Buka** untuk menyiapkan proyek (10-20 detik), lalu **Masuk**. Tidak perlu login lagi di proyek.
-- **Proyek baru** (admin): isi nama klien, keterangan, dan anggota tim. Nama folder dibuat otomatis, misalnya `2026-11-universitas-x-budi`.
+- **Proyek baru**: semua anggota tim (termasuk konsultan) dapat membuat proyek baru langsung dari browser. Proyek otomatis terisolasi dan nama folder dibuat otomatis, misalnya `2026-11-universitas-x-budi`.
 - **Anggota** dan **Akun** (admin): atur akses proyek dan akun tim.
 - **Sedang terbuka** (admin): proyek yang sedang menyala, dan tombol untuk menutupnya.
 

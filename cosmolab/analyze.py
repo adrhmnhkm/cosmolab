@@ -34,6 +34,7 @@ class Quote(BaseModel):
 
 
 class PaperAnalysis(BaseModel):
+    plain_summary: str | None = None
     thesis: str | None = None
     argument_type: str | None = None
     research_question: str | None = None
@@ -55,7 +56,9 @@ PROMPT_EN = """You are a senior academic research analyst tasked with deeply dis
 
 CRITICAL INSTRUCTIONS — FULL-TEXT CORPUS DISSECTION:
 1. DO NOT RELY MERELY ON THE ABSTRACT! Scan through all major sections: Introduction, Literature Review, Methodology, Results/Findings & Discussion, and Conclusions.
-2. REPRESENTATIVE QUOTES ('quotes'):
+2. PLAIN-LANGUAGE SUMMARY ('plain_summary'):
+   - Write a 2-3 sentence intuitive, non-technical explanation that a client, student, or non-specialist can immediately grasp without academic jargon or formulas. Answer: In simple terms, what is this paper trying to show, how does it work conceptually, and what is its practical real-world takeaway?
+3. REPRESENTATIVE QUOTES ('quotes'):
    - Extract 4 to 6 verbatim key quotes directly from the text.
    - STRICTLY PROHIBITED from taking all quotes from the abstract!
    - Proportional distribution:
@@ -64,23 +67,24 @@ CRITICAL INSTRUCTIONS — FULL-TEXT CORPUS DISSECTION:
      * 1 quote from Conclusion / Recommendations
    - Preserve original language of the text.
    - Provide 'page_hint' with the section name only (e.g., "Results & Discussion", "Conclusion"). Do NOT guess or invent page numbers; leave the number out if you are not certain.
-3. RESEARCH METHODOLOGY ('research_method'):
+4. RESEARCH METHODOLOGY ('research_method'):
    - Identify concrete research methodology (e.g., "Structured Literature Review", "Quantitative Multiple Linear Regression", "Normative Juridical", "Empirical Case Study", etc.).
-4. CORE FINDINGS ('key_findings'):
+5. CORE FINDINGS ('key_findings'):
    - List 3-5 concrete empirical/substantive findings from the Results & Discussion section.
-5. LOGICAL PREMISES ('premises'):
+6. LOGICAL PREMISES ('premises'):
    - List the premises that are explicitly stated or directly implied by the paper's argumentation (not invented). Include at most 7. Return an empty list if the paper makes no structured argument.
-6. ARGUMENT TYPE:
+7. ARGUMENT TYPE:
    - Select closest match: "empiris_kuantitatif"|"kualitatif_studi_kasus"|"yuridis_normatif"|"kajian_literatur"|"filosofis_rasional"|"konseptual_teoretis"|"komparatif"|"other".
-7. LITERATURE REVIEW FIELDS (what a consultant needs to compare papers):
+8. LITERATURE REVIEW FIELDS (what a consultant needs to compare papers):
    - 'research_question': the research question or aim as the authors state it, in one or two sentences.
    - 'sample_data': who or what was studied: sample size and population, data source, period, location, or the texts and regulations analysed. Null if the paper has no data (purely conceptual).
    - 'limitations': 1-4 limitations the authors acknowledge. If they state none, give at most 2 evident ones and start each with "(not stated by the authors)".
    - 'future_research': 1-3 suggestions for further research made by the authors. Empty list if they make none.
-8. OBJECTION AND DEFENSE ('key_objection', 'key_defense'): fill these only for philosophical, theological, or conceptual argument papers. Use null for empirical, legal, and review papers.
+9. OBJECTION AND DEFENSE ('key_objection', 'key_defense'): fill these only for philosophical, theological, or conceptual argument papers. Use null for empirical, legal, and review papers.
 
 Return STRICT JSON matching this schema:
 {
+  "plain_summary": str,
   "thesis": str,
   "argument_type": str,
   "research_question": str|null,
@@ -103,7 +107,9 @@ PROMPT_ID = """Kamu adalah analis riset akademik senior yang bertugas membedah n
 
 PENTING — PRINSIP ANALISIS MENYELURUH (DEEP CORPUS EXTRACTION):
 1. JANGAN HANYA MEMBACA ABSTRAK! Jelajahi seluruh bagian teks: Pendahuluan, Landasan Teori, Metode Penelitian, Hasil & Pembahasan (Findings & Discussion), hingga Kesimpulan.
-2. EKSTRAKSI KUTIPAN (QUOTES) DARI BERBAGAI BAGIAN:
+2. RINGKASAN BAHASA AWAM ('plain_summary'):
+   - Tulis 2 hingga 3 kalimat penjelasan intisari paper dalam BAHASA AWAM / NON-TEKNIS yang santai dan mudah dipahami orang biasa tanpa istilah rumit atau rumus. Jawab secara lugas: pada intinya paper ini mau membuktikan apa, bagaimana idenya secara sederhana, dan apa arti/manfaatnya bagi dunia nyata?
+3. EKSTRAKSI KUTIPAN (QUOTES) DARI BERBAGAI BAGIAN:
    - Ambil 4 hingga 6 kutipan penting langsung (verbatim) dari teks naskah.
    - DILARANG KERAS mengutip semuanya dari abstrak! Abstrak hanyalah ringkasan awal.
    - Wajib mengambil kutipan secara proporsional dari:
@@ -112,23 +118,24 @@ PENTING — PRINSIP ANALISIS MENYELURUH (DEEP CORPUS EXTRACTION):
      * Bagian Kesimpulan / Rekomendasi (implikasi akhir)
    - Gunakan BAHASA ASLI teks tempat kalimat itu berada (jika naskah berbahasa Indonesia, kutip kalimat Bahasa Indonesianya; jika berbahasa Inggris, kutip kalimat Bahasa Inggrisnya). JANGAN membatasi kutipan hanya pada bahasa Inggris!
    - Cantumkan 'page_hint' dengan nama bab saja (contoh: "Pendahuluan", "Hasil dan Pembahasan", "Kesimpulan"). JANGAN menebak atau mengarang nomor halaman; kosongkan nomor jika tidak yakin.
-3. METODOLOGI RISET ('research_method'):
+4. METODOLOGI RISET ('research_method'):
    - Identifikasi pendekatan metodologi konkret yang digunakan (misal: "Kajian Literatur Terstruktur", "Kuantitatif Regresi Linier Berganda", "Yuridis Normatif", "Eksperimental", "Studi Kasus Kualitatif", dll).
-4. TEMUAN INTI ('key_findings'):
+5. TEMUAN INTI ('key_findings'):
    - Sebutkan 3-5 poin temuan substantif dari bab Hasil dan Pembahasan (bukan sekadar pengulangan abstrak).
-5. PREMIS & ALUR LOGIS ('premises'):
+6. PREMIS & ALUR LOGIS ('premises'):
    - Daftarkan premis yang secara eksplisit dinyatakan atau secara langsung tersirat dari argumentasi paper (bukan dikarang). Paling banyak 7. Kembalikan daftar kosong jika paper tidak menggunakan argumen terstruktur.
-6. ARGUMENT TYPE:
+7. ARGUMENT TYPE:
    - Pilih salah satu: "empiris_kuantitatif", "kualitatif_studi_kasus", "yuridis_normatif", "kajian_literatur", "filosofis_rasional", "konseptual_teoretis", "komparatif", atau "other".
-7. ISIAN TINJAUAN PUSTAKA (yang dibutuhkan konsultan untuk membandingkan paper):
+8. ISIAN TINJAUAN PUSTAKA (yang dibutuhkan konsultan untuk membandingkan paper):
    - 'research_question': pertanyaan atau tujuan penelitian seperti dinyatakan penulis, satu atau dua kalimat.
    - 'sample_data': apa atau siapa yang diteliti: jumlah dan populasi sampel, sumber data, periode, lokasi, atau teks dan peraturan yang dianalisis. Null kalau paper tidak memakai data (murni konseptual).
    - 'limitations': 1-4 keterbatasan yang diakui penulis. Kalau penulis tidak menyebut satu pun, beri paling banyak 2 keterbatasan yang jelas dan awali masing-masing dengan "(tidak disebut penulis)".
    - 'future_research': 1-3 saran penelitian lanjutan dari penulis. Daftar kosong kalau tidak ada.
-8. KEBERATAN DAN PEMBELAAN ('key_objection', 'key_defense'): isi hanya untuk paper argumen filsafat, teologi, atau konseptual. Isi null untuk paper empiris, hukum, dan kajian literatur.
+9. KEBERATAN DAN PEMBELAAN ('key_objection', 'key_defense'): isi hanya untuk paper argumen filsafat, teologi, atau konseptual. Isi null untuk paper empiris, hukum, dan kajian literatur.
 
 Kembalikan STRICT JSON dengan skema ini:
 {
+  "plain_summary": str,
   "thesis": str,
   "argument_type": str,
   "research_question": str|null,
@@ -332,7 +339,7 @@ def _analyze_one(client: OpenAI, text: str, model: str, lang: str = "id", timeou
                 d = chunk.choices[0].delta if chunk.choices else None
                 delta = d.content if d else None
                 if not delta:
-                    # Reasoning models (deepseek-v4-pro) think before they write; report that too,
+                    # Reasoning models think before they write; report that too,
                     # so the display does not look stuck.
                     if d is not None and (getattr(d, "reasoning_content", None) or getattr(d, "reasoning", None)):
                         thought += 1

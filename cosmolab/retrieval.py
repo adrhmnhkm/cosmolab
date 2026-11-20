@@ -319,8 +319,12 @@ for example: [3, 1, 5]. Return [] if no candidate addresses the query."""
             temperature=0.0,
             max_tokens=100,
             timeout=30.0,
+            stream=True,
         )
-        content = (resp.choices[0].message.content or "").strip()
+        if hasattr(resp, "choices"):
+            content = (resp.choices[0].message.content or "").strip()
+        else:
+            content = "".join(chunk.choices[0].delta.content or "" for chunk in resp if chunk.choices).strip()
         m = re.search(r"\[[0-9,\s]*\]", content)
         if m:
             indices = json.loads(m.group(0))

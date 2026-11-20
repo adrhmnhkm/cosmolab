@@ -176,14 +176,19 @@ def _project_list():
 
 def _new_project():
     consultants = [u for u in _team.list_users() if u["role"] != _team.ADMIN]
+    is_consultant = bool(user and user.get("role") != _team.ADMIN)
     with st.form("lobi_proyek_baru", clear_on_submit=True):
         client = st.text_input("Nama klien", placeholder="Contoh: Universitas X - Budi Santoso")
         description = st.text_input("Keterangan (opsional)", placeholder="Contoh: tesis manajemen keuangan")
         folder = st.text_input("Nama folder (opsional)",
                                help="Kosongkan untuk dibuat otomatis, misalnya 2026-11-universitas-x-budi-santoso.")
-        members = st.multiselect("Anggota tim", [u["username"] for u in consultants],
-                                 format_func=lambda n: next((u["name"] for u in consultants if u["username"] == n), n)) \
-            if consultants else []
+        if is_consultant and user:
+            st.caption(f"Proyek baru akan otomatis ditugaskan ke akun Anda (**{user['name']}**).")
+            members = []
+        else:
+            members = st.multiselect("Anggota tim", [u["username"] for u in consultants],
+                                     format_func=lambda n: next((u["name"] for u in consultants if u["username"] == n), n)) \
+                if consultants else []
         submitted = st.form_submit_button("Buat proyek", type="primary")
     if not submitted:
         return
@@ -195,6 +200,8 @@ def _new_project():
         path = config.create_project(name, client=client.strip(), description=description.strip())
         for m in members:
             _team.add_member(path.name, m)
+        if is_consultant and user:
+            _team.add_member(path.name, user["username"])
     except (ValueError, FileExistsError) as e:
         st.error(str(e))
         return
@@ -308,6 +315,39 @@ def _open_dashboards():
             st.rerun()
 
 
+def _init_first_admin():
+    st.markdown("##### Inisialisasi Akun Admin Pertama")
+    st.caption("Sistem saat ini memakai password bersama dari `.env`. Buat akun admin pertama Anda di bawah ini agar bisa mengelola akun tim dan anggota proyek langsung dari UI.")
+    with st.form("lobi_init_admin", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        u_name = c1.text_input("Nama pengguna", placeholder="admin")
+        f_name = c2.text_input("Nama lengkap", placeholder="Admin Utama")
+        p1 = c1.text_input("Password baru", type="password", help=f"Minimal {_team.MIN_PASSWORD} karakter.")
+        p2 = c2.text_input("Ulangi password", type="password")
+        submitted = st.form_submit_button("Inisialisasi Admin", type="primary")
+    if submitted:
+        if not u_name.strip() or not f_name.strip():
+            st.error("Nama pengguna dan nama lengkap harus diisi.")
+            return
+        if len(p1) < _team.MIN_PASSWORD:
+            st.error(f"Password minimal {_team.MIN_PASSWORD} karakter.")
+            return
+        if p1 != p2:
+            st.error("Kedua password tidak sama.")
+            return
+        try:
+            _team.add_user(u_name, role=_team.ADMIN, name=f_name)
+            _team.change_password(u_name, p1)
+        except ValueError as e:
+            st.error(str(e))
+            return
+        new_u = _team.get_user(u_name)
+        st.session_state["team_user"] = new_u
+        _team.set_current(new_u)
+        _flash("success", f"Akun admin **{u_name}** berhasil dibuat! Selamat datang di CosmoLab.")
+        st.rerun()
+
+
 if account_admin:
     tabs = st.tabs(["Proyek", "Proyek baru", "Anggota", "Akun", "Sedang terbuka"])
     with tabs[0]:
@@ -321,9 +361,9 @@ if account_admin:
     with tabs[4]:
         _open_dashboards()
 elif is_admin:
-    # Shared team password: no accounts tab. The first admin account is made on the server itself.
-    st.caption("Tim masih memakai password bersama. Admin membuat akun pertama di komputer server: "
-               "`cosmolab team add <nama> --role admin`.")
+    # Shared team password: no accounts yet
+    with st.expander("🔑 Buat Akun Admin Pertama Langsung via UI (Bebas CLI)", expanded=True):
+        _init_first_admin()
     tabs = st.tabs(["Proyek", "Proyek baru", "Sedang terbuka"])
     with tabs[0]:
         _project_list()
@@ -332,4 +372,9 @@ elif is_admin:
     with tabs[2]:
         _open_dashboards()
 else:
-    _project_list()
+    # Consultant account: can see their projects AND create new projects!
+    tabs = st.tabs(["Proyek", "Proyek baru"])
+    with tabs[0]:
+        _project_list()
+    with tabs[1]:
+        _new_project()

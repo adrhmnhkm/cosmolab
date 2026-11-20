@@ -29,7 +29,16 @@ models/
 projects/
 
 # Local Claude Code settings
-.claude/settings.local.json
+.claude/
+
+# Taste skill artifacts
+.taste-skill/
+*/.taste-skill/
+
+# Temporary / presentation / test paper samples
+contoh_uji/
+*.pptx
+gambar.jpg
 
 # Backups made by `cosmolab backup`
 backups/

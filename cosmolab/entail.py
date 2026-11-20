@@ -258,6 +258,11 @@ def _score(cite: dict, paper: dict) -> float:
     best = title_similarity(label, title)
     if len(label) >= 12 and (label in title or title.startswith(label.rstrip(". "))):
         best = max(best, 0.9)
+    prefix = title.split(":", 1)[0].strip() if ":" in title else ""
+    if prefix and len(prefix) >= 3 and (label == prefix or prefix.startswith(label) or label.startswith(prefix)):
+        best = max(best, 0.9)
+    elif len(label) >= 4 and (title.startswith(label) or label in title):
+        best = max(best, 0.85)
     words = set(re.findall(r"[a-zà-ÿ]{3,}", label))
     if words & _surnames(paper):
         best = max(best, 0.85)
@@ -292,8 +297,13 @@ def _llm_terms(items: list[dict], model: str = None) -> dict[int, str]:
         response_format={"type": "json_object"},
         temperature=0,
         timeout=60,
+        stream=True,
     )
-    data = _parse_response(resp.choices[0].message.content or "")
+    if hasattr(resp, "choices"):
+        content = resp.choices[0].message.content or ""
+    else:
+        content = "".join(chunk.choices[0].delta.content or "" for chunk in resp if chunk.choices)
+    data = _parse_response(content)
     return {int(r["id"]): str(r.get("terms") or "") for r in data.get("results") or [] if str(r.get("id", "")).isdigit()}
 
 
@@ -348,8 +358,12 @@ def _llm_judge(items: list[dict], model: str = None) -> dict[int, dict]:
         response_format={"type": "json_object"},
         temperature=0,
         timeout=120,
+        stream=True,
     )
-    content = resp.choices[0].message.content or ""
+    if hasattr(resp, "choices"):
+        content = resp.choices[0].message.content or ""
+    else:
+        content = "".join(chunk.choices[0].delta.content or "" for chunk in resp if chunk.choices)
     try:
         rows = _parse_response(content).get("results") or []
     except ValueError:

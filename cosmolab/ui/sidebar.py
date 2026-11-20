@@ -56,13 +56,56 @@ def build_sidebar() -> AppContext:
     st.sidebar.markdown(BRAND_HTML.format(mark=f'<img class="sidebar-brand-mark" src="{LOGO_MARK_URI}" alt="">' if LOGO_MARK_URI else ""),
         unsafe_allow_html=True)
 
-    # Active client project (set per dashboard process via `cosmolab -P <proyek> ui`)
-    _proj = config.project_info()
-    if config.PROJECT:
-        _client = f" · {_proj['client']}" if _proj.get("client") else ""
-        st.sidebar.info(f"Proyek: **{config.PROJECT}**{_client}")
+    # -------------------------------------------------------------
+    # Active Project Switcher (Dropdown for Admin & Assigned Members)
+    # -------------------------------------------------------------
+    _user = _team.current()
+    _is_owner = _home.is_owner() or bool(_user and _user.get("role") == _team.ADMIN)
+
+    # Collect visible projects
+    all_projects = config.list_projects()
+    if _is_owner:
+        proj_list = [{"name": "", "client": "Data utama (Koleksi Induk)"}] + all_projects
     else:
-        st.sidebar.warning("Data utama (bukan proyek klien)")
+        # Consultant sees projects where they are a member
+        proj_list = [p for p in all_projects if _user and _user.get("username") in (p.get("members") or [])]
+        if not proj_list:
+            proj_list = [{"name": "", "client": "Belum ada proyek ditugaskan"}]
+
+    proj_labels = {
+        p["name"]: f"📁 {p.get('client') or p['name']} ({p['name']})" if p["name"] else "🏛️ Data utama (Koleksi Induk)"
+        for p in proj_list
+    }
+    proj_keys = [p["name"] for p in proj_list]
+
+    curr_proj = st.session_state.get("active_project") or config.PROJECT or ""
+    if curr_proj not in proj_keys:
+        proj_keys.insert(0, curr_proj)
+        proj_labels[curr_proj] = f"📁 {curr_proj}"
+
+    def _on_project_switch():
+        picked = st.session_state.get("active_project_switcher")
+        target = picked if picked else None
+        st.session_state["active_project"] = target
+        config.use_project(target)
+        st.session_state.pop("_sinta_ranks", None)
+        st.session_state.pop("_meta_store", None)
+        st.session_state.pop("review_current", None)
+
+    # Sync selectbox key if it differs
+    if st.session_state.get("active_project_switcher") != curr_proj:
+        st.session_state["active_project_switcher"] = curr_proj
+
+    st.sidebar.selectbox(
+        "Proyek Aktif",
+        proj_keys,
+        index=proj_keys.index(curr_proj),
+        format_func=lambda k: proj_labels.get(k, k),
+        key="active_project_switcher",
+        on_change=_on_project_switch,
+        help="Pilih proyek klien untuk langsung membuka ruang kerja, database, dan korpus naskah proyek tersebut."
+    )
+
     _lobby_link()
 
     _user = _team.current()
@@ -147,9 +190,10 @@ def build_sidebar() -> AppContext:
     # Admin tools: the owner's local dashboard, or an admin account in team mode.
     if _home.is_owner():
         st.sidebar.markdown("<div class='nav-cluster-header'>Admin</div>", unsafe_allow_html=True)
+        render_nav_item("Kelola Tim & Proyek", "Kelola Tim", icon=":material/group:")
         render_nav_item("Periksa akurasi", "Pusat Akurasi", icon=":material/verified:")
         render_nav_item("Tulis artikel (konten firma)", "Studio Artikel Siap Baca", icon=":material/edit_note:")
-    elif st.session_state.get("active_nav_menu") in ("Pusat Akurasi", "Studio Artikel Siap Baca"):
+    elif st.session_state.get("active_nav_menu") in ("Kelola Tim", "Pusat Akurasi", "Studio Artikel Siap Baca"):
         st.session_state["active_nav_menu"] = "Beranda"
 
     menu = st.session_state["active_nav_menu"]

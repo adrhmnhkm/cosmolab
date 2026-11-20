@@ -26,7 +26,7 @@ def _answer(resp) -> str:
 
 
 def chat_text(system: str, user: str, model: str | None = None, temperature: float = 0.3,
-              timeout: float = 120.0, label: str = "AI") -> str:
+              timeout: float = 180.0, label: str = "AI", json_mode: bool = False) -> str:
     """Return the active AI's answer to one system + user message, retrying once.
 
     Raises RuntimeError when both attempts fail or come back empty.
@@ -34,12 +34,30 @@ def chat_text(system: str, user: str, model: str | None = None, temperature: flo
     model = model or config.LLM_MODEL
     client = OpenAI(base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "timeout": timeout,
+        "stream": True,
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+
     problem = ""
     for attempt in (1, 2):
         try:
-            resp = client.chat.completions.create(model=model, messages=messages, temperature=temperature,
-                                                  timeout=timeout)
-            content = _answer(resp)
+            resp = client.chat.completions.create(**kwargs)
+            if hasattr(resp, "choices"):
+                content = _answer(resp)
+            else:
+                parts = []
+                for chunk in resp:
+                    if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                        parts.append(chunk.choices[0].delta.content)
+                content = "".join(parts).strip()
+                if any(e in content for e in _UPSTREAM_ERRORS):
+                    content = ""
             if content:
                 return content
             problem = "jawaban AI kosong"

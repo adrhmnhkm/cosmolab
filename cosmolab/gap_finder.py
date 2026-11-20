@@ -42,7 +42,20 @@ def find_research_gaps(faculty_id: str = "all", custom_focus: str = "", model: s
         papers = all_papers
 
     fac_obj = _faculties.get_faculty(faculty_id) if faculty_id != "all" else None
-    fac_name = fac_obj.name if fac_obj else "Multidisipliner (Semua Fakultas)"
+    if fac_obj:
+        fac_name = fac_obj.name
+    else:
+        fac_counts = {}
+        for p in papers:
+            f_id = p.get("faculty")
+            if f_id and f_id not in ("all", "umum", "universal", None):
+                fac_counts[f_id] = fac_counts.get(f_id, 0) + 1
+        if fac_counts:
+            top_f = max(fac_counts, key=fac_counts.get)
+            top_obj = _faculties.get_faculty(top_f)
+            fac_name = top_obj.name if top_obj else "Sains & Teknologi"
+        else:
+            fac_name = "Kajian Interdisipliner"
 
     # Compile structured corpus digest
     corpus_items = []
@@ -120,39 +133,37 @@ RINGKASAN LITERATUR KORPUS ({len(papers)} PAPER):
 
 Silakan analisis korpus di atas dan hasilkan JSON analisis celah riset (Research Gap & Novelty Report) yang mendalam."""
 
-    raw_response = _llm.chat_text(system_prompt, user_prompt, model=model, temperature=0.4, timeout=180.0,
-                                  label="Cari celah riset")
+    raw_response = _llm.chat_text(system_prompt, user_prompt, model=model, temperature=0.2, timeout=240.0,
+                                  label="Cari celah riset", json_mode=True)
 
-    # Parse JSON block
-    clean_json_str = raw_response.strip()
-    if "```json" in clean_json_str:
-        clean_json_str = clean_json_str.split("```json")[1].split("```")[0].strip()
-    elif "```" in clean_json_str:
-        clean_json_str = clean_json_str.split("```")[1].split("```")[0].strip()
-
+    from .analyze import _parse_response
     try:
-        report_data = json.loads(clean_json_str)
-    except Exception:
-        # Fallback structured dict
+        report_data = _parse_response(raw_response)
+        if not report_data.get("novel_research_proposals"):
+            raise ValueError("Tidak ada usulan proposal dalam jawaban model")
+        if not report_data.get("faculty_domain"):
+            report_data["faculty_domain"] = fac_name
+    except Exception as e:
+        console.print(f"[yellow]Peringatan: Gagal membaca JSON celah riset ({e}), menggunakan struktur pemulihan.[/yellow]")
         report_data = {
             "faculty_domain": fac_name,
-            "executive_summary": raw_response[:800] if raw_response else f"Ringkasan tinjauan literatur dan analisis kesenjangan riset pada bidang {fac_name}.",
+            "executive_summary": raw_response[:1200] if raw_response else f"Ringkasan tinjauan literatur dan analisis kesenjangan riset pada bidang {fac_name}.",
             "established_consensus": [f"Konsensus primer dan kerangka kerja konseptual yang diakui dalam literatur {fac_name}."],
             "unresolved_tensions": [{
-                "issue": f"Silang Pendapat Teori vs Bukti Empiris ({fac_name})",
-                "thesis_side": "Kubu Teori Dominan / Pendekatan Konvensional",
-                "antithesis_side": "Kubu Bukti Lapangan / Kritik Kontemporer",
-                "why_stuck": "Perbedaan metodologi, variasi sampel data, dan konteks implementasi.",
+                "issue": f"Perdebatan Paradigma Metodologis ({fac_name})",
+                "thesis_side": "Pendekatan Konvensional / Arsitektur Eksisting",
+                "antithesis_side": "Kritik Terhadap Batasan Skalabilitas & Efisiensi",
+                "why_stuck": "Perbedaan evaluasi eksperimental, variasi dataset, dan kompleksitas komputasi.",
             }],
-            "methodological_blindspots": [f"Keterbatasan sampel data dan minimnya integrasi metode campuran (mixed methods) pada riset {fac_name}."],
+            "methodological_blindspots": [f"Keterbatasan evaluasi berskala besar dan minimnya pengujian komparatif lintas arsitektur pada riset {fac_name}."],
             "novel_research_proposals": [{
-                "title": f"Investigasi Komprehensif dan Rekonstruksi Model Riset di Bidang {fac_name}",
+                "title": f"Pengembangan Kerangka Kerja Adaptif di Bidang {fac_name}",
                 "target_level": "Tesis S2 / Disertasi S3",
-                "gap_addressed": f"Kesenjangan metodologis dan pemetaan komparatif literatur {fac_name}",
-                "research_questions": [f"Bagaimana efektivitas dan implikasi implementasi model riset terkini di bidang {fac_name}?"],
-                "proposed_hypothesis": "Pendekatan berbasis bukti otentik menghasilkan akurasi yang lebih terukur.",
+                "gap_addressed": f"Kesenjangan metodologis dan skalabilitas pada literatur {fac_name}",
+                "research_questions": [f"Bagaimana efektivitas dan skalabilitas kerangka kerja baru ini dibandingkan metode dasar?"],
+                "proposed_hypothesis": "Pendekatan adaptif terintegrasi mampu meningkatkan retensi pengetahuan tanpa degradasi performa.",
                 "theoretical_framework": f"Kerangka Konseptual & Teori Kontemporer {fac_name}",
-                "expected_novelty": "Kebaruan metodologis dan resolusi kesenjangan literatur empiris",
+                "expected_novelty": "Peningkatan kebaruan metodologis dan resolusi kesenjangan komputasi empiris",
             }]
         }
 
@@ -160,6 +171,13 @@ Silakan analisis korpus di atas dan hasilkan JSON analisis celah riset (Research
     report_data["faculty_id"] = faculty_id
     report_data["model_used"] = model
     return report_data
+
+
+def _clean_text(s: str) -> str:
+    """Remove AI emoji markers and leading symbols if present."""
+    if not s:
+        return ""
+    return re.sub(r"^[🔍📌🏛️✅⚔️⚠️👁️🎯💎\s\-•]+", "", str(s)).strip()
 
 
 def save_gap_report(report_data: dict) -> dict:
@@ -175,51 +193,81 @@ def save_gap_report(report_data: dict) -> dict:
     json_path = gaps_dir / f"{file_stem}.json"
     json_path.write_text(json.dumps(report_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 2. Build Markdown Document
+    domain = report_data.get("faculty_domain") or "Kajian Interdisipliner"
+    today_str = datetime.now().strftime("%d %B %Y")
+
+    # 2. Build Publication-Grade Markdown Document (Firm-Grade Executive Format)
     md_lines = [
-        f"# 🔍 Laporan Celah Riset & Kebaruan Akademik (Research Gap & Novelty Analysis)",
-        f"> **Domain:** {report_data.get('faculty_domain', 'Multidisipliner')} | **Tanggal:** {datetime.now().strftime('%d %B %Y')} | **Model:** `{report_data.get('model_used', 'LLM')}`\n",
-        "## 📌 Ringkasan Eksekutif",
-        report_data.get("executive_summary", ""),
-        "\n---",
-        "## 🏛️ Konsensus yang Mapan dalam Korpus",
+        f"# Laporan Telaah Kritis & Celah Riset Akademik: {domain}",
+        f"> **Bidang Kajian:** {domain}  \n> **Tanggal Telaah:** {today_str}  \n> **Penyusun:** CosmoLab Research Analytics  \n> **Klasifikasi:** Laporan Telaah Strategis (Executive Advisory)\n",
+        "## 1. Ringkasan Eksekutif",
+        report_data.get("executive_summary", "").strip(),
+        "",
+        "## 2. Landasan Konsensus Literatur Ilmiah",
+        "Berikut adalah proposisi dan temuan yang telah mencapai konsensus mapan dalam korpus literatur yang dianalisis:",
+        "",
     ]
-    for c in report_data.get("established_consensus", []):
-        md_lines.append(f"- ✅ {c}")
+    for idx, c in enumerate(report_data.get("established_consensus", []), 1):
+        clean_c = _clean_text(c)
+        if clean_c:
+            md_lines.append(f"{idx}. {clean_c}")
 
     md_lines.extend([
-        "\n---",
-        "## ⚔️ Perdebatan Terbuka yang Belum Tuntas (Unresolved Tensions)",
+        "",
+        "## 3. Matriks Perdebatan & Ketegangan Teoretis",
+        "Pemetaan kontroversi dan silang pendapat terbuka yang belum mencapai konsensus definitif antar-peneliti:",
+        "",
     ])
     for idx, ut in enumerate(report_data.get("unresolved_tensions", []), 1):
-        md_lines.append(f"### {idx}. {ut.get('issue', 'Isu Perdebatan')}")
-        md_lines.append(f"- **Kubu Tesis/Teisme:** {ut.get('thesis_side', '-')}")
-        md_lines.append(f"- **Kubu Antitesis/Kritik:** {ut.get('antithesis_side', '-')}")
-        md_lines.append(f"- ⚠️ **Mengapa Belum Tuntas:** {ut.get('why_stuck', '-')}\n")
+        issue_title = _clean_text(ut.get("issue", "Isu Perdebatan"))
+        md_lines.append(f"### 3.{idx}. {issue_title}")
+        md_lines.append(f"- **Kubu Paradigma Dominan (Tesis):** {_clean_text(ut.get('thesis_side', '-'))}")
+        md_lines.append(f"- **Kubu Kritik & Temuan Baru (Antitesis):** {_clean_text(ut.get('antithesis_side', '-'))}")
+        md_lines.append(f"- **Analisis Hambatan Resolusi:** {_clean_text(ut.get('why_stuck', '-'))}\n")
 
     md_lines.extend([
-        "---",
-        "## 👁️ Titik Buta Metodologis & Konseptual (Blindspots)",
+        "## 4. Evaluasi Titik Buta Metodologis & Konseptual",
+        "Keterbatasan epistemik dan area kritis yang terabaikan dalam rancangan penelitian literatur terdahulu:",
+        "",
     ])
-    for b in report_data.get("methodological_blindspots", []):
-        md_lines.append(f"- 🔍 {b}")
+    for idx, b in enumerate(report_data.get("methodological_blindspots", []), 1):
+        clean_b = _clean_text(b)
+        m_blind = re.match(r"^(?:Titik\s+buta\s+\d+\s*[-—:]\s*)(.*)", clean_b, re.IGNORECASE)
+        if m_blind:
+            clean_b = m_blind.group(1).strip()
+        if clean_b:
+            md_lines.append(f"{idx}. {clean_b}")
 
     md_lines.extend([
-        "\n---",
-        "## 🎯 Usulan Topik Proposal Riset Baru (High-Novelty Proposals)",
+        "",
+        "## 5. Cetak Biru Usulan Penelitian Lanjutan (High-Novelty Research Blueprints)",
+        "Spesifikasi usulan topik riset baru dengan nilai kebaruan tinggi yang dirancang khusus untuk jenjang Tesis S2, Disertasi S3, atau artikel jurnal ilmiah bereputasi internasional:",
+        "",
     ])
     for idx, p in enumerate(report_data.get("novel_research_proposals", []), 1):
-        md_lines.append(f"### Usulan {idx}: {p.get('title')}")
-        md_lines.append(f"- **Jenjang Rekomendasi:** `{p.get('target_level', 'Tesis S2/S3')}`")
-        md_lines.append(f"- **Kesenjangan Pustaka yang Dijawab:** {p.get('gap_addressed', '-')}")
-        md_lines.append(f"- **Tesis/Hipotesis Kerja:** {p.get('proposed_hypothesis', '-')}")
-        md_lines.append(f"- **Kerangka Teoretis:** {p.get('theoretical_framework', '-')}")
-        md_lines.append(f"- 💎 **Nilai Kebaruan (Novelty):** {p.get('expected_novelty', '-')}")
-        if p.get("research_questions"):
-            md_lines.append("- **Rumusan Masalah Utama:**")
-            for q in p["research_questions"]:
-                md_lines.append(f"  1. {q}")
+        p_title = _clean_text(p.get("title", f"Proposal Riset {idx}"))
+        target_lvl = _clean_text(p.get("target_level", "Tesis S2 / Disertasi S3"))
+        gap_addr = _clean_text(p.get("gap_addressed", "-"))
+        hypo = _clean_text(p.get("proposed_hypothesis", "-"))
+        theory = _clean_text(p.get("theoretical_framework", "-"))
+        novelty = _clean_text(p.get("expected_novelty", "-"))
+
+        md_lines.append(f"### 5.{idx}. {p_title}\n")
+        md_lines.append("| Komponen Desain Riset | Deskripsi Rencana Penelitian |")
+        md_lines.append("| :--- | :--- |")
+        md_lines.append(f"| **Target Jenjang & Luaran** | {target_lvl} |")
+        md_lines.append(f"| **Kesenjangan Pustaka Inti (*Gap*)** | {gap_addr} |")
+        md_lines.append(f"| **Tesis / Hipotesis Kerja** | {hypo} |")
+        md_lines.append(f"| **Kerangka Teoretis Acuan** | {theory} |")
+        md_lines.append(f"| **Signifikansi Kebaruan (*Novelty Claim*)** | {novelty} |")
         md_lines.append("")
+
+        rqs = p.get("research_questions") or []
+        if rqs:
+            md_lines.append("**Rumusan Masalah Utama (*Research Questions*):**")
+            for q_idx, q in enumerate(rqs, 1):
+                md_lines.append(f"{q_idx}. {_clean_text(q)}")
+            md_lines.append("")
 
     md_text = "\n".join(md_lines)
     md_path = gaps_dir / f"{file_stem}.md"

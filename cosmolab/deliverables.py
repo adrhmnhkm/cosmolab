@@ -183,46 +183,92 @@ def build_docx(body_md: str, meta: DeliverableMeta, out_path: Path) -> Path:
     from docx.enum.section import WD_SECTION
     from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
     from docx.shared import Cm, Pt, RGBColor
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
 
     doc = Document()
     styles = doc.styles
     styles["Normal"].font.name = "Calibri"
-    styles["Normal"].font.size = Pt(11)
+    styles["Normal"].font.size = Pt(10.5)
+    styles["Normal"].paragraph_format.line_spacing = 1.15
+    styles["Normal"].paragraph_format.space_after = Pt(4)
     accent = RGBColor(0x1E, 0x3A, 0x8A)
+    dark_slate = RGBColor(0x0F, 0x17, 0x2A)
 
     sec = doc.sections[0]
     sec.page_height, sec.page_width = Cm(29.7), Cm(21.0)
     for side in ("left_margin", "right_margin"):
-        setattr(sec, side, Cm(2.5))
-    sec.top_margin, sec.bottom_margin = Cm(2.5), Cm(2.2)
+        setattr(sec, side, Cm(2.54))
+    sec.top_margin, sec.bottom_margin = Cm(2.54), Cm(2.2)
     sec.different_first_page_header_footer = True
 
-    # Cover page
+    # Cover page - Executive Firm Letterhead
     if meta.firm_logo:
         doc.add_picture(str(meta.firm_logo), width=Cm(3.5))
     p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after = Pt(2)
     r = p.add_run(meta.firm_name)
-    r.bold, r.font.size, r.font.color.rgb = True, Pt(16), accent
+    r.bold, r.font.size, r.font.color.rgb = True, Pt(17), accent
     if meta.firm_tagline:
-        doc.add_paragraph(meta.firm_tagline).runs[0].font.size = Pt(10)
-    for _ in range(6):
-        doc.add_paragraph()
+        p_tag = doc.add_paragraph()
+        p_tag.paragraph_format.space_after = Pt(0)
+        tr = p_tag.add_run(meta.firm_tagline.upper())
+        tr.font.size, tr.font.color.rgb = Pt(9), RGBColor(0x64, 0x74, 0x8B)
+
+    # Spacing before title
+    p_space = doc.add_paragraph()
+    p_space.paragraph_format.space_before = Pt(90)
+
+    p_doctype = doc.add_paragraph()
+    p_doctype.paragraph_format.space_after = Pt(4)
+    dt_run = p_doctype.add_run("LAPORAN TELAAH EKSEKUTIF & STRATEGIS")
+    dt_run.bold, dt_run.font.size, dt_run.font.color.rgb = True, Pt(9.5), RGBColor(0x64, 0x74, 0x8B)
+
     p = doc.add_paragraph()
+    p.paragraph_format.space_after = Pt(16)
     r = p.add_run(meta.title)
-    r.bold, r.font.size = True, Pt(24)
-    doc.add_paragraph()
-    for label, value in (("Disusun untuk", meta.client), ("Kode proyek", meta.project),
-                         ("Tanggal", meta.date_text), ("Diperiksa oleh", meta.reviewer)):
-        if value:
-            p = doc.add_paragraph()
-            lr = p.add_run(f"{label}: ")
-            lr.bold = True
-            p.add_run(value)
-    for _ in range(4):
-        doc.add_paragraph()
+    r.bold, r.font.size, r.font.color.rgb = True, Pt(22), dark_slate
+
+    # Metadata card as a subtle single-cell box
+    meta_items = [
+        (label, value) for label, value in (
+            ("Disusun untuk", meta.client),
+            ("Kode proyek", meta.project),
+            ("Tanggal", meta.date_text),
+            ("Penelaah Resmi", meta.reviewer),
+        ) if value
+    ]
+    if meta_items:
+        meta_table = doc.add_table(rows=len(meta_items), cols=2)
+        meta_table.style = "Normal Table"
+        for idx, (label, val) in enumerate(meta_items):
+            c0, c1 = meta_table.cell(idx, 0), meta_table.cell(idx, 1)
+            c0.width, c1.width = Cm(3.8), Cm(12.2)
+
+            p0 = c0.paragraphs[0]
+            p0.paragraph_format.space_before = Pt(2)
+            p0.paragraph_format.space_after = Pt(2)
+            r0 = p0.add_run(f"{label}:")
+            r0.bold = True
+            r0.font.size = Pt(9.5)
+            r0.font.color.rgb = dark_slate
+
+            p1 = c1.paragraphs[0]
+            p1.paragraph_format.space_before = Pt(2)
+            p1.paragraph_format.space_after = Pt(2)
+            r1 = p1.add_run(val)
+            r1.font.size = Pt(9.5)
+
+    p_space2 = doc.add_paragraph()
+    p_space2.paragraph_format.space_before = Pt(80)
+
     for line in (meta.firm_address, meta.firm_contact):
         if line:
-            doc.add_paragraph(line).runs[0].font.size = Pt(9)
+            p_addr = doc.add_paragraph()
+            p_addr.paragraph_format.space_after = Pt(1)
+            ar = p_addr.add_run(line)
+            ar.font.size, ar.font.color.rgb = Pt(8.5), RGBColor(0x94, 0xA3, 0xB8)
     doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
 
     # Header and footer for the body pages
@@ -232,7 +278,7 @@ def build_docx(body_md: str, meta: DeliverableMeta, out_path: Path) -> Path:
     header.runs[0].font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
     footer = sec.footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    fr = footer.add_run(f"Rahasia, untuk {meta.client}  ·  Halaman " if meta.client else "Halaman ")
+    fr = footer.add_run(f"Dokumen Telaah Resmi, untuk {meta.client}  ·  Halaman " if meta.client else "Halaman ")
     fr.font.size = Pt(8)
     _add_page_number(footer)
 
@@ -247,7 +293,23 @@ def build_docx(body_md: str, meta: DeliverableMeta, out_path: Path) -> Path:
         if t == "heading_open":
             level = min(int(tok.tag[1]), 4)
             h = doc.add_heading(level=level)
+            h.paragraph_format.keep_with_next = True
+            h.paragraph_format.space_before = Pt(14)
+            h.paragraph_format.space_after = Pt(4)
             _add_inline(h, tokens[i + 1].children)
+            for run in h.runs:
+                if level == 1:
+                    run.font.color.rgb = dark_slate
+                    run.font.size = Pt(16)
+                elif level == 2:
+                    run.font.color.rgb = accent
+                    run.font.size = Pt(13)
+                elif level == 3:
+                    run.font.color.rgb = dark_slate
+                    run.font.size = Pt(11)
+                else:
+                    run.font.color.rgb = RGBColor(0x33, 0x41, 0x55)
+                    run.font.size = Pt(10)
             i += 3
             continue
         if t == "bullet_list_open":
@@ -269,6 +331,8 @@ def build_docx(body_md: str, meta: DeliverableMeta, out_path: Path) -> Path:
                 para = doc.add_paragraph(style=style)
             elif in_quote:
                 para = doc.add_paragraph(style="Quote")
+                para.paragraph_format.space_before = Pt(3)
+                para.paragraph_format.space_after = Pt(4)
             else:
                 para = doc.add_paragraph()
             _add_inline(para, inline.children)
@@ -298,11 +362,23 @@ def build_docx(body_md: str, meta: DeliverableMeta, out_path: Path) -> Path:
                 table.style = "Table Grid"
                 for ri, row in enumerate(rows):
                     for ci, cell_children in enumerate(row):
-                        cell_p = table.cell(ri, ci).paragraphs[0]
+                        cell = table.cell(ri, ci)
+                        if ncols == 2:
+                            cell.width = Cm(4.8) if ci == 0 else Cm(11.2)
+                        cell_p = cell.paragraphs[0]
+                        cell_p.paragraph_format.space_before = Pt(3)
+                        cell_p.paragraph_format.space_after = Pt(3)
+                        cell_p.paragraph_format.line_spacing = 1.15
                         _add_inline(cell_p, cell_children)
                         if ri == 0:
+                            shading_xml = parse_xml(r'<w:shd {} w:fill="F1F5F9"/>'.format(nsdecls('w')))
+                            cell._tc.get_or_add_tcPr().append(shading_xml)
                             for run in cell_p.runs:
                                 run.bold = True
+                                run.font.color.rgb = dark_slate
+                        elif ri % 2 == 1:
+                            shading_xml = parse_xml(r'<w:shd {} w:fill="F8FAFC"/>'.format(nsdecls('w')))
+                            cell._tc.get_or_add_tcPr().append(shading_xml)
                 doc.add_paragraph()
             i = j + 1
             continue
@@ -312,7 +388,7 @@ def build_docx(body_md: str, meta: DeliverableMeta, out_path: Path) -> Path:
     doc.add_paragraph()
     note = doc.add_paragraph()
     nr = note.add_run(meta.disclosure)
-    nr.italic, nr.font.size = True, Pt(9)
+    nr.italic, nr.font.size = True, Pt(8.5)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
@@ -324,28 +400,36 @@ def build_docx(body_md: str, meta: DeliverableMeta, out_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 PDF_CSS = """
-* { font-family: sans-serif; }
-body { font-size: 10.5pt; line-height: 1.45; color: #0F172A; }
-h1 { font-size: 18pt; color: #1E3A8A; margin-top: 14pt; }
-h2 { font-size: 15pt; color: #1E3A8A; margin-top: 12pt; }
-h3 { font-size: 12.5pt; color: #1E3A8A; margin-top: 10pt; }
-h4 { font-size: 11pt; margin-top: 8pt; }
+* { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; }
+body { font-size: 10pt; line-height: 1.55; color: #1E293B; }
+h1 { font-size: 18pt; font-weight: 700; color: #0F172A; margin-top: 18pt; margin-bottom: 8pt; border-bottom: 1.5pt solid #E2E8F0; padding-bottom: 4pt; }
+h2 { font-size: 13.5pt; font-weight: 700; color: #1E3A8A; margin-top: 16pt; margin-bottom: 6pt; border-bottom: 1pt solid #E2E8F0; padding-bottom: 3pt; }
+h3 { font-size: 11.5pt; font-weight: 600; color: #1E293B; margin-top: 12pt; margin-bottom: 4pt; }
+h4 { font-size: 10.5pt; font-weight: 600; color: #334155; margin-top: 10pt; margin-bottom: 3pt; }
 p { margin-bottom: 6pt; text-align: justify; }
-blockquote { margin-left: 14pt; color: #334155; font-style: italic; }
-code, pre { font-family: monospace; font-size: 9pt; }
-table { border-collapse: collapse; margin-bottom: 8pt; }
-th, td { border: 1px solid #94A3B8; padding: 3pt 5pt; font-size: 9pt; }
-th { background-color: #E2E8F0; }
-.note { font-size: 8.5pt; color: #475569; font-style: italic; margin-top: 16pt; }
+ul, ol { margin-top: 3pt; margin-bottom: 8pt; padding-left: 18pt; }
+li { margin-bottom: 3pt; }
+blockquote { margin: 8pt 0 10pt 0; padding: 6pt 12pt; background-color: #F8FAFC; border-left: 3.5pt solid #1E3A8A; color: #334155; font-style: italic; }
+table { border-collapse: collapse; width: 100%; margin-top: 6pt; margin-bottom: 12pt; font-size: 9pt; }
+th, td { border: 1pt solid #CBD5E1; padding: 5pt 7pt; text-align: left; vertical-align: top; }
+th { background-color: #F1F5F9; color: #0F172A; font-weight: 700; }
+tr:nth-child(even) td { background-color: #F8FAFC; }
+code { font-family: Consolas, monospace; font-size: 8.5pt; background: #F1F5F9; padding: 1pt 3pt; border-radius: 2pt; }
+pre { font-family: Consolas, monospace; font-size: 8.5pt; background: #F1F5F9; padding: 6pt; }
+.note { font-size: 8pt; color: #64748B; font-style: italic; margin-top: 20pt; border-top: 1pt solid #E2E8F0; padding-top: 8pt; }
 """
 
 COVER_CSS = """
-* { font-family: sans-serif; }
-.firm { font-size: 16pt; font-weight: bold; color: #1E3A8A; }
-.tagline { font-size: 10pt; color: #475569; }
-.title { font-size: 24pt; font-weight: bold; margin-top: 150pt; margin-bottom: 18pt; color: #0F172A; }
-.row { font-size: 11pt; margin-bottom: 4pt; }
-.contact { font-size: 9pt; color: #475569; margin-top: 120pt; }
+* { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; }
+.firm { font-size: 17pt; font-weight: 800; color: #1E3A8A; letter-spacing: 0.5px; }
+.tagline { font-size: 9.5pt; color: #64748B; text-transform: uppercase; letter-spacing: 1px; margin-top: 2pt; }
+.accent-bar { width: 50px; height: 3.5px; background-color: #1E3A8A; margin-top: 110pt; margin-bottom: 16pt; }
+.doc-type { font-size: 10pt; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: #64748B; margin-bottom: 8pt; }
+.title { font-size: 22pt; font-weight: 800; line-height: 1.25; color: #0F172A; margin-bottom: 24pt; }
+.meta-box { margin-top: 16pt; padding: 10pt 14pt; background-color: #F8FAFC; border-left: 3pt solid #1E3A8A; font-size: 9.5pt; }
+.meta-row { margin-bottom: 4pt; color: #334155; }
+.meta-label { font-weight: 600; color: #0F172A; display: inline-block; width: 120px; }
+.contact { font-size: 8.5pt; color: #94A3B8; margin-top: 80pt; line-height: 1.4; border-top: 1pt solid #E2E8F0; padding-top: 10pt; }
 """
 
 
@@ -353,17 +437,22 @@ def _cover_html(meta: DeliverableMeta) -> str:
     parts = []
     if meta.firm_logo:
         parts.append(f'<img src="{escape(meta.firm_logo.name)}" width="100"/>')
-    parts.append(f'<p class="firm">{escape(meta.firm_name)}</p>')
+    parts.append(f'<div class="firm">{escape(meta.firm_name)}</div>')
     if meta.firm_tagline:
-        parts.append(f'<p class="tagline">{escape(meta.firm_tagline)}</p>')
-    parts.append(f'<p class="title">{escape(meta.title)}</p>')
+        parts.append(f'<div class="tagline">{escape(meta.firm_tagline)}</div>')
+    parts.append('<div class="accent-bar"></div>')
+    parts.append('<div class="doc-type">Laporan Telaah Eksekutif & Celah Riset</div>')
+    parts.append(f'<div class="title">{escape(meta.title)}</div>')
+    meta_rows = []
     for label, value in (("Disusun untuk", meta.client), ("Kode proyek", meta.project),
                          ("Tanggal", meta.date_text), ("Diperiksa oleh", meta.reviewer)):
         if value:
-            parts.append(f'<p class="row"><b>{label}:</b> {escape(value)}</p>')
+            meta_rows.append(f'<div class="meta-row"><span class="meta-label">{escape(label)}:</span> {escape(value)}</div>')
+    if meta_rows:
+        parts.append(f'<div class="meta-box">{"".join(meta_rows)}</div>')
     contact = "<br/>".join(escape(x) for x in (meta.firm_address, meta.firm_contact) if x)
     if contact:
-        parts.append(f'<p class="contact">{contact}</p>')
+        parts.append(f'<div class="contact">{contact}</div>')
     return "\n".join(parts)
 
 

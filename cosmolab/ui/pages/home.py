@@ -59,11 +59,22 @@ def _project_header():
     info = config.project_info()
     if config.PROJECT:
         client = f" · {info['client']}" if info.get("client") else ""
-        st.info(f"Proyek aktif: **{_e(config.PROJECT)}**{_e(client)}")
+        c_p1, c_p2 = st.columns([4, 1], vertical_alignment="center")
+        c_p1.info(f"Proyek aktif: **{_e(config.PROJECT)}**{_e(client)}")
+        if _home.is_owner():
+            if c_p2.button("Ganti Proyek", icon=":material/swap_horiz:", key="home_btn_change_proj", use_container_width=True):
+                st.session_state["active_nav_menu"] = "Kelola Tim"
+                st.rerun()
     else:
-        st.warning("Dashboard ini memakai **data utama**, bukan proyek klien. Hasil kerja untuk klien sebaiknya "
-                   "disimpan di proyeknya sendiri supaya tidak tercampur: `cosmolab project new <nama>`, lalu "
-                   "`cosmolab -P <nama> ui`.")
+        with st.container(border=True):
+            st.warning("Dashboard ini memakai **data utama**, bukan proyek klien. Hasil kerja untuk klien sebaiknya "
+                       "disimpan di proyeknya sendiri supaya tidak tercampur.")
+            if _home.is_owner():
+                c_btn, c_txt = st.columns([1, 3], vertical_alignment="center")
+                if c_btn.button("Kelola & Buat Proyek", icon=":material/folder_managed:", type="primary", key="home_btn_manage_proj"):
+                    st.session_state["active_nav_menu"] = "Kelola Tim"
+                    st.rerun()
+                c_txt.caption("Pilih proyek klien atau buat proyek baru langsung dari menu **Kelola Tim & Proyek** tanpa perlu CLI.")
 
 
 def _question_section(ctx: AppContext):
@@ -369,6 +380,9 @@ def _owner_section():
                 "Token AI bulan ini": st.column_config.NumberColumn(format="compact"),
             },
         )
+        if st.button("+ Buat Proyek Klien Baru", icon=":material/add:", key="home_owner_new_proj"):
+            st.session_state["active_nav_menu"] = "Kelola Tim"
+            st.rerun()
 
 
 def render(ctx: AppContext):

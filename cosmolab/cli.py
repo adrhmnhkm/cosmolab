@@ -617,10 +617,9 @@ def ui(
         address = host or _tailscale_ip()
         if not address:
             console.print(
-                "[red]IP Tailscale tidak ditemukan.[/red] Pasang dan login Tailscale dulu (lihat PANDUAN_TIM.md), "
-                "atau tentukan alamat sendiri dengan --host."
+                "[yellow]IP Tailscale tidak ditemukan.[/yellow] Menjalankan di alamat lokal (127.0.0.1)."
             )
-            raise typer.Exit(1)
+            address = "127.0.0.1"
         env["COSMOLAB_TEAM_MODE"] = "1"
         args += ["--server.address", address, "--server.headless", "true"]
     else:
@@ -658,10 +657,10 @@ def team_lobby(
     address = host or _tailscale_ip()
     if not address:
         console.print(
-            "[red]IP Tailscale tidak ditemukan.[/red] Pasang dan login Tailscale dulu (lihat PANDUAN_TIM.md), "
-            "atau tentukan alamat sendiri dengan --host."
+            "[yellow]IP Tailscale tidak ditemukan.[/yellow] Menjalankan lobi di alamat lokal (127.0.0.1). "
+            "Untuk akses anggota tim lewat jaringan, pasang Tailscale (lihat PANDUAN_TIM.md)."
         )
-        raise typer.Exit(1)
+        address = "127.0.0.1"
 
     servers.stop_all()  # dashboards left over from a previous run
     env = os.environ.copy()

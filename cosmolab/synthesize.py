@@ -172,8 +172,16 @@ def synthesize(
         ],
         temperature=0.2,
         timeout=180.0,
+        stream=True,
     )
-    body = (resp.choices[0].message.content or "").strip()
+    if hasattr(resp, "choices"):
+        body = (resp.choices[0].message.content or "").strip()
+    else:
+        parts = []
+        for chunk in resp:
+            if chunk.choices and chunk.choices[0].delta.content:
+                parts.append(chunk.choices[0].delta.content)
+        body = "".join(parts).strip()
 
     claims_report = None
     if check_claims:

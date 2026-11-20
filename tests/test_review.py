@@ -143,6 +143,11 @@ class TestReview(unittest.TestCase):
         with self.assertRaises(ValueError):
             review.export_docx(again, " ")
 
+        # Test deletion of saved review
+        self.assertTrue(review.delete(stem))
+        self.assertEqual(len(list(review.reviews_dir().glob("*.json"))), 0)
+        self.assertFalse(review.delete("nonexistent"))
+
     def test_old_saved_review_gets_defaults(self):
         r = self._review()
         for c in r["comments"]:

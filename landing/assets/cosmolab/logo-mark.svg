@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CosmoLab">
+  <rect width="64" height="64" rx="15" fill="#3D5651"/>
+  <g fill="none" transform="rotate(-25 32 32)">
+    <ellipse cx="32" cy="32" rx="25" ry="8.5" stroke="#D4A12A" stroke-width="2.6"/>
+  </g>
+  <path d="M42.7 23 A14 14 0 1 0 42.7 41" fill="none" stroke="#FFFFFF" stroke-width="6.5" stroke-linecap="round"/>
+  <g fill="none" transform="rotate(-25 32 32)">
+    <path d="M9 34.6 A25 8.5 0 0 0 52 37.6" stroke="#3D5651" stroke-width="6.2" stroke-linecap="round"/>
+    <path d="M7 32 A25 8.5 0 0 0 57 32" stroke="#D4A12A" stroke-width="2.6"/>
+  </g>
+  <circle cx="54.6" cy="21.4" r="4.2" fill="#D4A12A"/>
+</svg>

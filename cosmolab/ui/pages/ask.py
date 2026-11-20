@@ -118,12 +118,12 @@ def render(ctx: AppContext):
             else:
                 with st.spinner("Membaca paper. Biasanya 10–30 detik..."):
                     try:
-                        answer = _ask.ask(question=user_q, model=config.LLM_MODEL, top_k=k_val)
+                        answer, ref_papers = _ask.ask(question=user_q, model=config.LLM_MODEL, top_k=k_val, return_sources=True)
                         st.session_state.pop("agentic_answer", None)
                         st.session_state["classic_answer"] = {
                             "q": user_q,
                             "answer": answer,
-                            "claims": run_claim_check(answer) if check_claims else None,
+                            "claims": run_claim_check(answer, ref_papers) if check_claims else None,
                         }
                     except Exception as e:
                         st.error(f"Gagal memproses pertanyaan: {e}")

@@ -30,6 +30,7 @@ ATURAN KETAT:
 - Pakai HANYA isi korpus. Bila korpus tidak memuat jawabannya, tulis "Tidak ditemukan di korpus ini: <apa yang hilang>" dan JANGAN mengisi dari pengetahuanmu sendiri.
 - Bagian 3-4 (objeksi/pembelaan) boleh ditulis "Tidak ada di korpus" bila memang tidak ada.
 - Sitasi memakai nama belakang penulis dan tahun, misalnya `[Popescu & Rohrlich (1997)]`. Bila penulis tidak diketahui, pakai judul singkat dan tahun. JANGAN menulis "Paper 1" atau nomor urut korpus sebagai sitasi.
+- HANYA kutip naskah yang terdaftar dalam korpus. Jika naskah di korpus adalah survei/kajian literatur yang membahas karya pihak ketiga (misalnya MEND, ROME, dll.), tetap cantumkan sitasi paper korpus tempat kamu membacanya, BUKAN paper luar yang tidak ada di daftar korpus.
 - SETIAP kalimat faktual wajib diakhiri sitasi, dengan halaman bila ada di "Bukti Verbatim", misalnya `[Popescu (1997), Hal. 4]`. Kalimat itu harus benar-benar dinyatakan oleh paper itu.
 - Ringkasan paper di korpus dibuat AI dan belum diverifikasi; hanya "Bukti Verbatim" yang teks asli paper. Utamakan Bukti Verbatim.
 - Kalimat penilaianmu sendiri awali dengan "Catatan analis:" dan jangan diberi sitasi.
@@ -272,14 +273,29 @@ def ask_agentic(question: str, model: str = None, top_k: int = 6) -> dict:
             ],
             temperature=0.2,
             timeout=180.0,
+            stream=True,
         )
-        msg = resp.choices[0].message
-        content = (msg.content or "").strip()
-
-        # The model's reasoning is shown as a step, never used as the answer.
-        reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
-        if reasoning:
-            thought_steps.append(f"AI Reasoning Chain: {reasoning[:300]}...")
+        if hasattr(resp, "choices"):
+            msg = resp.choices[0].message
+            content = (msg.content or "").strip()
+            reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
+            if reasoning:
+                thought_steps.append(f"AI Reasoning Chain: {reasoning[:300]}...")
+        else:
+            parts = []
+            reasoning_parts = []
+            for chunk in resp:
+                if chunk.choices and chunk.choices[0].delta:
+                    delta = chunk.choices[0].delta
+                    if getattr(delta, "reasoning_content", None):
+                        reasoning_parts.append(delta.reasoning_content)
+                    elif getattr(delta, "reasoning", None):
+                        reasoning_parts.append(delta.reasoning)
+                    if getattr(delta, "content", None):
+                        parts.append(delta.content)
+            content = "".join(parts).strip()
+            if reasoning_parts:
+                thought_steps.append(f"AI Reasoning Chain: {''.join(reasoning_parts)[:300]}...")
 
         # No silent switch to another model: the user must know which model answered.
         if "上游错误" in content or "out of API credit" in content:

@@ -123,7 +123,7 @@ class TestLobbyPage(LobbyCase):
         team.add_user(username, role=role, name=username.title())
         team.change_password(username, "kata-sandi-baru-1")
 
-    def test_consultant_sees_only_their_projects(self):
+    def test_consultant_sees_only_their_projects_and_can_create_project(self):
         self._ready("rina", "konsultan")
         team.add_member("klien-a", "rina")
         with mock.patch.dict(os.environ, {"COSMOLAB_TEAM_MODE": "1"}), \
@@ -131,12 +131,28 @@ class TestLobbyPage(LobbyCase):
             at = self._app().run()
             self._login(at, "rina", "kata-sandi-baru-1")
             self.assertEqual([e.value for e in at.exception], [])
-            self.assertEqual(len(at.tabs), 0)  # no admin tabs
-            self.assertFalse(any(b.label in ("Buat akun", "Buat proyek") for b in at.button))
+            # Consultant has access to Proyek and Proyek baru tabs, but no admin tabs (Anggota, Akun, Sedang terbuka)
+            self.assertEqual([t.label for t in at.tabs], ["Proyek", "Proyek baru"])
+            self.assertFalse(any(b.label == "Buat akun" for b in at.button))
             shown = " ".join(m.value for m in at.markdown)
             self.assertIn("klien-a", shown)
             self.assertNotIn("klien-b", shown)
             self.assertNotIn("Data utama", shown)
+
+    def test_consultant_creates_project_auto_member(self):
+        self._ready("rina", "konsultan")
+        with mock.patch.dict(os.environ, {"COSMOLAB_TEAM_MODE": "1"}), \
+                mock.patch.object(servers, "running", return_value={}):
+            at = self._app().run()
+            self._login(at, "rina", "kata-sandi-baru-1")
+            self.assertEqual([t.label for t in at.tabs], ["Proyek", "Proyek baru"])
+            client = next(t for t in at.text_input if t.label == "Nama klien")
+            client.set_value("Universitas Konsultan Rina")
+            next(b for b in at.button if b.label == "Buat proyek").click().run()
+            self.assertEqual([e.value for e in at.exception], [])
+        made = [p for p in config.list_projects() if p.get("client") == "Universitas Konsultan Rina"]
+        self.assertEqual(len(made), 1)
+        self.assertEqual(team.members(made[0]["name"]), ["rina"])
 
     def test_admin_creates_a_project_with_members(self):
         self._ready("bos", "admin")

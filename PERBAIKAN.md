@@ -76,6 +76,28 @@ Setelah draf diunggah, tampilkan jumlah paragraf, jumlah pustaka, dan perkiraan 
 
 **Perbaikan.** Tambahkan modul `cosmolab.ui` ke daftar yang dimuat ulang. Atau, minimal, tulis di PANDUAN_TIM bahwa dashboard perlu dijalankan ulang setelah pembaruan.
 
+## 9. Optimasi Panen Paper & Pengunduhan Multi-Tier (selesai)
+
+**Masalah.** Panen literatur sering gagal unduh (~50% gagal) dan proses pencarian membeku hingga 14 detik akibat rate-limit (HTTP 429) pada Semantic Scholar API tanpa API key. Selain itu, Unpaywall dan OpenAlex sering mengembalikan link halaman HTML (landing page) saat file PDF langsung tidak tersedia, menyebabkan crawler gagal membaca byte PDF (`not first.startswith(b"%PDF")`).
+
+**Perbaikan.**
+- **5-Tier Cascading Fallback:** Alur pengunduhan bertingkat (Direct OA PDF -> Multi-location OpenAlex -> Unpaywall PDF-only -> HTML Dublin Core Meta-Resolver -> arXiv preprint fallback).
+- **Dublin Core & Highwire Press Meta-Resolver:** Otomatis mengekstrak `<meta name="citation_pdf_url" content="...">` dari landing page jurnal ilmiah (Springer, DOAJ, ScienceEditor, OJS).
+- **Anti-Stall Rate Limit:** Menangani HTTP 429 Semantic Scholar secara langsung tanpa freeze 14 detik jika `SEMANTIC_SCHOLAR_API_KEY` belum dipasang.
+- **Resilient PDF Validation:** Pengecekan magic byte `b"%PDF"` pada 1024 byte awal untuk mentolerir BOM atau spasi pembuka.
+
+## 10. Ringkasan Bahasa Awam / Plain-Language Summary untuk Klien (selesai)
+
+**Masalah.** Hasil pembedahan dan tesis naskah akademik dari LLM sering kali sangat teknis (jargon filosofis/metodologis tebal), sehingga klien non-spesialis atau praktisi kesulitan menangkap implikasi praktis atau inti manfaat paper secara cepat.
+
+**Perbaikan.**
+- **Ekstensi Skema & Prompt (`plain_summary`):** Menambahkan field `plain_summary` pada pydantic model `PaperAnalysis` di `cosmolab/analyze.py`, lengkap dengan instruksi prompt (ID & EN) agar AI memformulasikan intisari naskah dalam bahasa awam (2–3 kalimat lugas tanpa jargon teknis, fokus pada relevansi dunia nyata/klien).
+- **Kompatibilitas Mundur Penuh:** Analisis lama yang belum memiliki field ini tetap terbaca normal tanpa error skema di SQLite `raw_json`.
+- **Integrasi UI Kartu & Detail:** 
+  - Pada daftar kartu `explorer.py`, menampilkan callout hijau ramah (`paper-card-plain`) tepat di bawah tesis.
+  - Pada detail bedah paper (`cosmolab/ui/papers.py`), menampilkan blok `💡 Intisari Bahasa Awam (Untuk Klien / Praktisi)` di bagian paling atas sebelum kisi fakta teknis.
+- **Ekspor Markdown/Obsidian:** Format Obsidian pada `cosmolab/export.py` menyertakan heading intisari bahasa awam bila tersedia.
+
 ## Ditunda
 
 - **Deteksi lintas bahasa** dengan embedding (`EMBED_MODEL`), untuk draf Indonesia hasil terjemahan dari sumber Inggris. Pertimbangkan setelah nomor 1–3 jalan, terutama kalau banyak sumber mahasiswa berbahasa Inggris. Ada biaya API kecil, dan hasilnya lebih banyak positif palsu.

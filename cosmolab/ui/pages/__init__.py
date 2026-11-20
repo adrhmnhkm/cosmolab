@@ -2,5 +2,5 @@
 
 from . import (  # noqa: F401
     accuracy, ask, defense, diagram, doi, explorer, export, fulltext, harvest, home, review, roadmap, sparring, studio,
-    synthesis,
+    synthesis, team_admin,
 )

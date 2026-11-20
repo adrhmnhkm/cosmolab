@@ -70,38 +70,75 @@ def render(ctx: AppContext):
                     faculty_id=selected_faculty_id,
                     custom_focus=gap_focus,
                 )
-                st.session_state["current_gap_report"] = gap_report
                 saved_gap = _gap_finder.save_gap_report(gap_report)
+                st.session_state["current_gap_report"] = gap_report
                 st.session_state["saved_gap_paths"] = saved_gap
+                st.session_state["selected_gap_report_file"] = saved_gap["json_path"].name
+                st.rerun()
 
-        if "current_gap_report" in st.session_state:
+        # Check existing saved gap reports in config.ROOT / "gaps"
+        gaps_dir = config.ROOT / "gaps"
+        saved_gap_files = sorted(list(gaps_dir.glob("*.json")), reverse=True) if gaps_dir.exists() else []
+
+        selected_rep_json = None
+        if saved_gap_files:
+            st.markdown("#### Laporan Celah Riset Tersimpan")
+            file_options = [f.name for f in saved_gap_files]
+            
+            current_choice = st.session_state.get("selected_gap_report_file")
+            default_idx = file_options.index(current_choice) if current_choice in file_options else 0
+
+            chosen_file_name = st.selectbox(
+                "Pilih laporan celah riset",
+                file_options,
+                index=default_idx,
+                key="gap_report_selector",
+                format_func=lambda x: f"📄 {x.replace('gap_report_', '').replace('.json', '')}"
+            )
+            st.session_state["selected_gap_report_file"] = chosen_file_name
+            selected_rep_json = gaps_dir / chosen_file_name
+
+        rep = None
+        md_file = None
+        if selected_rep_json and selected_rep_json.exists():
+            try:
+                import json
+                rep = json.loads(selected_rep_json.read_text(encoding="utf-8"))
+                candidate_md = selected_rep_json.with_suffix(".md")
+                if candidate_md.exists():
+                    md_file = candidate_md
+            except Exception as e:
+                st.error(f"Gagal memuat laporan: {e}")
+        elif "current_gap_report" in st.session_state:
             rep = st.session_state["current_gap_report"]
             saved_paths = st.session_state.get("saved_gap_paths", {})
+            md_file = saved_paths.get("md_path")
 
+        if rep:
             with st.container(border=True):
                 st.markdown(f"#### Bidang: {rep.get('faculty_domain')}")
-                st.info(f"**Ringkasan:**\n\n{rep.get('executive_summary', '')}")
+                st.info(f"**Ringkasan Eksekutif:**\n\n{rep.get('executive_summary', '')}")
 
                 col_gp1, col_gp2 = st.columns(2)
                 with col_gp1:
-                    st.markdown("**Yang sudah disepakati**")
+                    st.markdown("**Yang sudah disepakati dalam literatur**")
                     for c in rep.get("established_consensus", []):
                         st.markdown(f"- {c}")
                 with col_gp2:
-                    st.markdown("**Kelemahan metodologi**")
+                    st.markdown("**Kelemahan & titik buta metodologi**")
                     for b in rep.get("methodological_blindspots", []):
                         st.markdown(f"- {b}")
 
                 st.markdown("---")
-                st.markdown("#### Perdebatan yang belum selesai")
+                st.markdown("#### Perdebatan terbuka yang belum selesai (Unresolved Tensions)")
                 for idx_ut, ut in enumerate(rep.get("unresolved_tensions", []), 1):
                     with st.expander(f"{idx_ut}. {ut.get('issue', 'Isu perdebatan')}", expanded=False):
-                        st.write(f"**Pihak yang mendukung:** {ut.get('thesis_side')}")
-                        st.write(f"**Pihak yang mengkritik:** {ut.get('antithesis_side')}")
+                        st.write(f"**Pihak yang mendukung (Tesis):** {ut.get('thesis_side')}")
+                        st.write(f"**Pihak yang mengkritik (Antitesis):** {ut.get('antithesis_side')}")
                         st.warning(f"**Mengapa belum selesai:** {ut.get('why_stuck')}")
 
                 st.markdown("---")
-                st.markdown("#### Usulan topik riset baru")
+                st.markdown("#### 🎯 Usulan Topik Proposal Riset Baru (High-Novelty Proposals)")
                 for idx_p, prop in enumerate(rep.get("novel_research_proposals", []), 1):
                     with st.container(border=True):
                         st.markdown(f"**Usulan {idx_p}: {prop.get('title')}**")
@@ -118,15 +155,77 @@ def render(ctx: AppContext):
                             for q in prop["research_questions"]:
                                 st.markdown(f"- {q}")
 
-                if saved_paths.get("md_path"):
+                # Download Buttons & Deliverables
+                if md_file and md_file.exists():
+                    st.markdown("---")
+                    st.markdown("##### 📥 Unduh Hasil Analisis (.md / Pustaka)")
                     col_g_dl1, col_g_dl2 = st.columns(2)
                     with col_g_dl1:
                         st.download_button(
                             "Unduh laporan celah riset (.md)",
-                            data=saved_paths["markdown_content"],
-                            file_name=saved_paths["md_path"].name,
+                            data=md_file.read_text(encoding="utf-8"),
+                            file_name=md_file.name,
                             mime="text/markdown",
-                            use_container_width=True
+                            use_container_width=True,
+                            key=f"dl_md_{md_file.stem}"
                         )
                     with col_g_dl2:
-                        st.caption(f"Tersimpan sebagai `{saved_paths['md_path'].name}`")
+                        st.caption(f"File markdown sumber: `{md_file.name}`")
+
+                    # Check references files in config.ROOT
+                    bib_p = config.ROOT / "references.bib"
+                    ris_p = config.ROOT / "references.ris"
+                    if bib_p.exists() or ris_p.exists():
+                        col_ref1, col_ref2 = st.columns(2)
+                        if bib_p.exists():
+                            col_ref1.download_button(
+                                "Unduh references.bib (LaTeX)",
+                                data=bib_p.read_text(encoding="utf-8"),
+                                file_name="references.bib",
+                                mime="text/plain",
+                                use_container_width=True,
+                                key=f"dl_bib_{md_file.stem}"
+                            )
+                        if ris_p.exists():
+                            col_ref2.download_button(
+                                "Unduh references.ris (Zotero/Mendeley)",
+                                data=ris_p.read_text(encoding="utf-8"),
+                                file_name="references.ris",
+                                mime="text/plain",
+                                use_container_width=True,
+                                key=f"dl_ris_{md_file.stem}"
+                            )
+
+                    # Check if ready-made Word/PDF exist in <project>/deliverables/
+                    deliv_dir = config.ROOT / "deliverables"
+                    if deliv_dir.exists():
+                        docxs = sorted(list(deliv_dir.glob("*.docx")), key=lambda p: p.stat().st_mtime, reverse=True)
+                        pdfs = sorted(list(deliv_dir.glob("*.pdf")), key=lambda p: p.stat().st_mtime, reverse=True)
+                        if docxs or pdfs:
+                            st.markdown("##### 📄 Berkas Resmi Klien Tersedia (Word / PDF Berkop)")
+                            col_d1, col_d2 = st.columns(2)
+                            if docxs:
+                                d_file = docxs[0]
+                                col_d1.download_button(
+                                    f"Unduh DOCX: {d_file.name}",
+                                    data=d_file.read_bytes(),
+                                    file_name=d_file.name,
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True,
+                                    key=f"dl_docx_{md_file.stem}"
+                                )
+                            if pdfs:
+                                p_file = pdfs[0]
+                                col_d2.download_button(
+                                    f"Unduh PDF: {p_file.name}",
+                                    data=p_file.read_bytes(),
+                                    file_name=p_file.name,
+                                    mime="application/pdf",
+                                    use_container_width=True,
+                                    key=f"dl_pdf_{md_file.stem}"
+                                )
+
+                    # Render client delivery widget for fresh verification & export
+                    render_client_delivery(md_file, key=f"gap_{md_file.stem}")
+        elif not saved_gap_files:
+            st.info("Belum ada laporan celah riset. Klik tombol **Cari celah riset** di atas.")

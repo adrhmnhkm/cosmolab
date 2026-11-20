@@ -4,7 +4,7 @@ import threading
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import xml.etree.ElementTree as ET
 from difflib import SequenceMatcher
 from rich.console import Console
@@ -201,7 +201,13 @@ def _search_semanticscholar(query: str, max_results: int):
     if s2_key:
         headers["x-api-key"] = s2_key
     try:
-        r = _request_with_retry("GET", url, params=params, headers=headers, timeout=15)
+        if s2_key:
+            r = _request_with_retry("GET", url, params=params, headers=headers, timeout=15)
+        else:
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            if r.status_code == 429:
+                console.print("[dim]Semantic Scholar rate-limit (429). Melanjutkan dengan sumber federasi lainnya...[/dim]")
+                return []
         if r is None or r.status_code != 200:
             return []
         data = r.json().get("data", [])
@@ -444,15 +450,64 @@ def _search(query: str, max_results: int, indonesia: bool = False):
     return valid[:max_results]
 
 
+def _resolve_landing_page_pdf(landing_url: str) -> str | None:
+    """Extract direct PDF URL from publisher/repository HTML landing page using standard Dublin Core and Highwire Press metadata."""
+    if not landing_url or any(h in landing_url for h in BLOCKED_HOSTS):
+        return None
+    parsed = urlparse(landing_url)
+    if parsed.path.lower().endswith(".pdf"):
+        return landing_url
+
+    headers = dict(config.HEADERS)
+    headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
+    try:
+        r = requests.get(landing_url, headers=headers, timeout=12, allow_redirects=True)
+        if r.status_code != 200:
+            return None
+        content_type = (r.headers.get("Content-Type") or "").lower()
+        if "application/pdf" in content_type:
+            return r.url
+        if "text/html" not in content_type and "application/xhtml" not in content_type:
+            return None
+
+        html = r.text
+        # 1. Dublin Core / Highwire Press citation tags (used by 90%+ academic publishers: Springer, OJS, Nature, DOAJ, etc.)
+        patterns = [
+            r'<meta\s+[^>]*name=["\']citation_pdf_url["\'][^>]*content=["\']([^"\']+)["\']',
+            r'<meta\s+[^>]*content=["\']([^"\']+)["\'][^>]*name=["\']citation_pdf_url["\']',
+            r'<meta\s+[^>]*name=["\']eprints\.document_url["\'][^>]*content=["\']([^"\']+)["\']',
+            r'<meta\s+[^>]*name=["\']bepress_citation_pdf_url["\'][^>]*content=["\']([^"\']+)["\']',
+        ]
+        for pat in patterns:
+            match = re.search(pat, html, re.I)
+            if match:
+                pdf_link = match.group(1).strip()
+                resolved = urljoin(r.url, pdf_link)
+                if not any(h in resolved for h in BLOCKED_HOSTS):
+                    return resolved
+
+        # 2. Heuristic: Look for direct link to full text PDF in <a> tag (common in OJS / Garuda)
+        link_matches = re.findall(r'<a\s+[^>]*href=["\']([^"\']+\.pdf(?:\?[^"\']*)?)["\']', html, re.I)
+        for link in link_matches:
+            link_lower = link.lower()
+            if not any(b in link_lower for b in ("guideline", "author", "policy", "cover", "toc", "editorial", "review")):
+                resolved = urljoin(r.url, link.strip())
+                if not any(h in resolved for h in BLOCKED_HOSTS):
+                    return resolved
+    except Exception:
+        pass
+    return None
+
+
 def _pdf_url(work: dict):
     """Extract PDF URL from work (handles arXiv, DOAJ, Semantic Scholar, CORE, Crossref, and OpenAlex)."""
     source = work.get("source", "openalex")
     
     if source in ("arxiv", "doaj", "semanticscholar", "core", "crossref"):
-        if work.get("pdf_url"):
+        if work.get("pdf_url") and not any(h in work.get("pdf_url", "") for h in BLOCKED_HOSTS):
             return work.get("pdf_url")
     
-    # OpenAlex
+    # OpenAlex: Check direct PDF first
     oa = work.get("best_oa_location") or {}
     
     if oa.get("pdf_url") and not any(host in oa.get("pdf_url", "") for host in BLOCKED_HOSTS):
@@ -462,12 +517,23 @@ def _pdf_url(work: dict):
         if url and not any(host in url for host in BLOCKED_HOSTS):
             return url
     
+    # Try resolving publisher landing page via HTML meta tags
+    landing = oa.get("landing_page_url")
+    if landing and not any(host in landing for h in BLOCKED_HOSTS):
+        resolved = _resolve_landing_page_pdf(landing)
+        if resolved:
+            return resolved
+
     # Unpaywall fallback if DOI is available
     doi = (work.get("doi") or "").replace("https://doi.org/", "").strip()
     if doi:
         resolved = _resolve_unpaywall(doi)
         if resolved:
             return resolved
+        # Direct DOI landing page resolution fallback
+        resolved_doi = _resolve_landing_page_pdf(f"https://doi.org/{doi}")
+        if resolved_doi:
+            return resolved_doi
             
     return None
 
@@ -483,14 +549,21 @@ def _resolve_unpaywall(doi: str) -> str | None:
         if r is not None and r.status_code == 200:
             data = r.json()
             if data.get("is_oa"):
+                # 1. Strictly look for direct PDF URLs first
                 best_loc = data.get("best_oa_location") or {}
-                pdf_url = best_loc.get("url_for_pdf") or best_loc.get("url")
+                pdf_url = best_loc.get("url_for_pdf")
                 if pdf_url and not any(h in pdf_url for h in BLOCKED_HOSTS):
                     return pdf_url
                 for loc in data.get("oa_locations") or []:
-                    u = loc.get("url_for_pdf") or loc.get("url")
+                    u = loc.get("url_for_pdf")
                     if u and not any(h in u for h in BLOCKED_HOSTS):
                         return u
+                # 2. If no direct PDF URL, try resolving the landing page via meta tags
+                landing = best_loc.get("url") or best_loc.get("url_for_landing_page")
+                if landing and not any(h in landing for h in BLOCKED_HOSTS):
+                    resolved = _resolve_landing_page_pdf(landing)
+                    if resolved:
+                        return resolved
     except Exception as e:
         console.print(f"[dim]Unpaywall lookup skipped for {clean_doi}: {e}[/dim]")
     return None
@@ -498,9 +571,16 @@ def _resolve_unpaywall(doi: str) -> str | None:
 
 def _download(url: str, dest, retries: int = 3, on_bytes=None) -> bool:
     """Download a PDF. on_bytes(done, total) reports progress; total is None when the server does not say."""
+    if not url or any(h in url for h in BLOCKED_HOSTS):
+        return False
+
+    parsed = urlparse(url)
+    headers = dict(config.HEADERS)
+    headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
+
     for attempt in range(retries):
         try:
-            r = requests.get(url, headers=config.HEADERS, timeout=120, stream=True)
+            r = requests.get(url, headers=headers, timeout=120, stream=True, allow_redirects=True)
             if r.status_code != 200:
                 return False
             try:
@@ -509,8 +589,16 @@ def _download(url: str, dest, retries: int = 3, on_bytes=None) -> bool:
                 total = None
             stream = r.iter_content(chunk_size=8192)
             first = next(stream, b"")
-            if not first.startswith(b"%PDF"):
+
+            # Validate that stream starts with PDF magic bytes (within first 1KB)
+            if b"%PDF" not in first[:1024]:
+                # If server sent HTML, it might be a landing page URL
+                if b"<!DOCTYPE" in first[:500] or b"<html" in first[:500] or b"<HTML" in first[:500]:
+                    resolved_pdf = _resolve_landing_page_pdf(url)
+                    if resolved_pdf and resolved_pdf != url:
+                        return _download(resolved_pdf, dest, retries=1, on_bytes=on_bytes)
                 return False
+
             done, last = len(first), 0.0
             with dest.open("wb") as f:
                 f.write(first)
@@ -536,9 +624,8 @@ def _download(url: str, dest, retries: int = 3, on_bytes=None) -> bool:
         except Exception as e:
             if dest.exists():
                 dest.unlink(missing_ok=True)
-            print(f"  err (attempt {attempt+1}/{retries}):", e)
             if attempt < retries - 1:
-                time.sleep(5)
+                time.sleep(3)
             continue
     return False
 
@@ -683,6 +770,7 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
             "abstract": abstract_text,
             "faculty": item_faculty,
             "authors": work.get("authors") or _authors.from_openalex(work),
+            "work": work,
         })
         existing_titles.append(title)
         if arxiv_id:
@@ -704,19 +792,58 @@ def harvest(query: str, max_results: int = 40, workers: int = 4, delay: float = 
         title = item["title"]
         source = item["source"]
         wid = item["wid"]
+        work = item.get("work") or {}
 
         console.print(f"[cyan]DOWNLOAD  {title[:70]}[/cyan] [dim]({source})[/dim]")
         download_ok = _download(pdf, dest)
         final_pdf_url = pdf
 
-        # If download failed and paper has DOI, try Unpaywall fallback
+        # Fallback 1: Try alternative locations from OpenAlex
+        if not download_ok and work.get("locations"):
+            for loc in work.get("locations"):
+                alt_url = loc.get("pdf_url")
+                if alt_url and alt_url != pdf and not any(h in alt_url for h in BLOCKED_HOSTS):
+                    console.print(f"[cyan]LOCATION FALLBACK  {title[:60]}[/cyan]")
+                    if _download(alt_url, dest):
+                        download_ok = True
+                        final_pdf_url = alt_url
+                        break
+
+        # Fallback 2: If download failed and paper has DOI, try Unpaywall
         if not download_ok and item.get("doi"):
             unpaywall_url = _resolve_unpaywall(item["doi"])
-            if unpaywall_url and unpaywall_url != pdf:
+            if unpaywall_url and unpaywall_url != pdf and unpaywall_url != final_pdf_url:
                 console.print(f"[cyan]UNPAYWALL FALLBACK  {title[:60]}[/cyan]")
                 if _download(unpaywall_url, dest):
                     download_ok = True
                     final_pdf_url = unpaywall_url
+
+        # Fallback 3: Try DOI landing page meta-resolver
+        if not download_ok and item.get("doi"):
+            landing_url = f"https://doi.org/{item['doi']}"
+            resolved = _resolve_landing_page_pdf(landing_url)
+            if resolved and resolved != pdf and resolved != final_pdf_url:
+                console.print(f"[cyan]DOI RESOLVER FALLBACK  {title[:60]}[/cyan]")
+                if _download(resolved, dest):
+                    download_ok = True
+                    final_pdf_url = resolved
+
+        # Fallback 4: arXiv title similarity match
+        if not download_ok and item.get("title"):
+            norm_target = _normalize_title(item["title"])
+            try:
+                arxiv_candidates = _search_arxiv(item["title"], max_results=3)
+                for cand in arxiv_candidates:
+                    sim = SequenceMatcher(None, norm_target, _normalize_title(cand.get("title", ""))).ratio()
+                    if sim >= 0.85 and cand.get("pdf_url"):
+                        console.print(f"[cyan]ARXIV FALLBACK  {cand['title'][:60]}[/cyan]")
+                        if _download(cand["pdf_url"], dest):
+                            download_ok = True
+                            final_pdf_url = cand["pdf_url"]
+                            source = "arxiv"
+                            break
+            except Exception:
+                pass
 
         if download_ok:
             with lock:
@@ -912,13 +1039,15 @@ def import_by_doi(doi: str, faculty: str = None, on_step=None) -> dict:
     if not clean_doi:
         return {"error": "DOI tidak boleh kosong"}
 
-    # 1. Query Unpaywall for OA PDF
+    # 1. Query Unpaywall for OA PDF, fallback to publisher landing page resolver
     console.print(f"[bold cyan]DOI      [/bold cyan]{clean_doi}: cari versi terbuka di Unpaywall")
     _report(on_step, "cari", doi=clean_doi)
     pdf_url = _resolve_unpaywall(clean_doi)
     if not pdf_url:
+        pdf_url = _resolve_landing_page_pdf(f"https://doi.org/{clean_doi}")
+    if not pdf_url:
         console.print(f"[red]GAGAL    [/red]{clean_doi}: tidak ada versi open access legal")
-        return {"error": f"Tidak ditemukan naskah Open Access legal di Unpaywall untuk DOI: {clean_doi}"}
+        return {"error": f"Tidak ditemukan naskah Open Access legal di Unpaywall atau penerbit untuk DOI: {clean_doi}"}
     host = urlparse(pdf_url).netloc or pdf_url
 
     # 2. Get metadata

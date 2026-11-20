@@ -178,6 +178,16 @@ def render_analysis_detail(p: dict):
                     unsafe_allow_html=True)
         return
 
+    plain_summary = raw.get("plain_summary")
+    if plain_summary:
+        st.markdown(
+            f"<div class='an-plain-summary'>"
+            f"<div class='an-plain-summary-header'>💡 Intisari Bahasa Awam (Untuk Klien / Praktisi)</div>"
+            f"<div class='an-plain-summary-body'>{_e(plain_summary)}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
     facts = []
     if raw.get("research_question"):
         facts.append(("Tujuan riset", raw["research_question"]))

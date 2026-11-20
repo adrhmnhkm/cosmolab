@@ -13,10 +13,10 @@ echo.
 "%PYX%" -m cosmolab.cli project list
 echo.
 echo Ketik nama proyek klien yang mau dibuka.
-echo Biarkan kosong lalu tekan Enter untuk memakai data utama.
-echo Ketik baru untuk membuat proyek baru.
+echo Cukup tekan Enter untuk langsung membuka dashboard di browser.
+echo (Membuat atau mengelola proyek klien kini bisa langsung dilakukan di dalam web).
 set "PROYEK="
-set /p "PROYEK=Proyek: "
+set /p "PROYEK=Proyek [tekan Enter untuk langsung buka]: "
 
 if /i "%PROYEK%"=="baru" goto :new_project
 goto :launch

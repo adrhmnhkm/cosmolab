@@ -23,6 +23,7 @@ Guidelines:
 1. EVERY factual sentence must end with a citation by title and year, e.g. `[Title (Year)]`, with the page when the context gives one: `[Title (Year), Hal. X]`. Your own assessment starts with "Catatan analis:" and has no citation.
    The paper summaries were written by an AI and are not verified; only "Bukti Verbatim" is the paper's own text. Prefer it.
    Do not add facts from your own knowledge. If the corpus does not answer the question, say "Tidak ditemukan di korpus ini" and what is missing.
+   STRICT CORPUS CITATION: Cite ONLY the papers explicitly listed in the corpus headers (Paper 1 to Paper N). If a corpus paper is a survey or literature review that mentions third-party methods or older authors (e.g. MEND, De Cao, Mitchell, ROME), you MUST cite the corpus paper where you read it (e.g. `[Knowledge Editing for Large Language Models: A Survey (2024)]`), NEVER the external paper.
 2. Present claims, evidence, methods, objections, and technical concepts precisely, using the standard terms of the relevant field.
 3. If multiple papers take conflicting positions, contrast their arguments.
 4. When citing verbatim evidence, preserve the exact wording and indicate the page number.
@@ -31,7 +32,7 @@ Guidelines:
 """
 
 
-def ask(question: str, model: str = None, top_k: int = 5) -> str:
+def ask(question: str, model: str = None, top_k: int = 5, return_sources: bool = False):
     """Query the research corpus using advanced hybrid retrieval (FTS5 + Conceptual RRF), LLM re-ranking, and page-aware passage grounding."""
     config.ensure_dirs()
     model = model or config.LLM_MODEL
@@ -45,7 +46,8 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
     grounded_citations = []
     if not results:
         console.print("[yellow]Tidak ada paper yang teksnya cocok dengan pertanyaan.[/yellow]")
-        return "Tidak ditemukan di korpus ini untuk pertanyaan tersebut."
+        msg = "Tidak ditemukan di korpus ini untuk pertanyaan tersebut."
+        return (msg, []) if return_sources else msg
     for i, r in enumerate(results, start=1):
         block = f"### Paper {i}: {r.get('title')} ({r.get('year', 'n.d.')})\n"
         block += f"- File: {r.get('file')}\n"
@@ -115,12 +117,21 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
             ],
             temperature=0.2,
             timeout=180.0,
+            stream=True,
         )
-        answer = (resp.choices[0].message.content or "").strip() or f"Model {model} tidak menghasilkan jawaban."
+        if hasattr(resp, "choices"):
+            answer = (resp.choices[0].message.content or "").strip() or f"Model {model} tidak menghasilkan jawaban."
+        else:
+            parts = []
+            for chunk in resp:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    parts.append(chunk.choices[0].delta.content)
+            answer = "".join(parts).strip() or f"Model {model} tidak menghasilkan jawaban."
     except Exception as e:
         console.print(f"[red]LLM API Error:[/red] {e}")
         console.print("[yellow]Tip: Check your API key, gateway status, or specify another model with --model.[/yellow]")
-        return f"Error querying LLM: {e}"
+        err_msg = f"Error querying LLM: {e}"
+        return (err_msg, results) if return_sources else err_msg
 
     try:
         from . import audit
@@ -145,4 +156,4 @@ def ask(question: str, model: str = None, top_k: int = 5) -> str:
             tbl.add_row(f"{gc['title']} ({gc['year']})", gc["page_label"], f'"{gc["verbatim"]}"')
         console.print(tbl)
 
-    return answer
+    return (answer, results) if return_sources else answer

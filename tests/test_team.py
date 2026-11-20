@@ -16,6 +16,8 @@ class TeamCase(unittest.TestCase):
     """Accounts and projects in a temp folder."""
 
     def setUp(self):
+        self._old_root = config.ROOT
+        self._old_project = config.PROJECT
         self._tmp = tempfile.TemporaryDirectory()
         tmp = Path(self._tmp.name)
         self._patches = [mock.patch.object(team, "USERS_FILE", tmp / "shared" / "team_users.json"),
@@ -28,6 +30,8 @@ class TeamCase(unittest.TestCase):
 
     def tearDown(self):
         team.set_current(None)
+        config.PROJECT = self._old_project
+        config._set_root(self._old_root)
         for p in self._patches:
             p.stop()
         self._tmp.cleanup()

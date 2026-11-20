@@ -55,6 +55,13 @@ class TestLitFields(unittest.TestCase):
             self.assertIn("| Tujuan riset | Metode | Sampel dan data |", md)
             self.assertEqual(len([ln for ln in md.splitlines() if ln.startswith("| ")]), 4)  # header + 3 rows
 
+    def test_plain_summary_field(self):
+        dumped = analyze.PaperAnalysis(thesis="t", plain_summary="Ringkasan bahasa awam untuk klien.").model_dump()
+        self.assertIn("plain_summary", dumped)
+        self.assertEqual(dumped["plain_summary"], "Ringkasan bahasa awam untuk klien.")
+        for prompt in analyze.PROMPTS.values():
+            self.assertIn('"plain_summary"', prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

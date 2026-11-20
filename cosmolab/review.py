@@ -882,3 +882,31 @@ def load_saved(limit: int = 30) -> list[dict]:
             continue
         out.append({"path": jp.with_suffix(".md"), "report": _normalize(report, jp.stem)})
     return out
+
+
+def delete(stem: str) -> bool:
+    """Delete a saved review (.json and .md). Returns True if deleted."""
+    out = reviews_dir()
+    stem_clean = Path(stem).name
+    json_path = out / f"{stem_clean}.json"
+    md_path = out / f"{stem_clean}.md"
+    deleted = False
+    if json_path.exists():
+        try:
+            try:
+                data = json.loads(json_path.read_text(encoding="utf-8"))
+                if data.get("docx_path") and Path(data["docx_path"]).exists():
+                    Path(data["docx_path"]).unlink(missing_ok=True)
+            except Exception:
+                pass
+            json_path.unlink()
+            deleted = True
+        except OSError:
+            pass
+    if md_path.exists():
+        try:
+            md_path.unlink()
+            deleted = True
+        except OSError:
+            pass
+    return deleted

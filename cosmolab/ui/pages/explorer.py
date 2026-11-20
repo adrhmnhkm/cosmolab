@@ -1,5 +1,6 @@
 """Dashboard page: Koleksi paper (menu key "Paper Explorer & Korpus")."""
 
+import json
 import streamlit as st
 from cosmolab import db
 from cosmolab import faculties as _faculties
@@ -146,6 +147,22 @@ def render(ctx: AppContext):
 
                     if p.get("thesis"):
                         st.markdown(f"<div class='paper-card-thesis'>{_e(p.get('thesis'))}</div>", unsafe_allow_html=True)
+
+                    plain_summary = None
+                    if p.get("raw_json"):
+                        try:
+                            plain_summary = (json.loads(p["raw_json"]) or {}).get("plain_summary")
+                        except (TypeError, json.JSONDecodeError):
+                            plain_summary = None
+
+                    if plain_summary:
+                        st.markdown(
+                            f"<div class='paper-card-plain'>"
+                            f"<div class='paper-card-plain-label'>💡 Intisari Bahasa Awam</div>"
+                            f"{_e(plain_summary)}"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
 
                     col_a1, col_a2, col_a3 = st.columns([3, 2, 2])
                     with col_a1:

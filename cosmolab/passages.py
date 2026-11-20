@@ -433,8 +433,13 @@ def _llm_rerank(question: str, texts: list[str], model: str = None) -> list[int]
         response_format={"type": "json_object"},
         temperature=0,
         timeout=60,
+        stream=True,
     )
-    data = _parse_response(resp.choices[0].message.content or "")
+    if hasattr(resp, "choices"):
+        content = resp.choices[0].message.content or ""
+    else:
+        content = "".join(chunk.choices[0].delta.content or "" for chunk in resp if chunk.choices).strip()
+    data = _parse_response(content)
     out = []
     for x in data.get("order") or []:
         m = re.search(r"\d+", str(x))

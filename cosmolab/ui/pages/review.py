@@ -512,5 +512,29 @@ def render(ctx: AppContext):
         else:
             labels = {s["report"]["stem"]: f"{s['report']['title']} · {s['report']['reviewed_at'][:16].replace('T', ' ')}"
                       for s in saved}
-            pick = st.selectbox("Pilih review", list(labels), format_func=labels.get)
-            _show(pick, key="rv_saved")
+            
+            col_sel, col_del = st.columns([4, 1], vertical_alignment="bottom")
+            with col_sel:
+                pick = st.selectbox("Pilih review", list(labels), format_func=labels.get, key="rv_saved_pick")
+            with col_del:
+                if st.button("Hapus Review", icon=":material/delete:", type="secondary", key=f"btn_del_{pick}", use_container_width=True):
+                    st.session_state[f"confirm_delete_{pick}"] = True
+
+            if st.session_state.get(f"confirm_delete_{pick}"):
+                with st.container(border=True):
+                    st.warning(f"Apakah Anda yakin ingin menghapus review **{labels.get(pick, pick)}**? Berkas hasil review ini akan dihapus secara permanen.")
+                    c_yes, c_no = st.columns(2)
+                    if c_yes.button("Ya, Hapus Sekarang", type="primary", key=f"yes_del_{pick}", use_container_width=True):
+                        _review.delete(pick)
+                        if st.session_state.get("review_current") == pick:
+                            st.session_state.pop("review_current", None)
+                        st.session_state.pop(f"confirm_delete_{pick}", None)
+                        st.session_state.pop("rv_saved_pick", None)
+                        st.success(f"Review berhasil dihapus.")
+                        st.rerun()
+                    if c_no.button("Batal", key=f"cancel_del_{pick}", use_container_width=True):
+                        st.session_state.pop(f"confirm_delete_{pick}", None)
+                        st.rerun()
+
+            if pick and not st.session_state.get(f"confirm_delete_{pick}"):
+                _show(pick, key="rv_saved")

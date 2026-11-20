@@ -96,6 +96,13 @@ def export_obsidian(vault_dir: Path | None = None) -> Path:
             except Exception:
                 pass
 
+        plain_summary = ""
+        if p.get("raw_json"):
+            try:
+                plain_summary = (json.loads(p["raw_json"]) or {}).get("plain_summary") or ""
+            except Exception:
+                pass
+
         tags = ["research", "cosmology", f"arg/{arg_type}", f"stance/{stance}"]
         for c in concepts[:4]:
             tag_clean = re.sub(r"[^\w]", "_", c.lower()).strip("_")
@@ -104,6 +111,7 @@ def export_obsidian(vault_dir: Path | None = None) -> Path:
 
         # Build Markdown content
         premises_md = "\n".join(f"- {prem}" for prem in premises) if premises else "- Belum dianalisis."
+        plain_md = f"\n\n## 💡 Intisari Bahasa Awam (Untuk Klien / Praktisi)\n{plain_summary}\n" if plain_summary else ""
         quotes_md = ""
         if quotes:
             quotes_md = "\n\n### Kutipan Kunci\n" + "\n\n".join(
@@ -135,7 +143,7 @@ tags: [{', '.join(tags)}]
 
 ## 🎯 Tesis Utama
 > {thesis}
-
+{plain_md}
 ## 📐 Rekonstruksi Premis & Kesimpulan
 {premises_md}
 

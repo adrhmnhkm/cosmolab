@@ -64,6 +64,16 @@ try:
     importlib.reload(_evaluate)
 except Exception:
     pass
+
+# Restore active project in session if selected previously (since reload(config) resets it)
+if "active_project" in st.session_state:
+    try:
+        config.use_project(st.session_state["active_project"])
+    except Exception:
+        pass
+elif config.PROJECT:
+    st.session_state["active_project"] = config.PROJECT
+
 # Pages and the modules they use, including pages added since the server started.
 _ui_reload.reload_ui()
 from cosmolab.ui.sidebar import build_sidebar  # noqa: E402  (after the reload, so the new version is used)
@@ -117,6 +127,7 @@ PAGES = {
     "Laporan Sintesis": pages.synthesis,
     "Pusat Akurasi": pages.accuracy,
     "Ekspor Data & Flashcards": pages.export,
+    "Kelola Tim": pages.team_admin,
 }
 
 ctx = build_sidebar()
